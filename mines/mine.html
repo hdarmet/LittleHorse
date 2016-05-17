@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mines</title>
+</head>
+<body>
+    <div id="content"></div>
+    <script src="../module.js"></script>
+    <script src="../runtimemock.js"></script>
+    <script src="../targetruntime.js"></script>
+    <script src="../svghandler.js"></script>
+    <script src="../gameitems.js"></script>
+    <script src="../scenario.js"></script>
+    <script src="mines.js"></script>
+    <script>
+        let targetRuntime = require("../targetruntime").targetRuntime;
+        let SVG = require("../svghandler").SVG;
+        let play = require("horses").playMines;
+        play(
+            SVG(targetRuntime()),
+            {
+                size:10,
+                minePercent:10
+            }
+        );
+    </script>
+</body>
+</html>
