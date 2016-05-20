@@ -176,6 +176,30 @@ describe('Little games', function() {
                 "./azar/azar.json", 'content', runtime, done);
         });
 
+        it("plays azar and get a reazar", function (done) {
+            this.timeout(100000);
+            testUtils.checkScenario(
+                function() {
+                    playAzar(svg,
+                        {
+                            speed:20
+                        });
+                },
+                "./azar/reazar.json", 'content', runtime, done);
+        });
+
+        it("plays azar and get samechance", function (done) {
+            this.timeout(100000);
+            testUtils.checkScenario(
+                function() {
+                    playAzar(svg,
+                        {
+                            speed:20
+                        });
+                },
+                "./azar/samechance.json", 'content', runtime, done);
+        });
+
         it("plays azar and get a chance", function (done) {
             this.timeout(100000);
             testUtils.checkScenario(

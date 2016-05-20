@@ -7,222 +7,243 @@ console.log("Horses loaded...");
 
 exports.playAzar = function(svg, param) {
 
-    var gameItems = new GameItems(svg);
+    const gameItems = new GameItems(svg);
+    const numbers = ["VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV"];
 
-    function Game(exit) {
-        var self = this;
+    class Game {
 
-        self.destroy = function () {
-            self.stop = true;
-            self.canvas.hide();
-        };
-
-        self.resume = function () {
-            delete self.stop;
-            self.canvas.show("content");
-            if (self.mustPlay) {
-                delete self.mustPlay;
-                self.nextPlay();
+        constructor(exit) {
+            this.canvas = new svg.Drawing(1200, 1000).show("content");
+            this.add(new gameItems.Exit(exit).component.move(30, 30));
+            this.board = new Board();
+            this.add(this.board.component.move(100, 0));
+            this.dice = [];
+            for (var i = 0; i < 3; i++) {
+                this.dice.push(new gameItems.Die(param));
+                this.dice[i].component.move(500, 220 + i * 100);
+                this.dice[i].randomValue();
+                this.board.component.add(this.dice[i].component);
             }
-        };
-
-        self.add = function (component) {
-            self.canvas.add(component);
-        };
-
-        self.remove = function (component) {
-            self.canvas.remove(component);
-        };
-
-        self.canvas = new svg.Drawing(1200, 1000).show("content");
-        self.add(new gameItems.Exit(exit).component.move(30, 30));
-        var board = new Board();
-        self.add(board.component.move(100, 0));
-        var dice = [];
-        for (var i=0; i<3; i++) {
-            dice.push(new gameItems.Die(param));
-            dice[i].component.move(500, 220+i*100);
-            dice[i].randomValue();
-            board.component.add(dice[i].component);
+            this.players = [];
+            this.players.push(new HumanPlayer("Wilfried", "wilfried.jpg", this));
+            this.players.push(new BotPlayer("Hewerald", "hewerald.jpg", this));
+            this.board.component.add(this.players[0].component.move(0, 200));
+            this.board.component.add(this.players[1].component.move(670, 200));
         }
-        self.players = [];
-        self.players.push(new HumanPlayer("Wilfried", "wilfried.jpg"));
-        self.players.push(new BotPlayer("Hewerald", "hewerald.jpg"));
-        board.component.add(self.players[0].component.move(0,200));
-        board.component.add(self.players[1].component.move(670,200));
 
-        var numbers = ["VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV"];
+        destroy() {
+            this.stop = true;
+            this.canvas.hide();
+        }
 
-        self.process = function(player1) {
-            var player2 = player1===self.players[0] ? self.players[1] : self.players[0];
-            if (self.status==="firstChance") {
+        resume() {
+            delete this.stop;
+            this.canvas.show("content");
+            if (this.mustPlay) {
+                delete this.mustPlay;
+                this.nextPlay();
+            }
+        }
+
+        add(component) {
+            this.canvas.add(component);
+        }
+
+        remove(component) {
+            this.canvas.remove(component);
+        }
+
+        process(player1) {
+            let isAzar = ()=> {
+                return this._sum() <= 5 || this._sum() >= 16;
+            };
+            let player2 = player1 === this.players[0] ? this.players[1] : this.players[0];
+            if (this.status === "firstChance") {
                 if (isAzar()) {
                     player1.win("Azar !");
                     player2.loose();
-                    self.finished = true;
+                    this.finished = true;
                 }
                 else {
-                    player2.setChance(sum());
+                    player2.setChance(this._sum());
                 }
             }
-            else if (self.status==="secondChance") {
+            else if (this.status === "secondChance") {
                 if (isAzar()) {
                     player2.win();
                     player1.loose("Reazar !");
-                    self.finished = true;
+                    this.finished = true;
                 }
                 else {
-                    if (sum()===player2.chanceValue) {
-                        player1.setChance("Same chance");
-                        self.finished = true;
+                    if (this._sum() === player2.chanceValue) {
+                        player1.setEquality("Same chance");
+                        this.finished = true;
                     } else {
-                        player1.setChance(sum());
+                        player1.setChance(this._sum());
                     }
                 }
             }
             else {
-                if (sum()===player1.chanceValue) {
-                    player1.win(numbers[player1.chanceValue-6]+" : Chance !");
+                if (this._sum() === player1.chanceValue) {
+                    player1.win(numbers[player1.chanceValue - 6] + " : Chance !");
                     player2.loose();
-                    self.finished = true;
+                    this.finished = true;
                 }
-                else if (sum()===player2.chanceValue) {
-                    player2.win(numbers[player2.chanceValue-6]+" : Chance !");
+                else if (this._sum() === player2.chanceValue) {
+                    player2.win(numbers[player2.chanceValue - 6] + " : Chance !");
                     player1.loose();
-                    self.finished = true;
+                    this.finished = true;
                 }
             }
 
-            function isAzar() {
-                return sum()<=5 || sum()>=16;
-            }
-        };
-
-        function rollDice() {
-            dice.forEach(function(die) {die.roll(svg.onChannel())});
         }
 
-        function sum() {
-            var result=0;
-            for (var die in dice) {
-                result += dice[die].value;
+        startPlay() {
+            delete this.finished;
+            this.currentPlayerIndex = 0;
+            this.status = "firstChance";
+            this.players.forEach(function (player) {
+                player.init()
+            });
+            this.players[this.currentPlayerIndex].play();
+        }
+
+        nextPlay() {
+            if (!this.finished) {
+                if (this.stop) {
+                    this.mustPlay = true;
+                    return;
+                }
+                if (this.status === "firstChance") {
+                    this.status = "secondChance";
+                }
+                else {
+                    this.status = "tryChance";
+                    this.currentPlayerIndex = this.currentPlayerIndex ? 0 : 1;
+                }
+                this.players[this.currentPlayerIndex].play();
+            }
+        }
+
+        rollDice() {
+            this.dice.forEach(die=> {
+                die.roll(svg.onChannel())
+            });
+        }
+
+        _sum() {
+            let result = 0;
+            for (let die of this.dice) {
+                result += die.value;
             }
             return result;
         }
 
-        function again() {
-            self.remove(self.board.component);
-            self.board = new Board(param.size);
-            self.add(self.board.component.move(100, 0));
+        _again() {
+            this.remove(self.board.component);
+            this.board = new Board(param.size);
+            this.add(this.board.component.move(100, 0));
+        }
+    }
+
+    class Board {
+
+        constructor(size) {
+            this.component = new svg.Translation();
         }
 
-        function Board(size) {
-            var self = this;
-            self.component = new svg.Translation();
-        }
+    }
 
-        function Player(name, url) {
-            var me = this;
-            me.component = new svg.Translation();
-            me.imageBase = new svg.Translation()
+    class Player {
+
+        constructor(name, url, game) {
+            this.game = game;
+            this.component = new svg.Translation();
+            this.imageBase = new svg.Translation()
                 .add(new svg.Image(url).position(200, 150).dimension(360, 270).clickable())
                 .add(new svg.Text(name).font("Arial", 48, 96).position(200, 350));
-            me.component.add(me.imageBase);
-            me.frame = new svg.Rect(360, 270).position(200, 150).color([], 4, [255, 0, 0]).opacity(0);
-            me.component.add(me.frame);
-            me.mood = new gameItems.Smiley(function() {self.startPlay();}, ":|");
-            me.component.add(me.mood.component.move(20, 300));
-            me.chance = new svg.Text("?").font("Arial", 80).color([100, 100, 200]).position(200, 0);
-            me.component.add(me.chance);
+            this.component.add(this.imageBase);
+            this.frame = new svg.Rect(360, 270).position(200, 150).color([], 4, [255, 0, 0]).opacity(0);
+            this.component.add(this.frame);
+            this.mood = new gameItems.Smiley(function () {
+                this.game.startPlay();
+            }, ":|");
+            this.component.add(this.mood.component.move(20, 300));
+            this.chance = new svg.Text("?").font("Arial", 80).color([100, 100, 200]).position(200, 0);
+            this.component.add(this.chance);
+        }
 
-            me.init = function() {
-                me.mood.setType(":|");
-                delete me.chanceValue;
-                me.frame.opacity(0);
-                me.chance.message("?");
-            };
+        init() {
+            this.mood.setType(":|");
+            delete this.chanceValue;
+            this.frame.opacity(0);
+            this.chance.message("?");
+        }
 
-            me.setChance = function(value) {
-                me.chanceValue = value;
-                me.chance.message(numbers[value-6]);
-            };
+        setChance(value) {
+            this.chanceValue = value;
+            this.chance.message(numbers[value - 6]);
+        }
 
-            me.win = function(text) {
-                if (text) {
-                    me.chance.message(text);
-                }
-                me.mood.setType(":)");
-            };
-
-            me.loose = function(text) {
-                if (text) {
-                    me.chance.message(text);
-                }
-                me.mood.setType(":(");
+        setEquality(text) {
+            if (text) {
+                this.chance.message(text);
             }
+            this.mood.setType(":|");
         }
 
-        function HumanPlayer(name, url) {
-            Player.call(this, name, url);
-            var me = this;
-
-            me.play = function() {
-                me.frame.opacity(1);
-                me.imageBase.onClick(function() {
-                    me.imageBase.onClick(null);
-                    rollDice();
-                    svg.animate(param.speed*50, function() {
-                        self.process(me);
-                        me.frame.opacity(0);
-                        self.nextPlay();
-                    });
-                });
-            };
-        }
-        HumanPlayer.prototype.__proto__ = Player.prototype;
-
-        function BotPlayer(name, url) {
-            Player.call(this, name, url);
-            var me = this;
-
-            me.play = function() {
-                me.frame.opacity(1);
-                svg.animate(param.speed*50, function() {
-                    rollDice();
-                    svg.animate(param.speed * 50, function () {
-                        self.process(me);
-                        me.frame.opacity(0);
-                        self.nextPlay();
-                    });
-                });
-            };
-        }
-        BotPlayer.prototype.__proto__ = Player.prototype;
-
-        self.startPlay = function () {
-            delete self.finished;
-            self.currentPlayerIndex = 0;
-            self.status = "firstChance";
-            self.players.forEach(function(player) {player.init()});
-            self.players[self.currentPlayerIndex].play();
-        };
-
-        self.nextPlay = function () {
-            if (!self.finished) {
-                if (self.stop) {
-                    self.mustPlay = true;
-                    return;
-                }
-                if (self.status === "firstChance") {
-                    self.status = "secondChance";
-                }
-                else {
-                    self.status = "tryChance";
-                    self.currentPlayerIndex = self.currentPlayerIndex ? 0 : 1;
-                }
-                self.players[self.currentPlayerIndex].play();
+        win(text) {
+            if (text) {
+                this.chance.message(text);
             }
-        };
+            this.mood.setType(":)");
+        }
+
+        loose(text) {
+            if (text) {
+                this.chance.message(text);
+            }
+            this.mood.setType(":(");
+        }
+    }
+
+    class HumanPlayer extends Player {
+
+        constructor(name, url, game) {
+            super(name, url, game);
+        }
+
+        play() {
+            this.frame.opacity(1);
+            this.imageBase.onClick(()=> {
+                this.imageBase.onClick(null);
+                this.game.rollDice();
+                svg.animate(param.speed * 50, ()=> {
+                    this.game.process(this);
+                    this.frame.opacity(0);
+                    this.game.nextPlay();
+                });
+            });
+        }
+    }
+
+    class BotPlayer extends Player {
+
+        constructor(name, url, game) {
+            super(name, url, game);
+        }
+
+        play() {
+            this.frame.opacity(1);
+            svg.animate(param.speed * 50, ()=> {
+                this.game.rollDice();
+                svg.animate(param.speed * 50, ()=> {
+                    this.game.process(this);
+                    this.frame.opacity(0);
+                    this.game.nextPlay();
+                });
+            });
+        }
     }
 
     var game;
