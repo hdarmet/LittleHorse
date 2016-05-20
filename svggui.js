@@ -291,8 +291,8 @@ exports.Gui = function(svg) {
                 this.handle.mouseupHandler = event=> {
                     svg.removeEvent(this.handle, 'mousemove', this.handle.mousemoveHandler);
                     svg.removeEvent(this.handle, 'mouseup', this.handle.mouseupHandler);
-                    delete self.handle.mousemoveHandler;
-                    delete self.handle.mouseupHandler;
+                    delete this.handle.mousemoveHandler;
+                    delete this.handle.mouseupHandler;
                 };
                 svg.addEvent(this.handle, 'mousemove', this.handle.mousemoveHandler);
                 svg.addEvent(this.handle, 'mouseup', this.handle.mouseupHandler);
@@ -423,291 +423,326 @@ exports.Gui = function(svg) {
 
     }
 
-    function Panel(width, height, color) {
-        var self = this;
-        self.width = width;
-        self.height = height;
-        self.component = new svg.Translation();
-        self.component.focus = self;
-        self.border = new svg.Rect(width, height).color([], 4, [0, 0, 0]);
-        self.view = new svg.Drawing(width, height).position(-width/2, -height/2);
-        self.translate = new svg.Translation();
-        self.component.add(self.view.add(self.translate)).add(self.border);
-        self.vHandle = new Handle([[255, 204, 0], 3, [220, 100, 0]], vHandleCallback).vertical(width/2, -height/2, height/2);
-        self.component.add(self.vHandle.component);
-        self.back = new svg.Rect(width, height).color(color, 0, []);
-        self.content = new svg.Translation();
-        self.content.width = width;
-        self.content.height = height;
-        self.translate.add(self.back.position(width/2, height/2)).add(self.content);
+    class Panel {
 
-        function vHandleCallback(position) {
-            var x = self.content.x;
-            var y = -position*self.content.height/self.view.height + self.view.height/2;
-            self.content.move(x, y);
-        }
-    }
-    Panel.prototype.position = function(x, y) {
-        this.component.move(x, y);
-        return this;
-    };
-    Panel.prototype.resize = function(width, height) {
-        this.width = width;
-        this.height = height;
-        this.border.dimension(width, height);
-        this.view.dimension(width, height).position(-width/2, -height/2);
-        this.vHandle.vertical(width/2, -height/2, height/2);
-        this.back.dimension(width, height).position(width/2, height/2);
-        return this;
-    };
-    Panel.prototype.updateHandle = function() {
-        this.vHandle.dimension(this.view.height, this.content.height)
-            .position((this.view.height/2-this.content.y)/(this.content.height)*this.view.height);
-        return this;
-    };
-    Panel.prototype.add = function(component) {
-        this.content.add(component);
-        return this;
-    };
-    Panel.prototype.remove = function(component) {
-        this.content.remove(component);
-        return this;
-    };
-    Panel.prototype.resizeContent = function(height) {
-        if (height>this.height) {
+        constructor(width, height, color) {
+            let vHandleCallback = position=> {
+                var x = this.content.x;
+                var y = -position * this.content.height / this.view.height + this.view.height / 2;
+                this.content.move(x, y);
+            };
+
+            this.width = width;
+            this.height = height;
+            this.component = new svg.Translation();
+            this.component.focus = this;
+            this.border = new svg.Rect(width, height).color([], 4, [0, 0, 0]);
+            this.view = new svg.Drawing(width, height).position(-width / 2, -height / 2);
+            this.translate = new svg.Translation();
+            this.component.add(this.view.add(this.translate)).add(this.border);
+            this.vHandle = new Handle([[255, 204, 0], 3, [220, 100, 0]], vHandleCallback).vertical(width / 2, -height / 2, height / 2);
+            this.component.add(this.vHandle.component);
+            this.back = new svg.Rect(width, height).color(color, 0, []);
+            this.content = new svg.Translation();
+            this.content.width = width;
             this.content.height = height;
-            var width = this.content.width;
-            this.back.position(width / 2, height / 2);
-            this.back.dimension(width, height);
-            this.updateHandle();
+            this.translate.add(this.back.position(width / 2, height / 2)).add(this.content);
         }
-        return this;
-    };
-    Panel.prototype.controlPosition = function(y) {
-        if (y > 0) {
-            y = 0;
-        }
-        if (y < -this.content.height + this.view.height) {
-            y = -this.content.height + this.view.height;
-        }
-        return y;
-    };
-    Panel.prototype.moveContent = function(y) {
-        var self=this;
-        if (!self.animation) {
-            self.animation = true;
-            var ly = this.controlPosition(y);
-            this.content.onChannel().smoothy(param.speed, param.step)
-                .execute(completeMovement).moveTo(0, ly);
-        }
-        function completeMovement(progress) {
-            self.updateHandle();
-            if (progress===1) {
-                delete self.animation;
-            }
-        }
-        return this;
-    };
-    Panel.prototype.processKeys = function(keycode) {
-        if (isUpArrow(keycode)) {
-            this.moveContent(this.content.y+100);
-        }
-        else if (isDownArrow(keycode)) {
-            this.moveContent(this.content.y-100);
-        }
-        else {
-            return false;
-        }
-        return true;
 
-        function isUpArrow(keycode) {
-            return keycode===38;
+        position(x, y) {
+            this.component.move(x, y);
+            return this;
         }
-        function isDownArrow(keycode) {
-            return keycode===40;
-        }
-    };
 
-    function Button(width, height, colors, text) {
-        this.width = width;
-        this.height = height;
-        this.back = new svg.Rect(width, height).color(colors[0], colors[1], colors[2]);
-        this.component = new svg.Translation().add(this.back);
-        this.text = new svg.Text(text).font("Arial", 24);
-        this.component.add(this.text.position(0, 8));
-        this.glass = new svg.Rect(width, height).color([0, 0, 0]).opacity(0.001);
-        this.component.add(this.text.position(0, 8)).add(this.glass);
-    }
-    Button.prototype.resize = function(width, height) {
-        this.width = width;
-        this.height = height;
-        this.back.dimension(width, height);
-        this.glass.dimension(width, height);
-        return this;
-    };
-    Button.prototype.position = function(x, y) {
-        this.component.move(x, y);
-        return this;
-    };
-    Button.prototype.onClick = function(handler) {
-        if (this.handler) {
-            svg.removeEvent(this.glass, "mouseup", this.handler);
+        resize(width, height) {
+            this.width = width;
+            this.height = height;
+            this.border.dimension(width, height);
+            this.view.dimension(width, height).position(-width / 2, -height / 2);
+            this.vHandle.vertical(width / 2, -height / 2, height / 2);
+            this.back.dimension(width, height).position(width / 2, height / 2);
+            return this;
         }
-        this.handler = handler;
-        svg.addEvent(this.glass, "mouseup", this.handler);
-        return this;
-    };
 
-    function Palette(width, height) {
-        this.width = width;
-        this.height = height;
-        this.component = new svg.Translation();
-        this.panes = [];
-        this.channel = svg.onChannel();
-    }
-    Palette.prototype.position = function(x, y) {
-        this.component.move(x, y);
-        return this;
-    };
-    Palette.prototype.addPane = function(pane) {
-        var self = this;
-        pane.palette = this;
-        if (this.panes.length===0) {
-            this.currentPane = pane;
-            pane.open();
+        updateHandle() {
+            this.vHandle.dimension(this.view.height, this.content.height)
+                .position((this.view.height / 2 - this.content.y) / (this.content.height) * this.view.height);
+            return this;
         }
-        else {
-            pane.close();
+
+        add(component) {
+            this.content.add(component);
+            return this;
         }
-        pane.title.onClick(function() {
-            if (self.currentPane!==pane) {
-                var paneToClose = self.currentPane;
-                var paneToOpen = pane;
-                self.animate(paneToOpen, paneToClose);
-            }
-        });
-        this.panes.push(pane);
-        this.component.add(pane.component);
-        this.resizePanes();
-        return this;
-    };
-    Palette.prototype.resizePanes = function() {
-        var y = -this.height/2;
-        var panelHeight = this.height - this.panes.length*TITLE_HEIGHT;
-        for (var i=0; i<this.panes.length; i++) {
-            var pane = this.panes[i];
-            if (pane.opened) {
-                pane.resize(this.width, panelHeight + TITLE_HEIGHT);
-                pane.position(0, y+pane.height/2);
-                y+=TITLE_HEIGHT+panelHeight;
-            }
-            else {
-                pane.resize(this.width, TITLE_HEIGHT);
-                pane.position(0, y+pane.height/2);
-                y+=TITLE_HEIGHT;
-            }
+
+        remove(component) {
+            this.content.remove(component);
+            return this;
         }
-    };
-    Palette.prototype.animate = function(openedPane, closedPane) {
-        var STEPS = 100;
-        var DELAY = 2;
-        var panelHeight = this.height - this.panes.length*TITLE_HEIGHT;
-        var delta = panelHeight/STEPS;
-        var self = this;
-        this.channel.play(DELAY, STEPS,
-            function (i) {
-                var y = -self.height / 2;
-                for (var p = 0; p < self.panes.length; p++) {
-                    var pane = self.panes[p];
-                    if (pane === openedPane) {
-                        pane.resize(self.width, (i+1) * delta + TITLE_HEIGHT);
-                        pane.position(0, y + pane.height / 2);
-                        y += (i+1) * delta + TITLE_HEIGHT;
-                    }
-                    else if (pane === closedPane) {
-                        pane.resize(self.width, panelHeight - (i+1) * delta + TITLE_HEIGHT);
-                        pane.position(0, y + pane.height / 2);
-                        y += panelHeight - (i+1) * delta + TITLE_HEIGHT;
-                    }
-                    else {
-                        pane.position(0, y + pane.height / 2);
-                        y += TITLE_HEIGHT;
-                    }
+
+        resizeContent(height) {
+            if (height > this.height) {
+                this.content.height = height;
+                var width = this.content.width;
+                this.back.position(width / 2, height / 2);
+                this.back.dimension(width, height);
+                this.updateHandle();
+            }
+            return this;
+        }
+
+        controlPosition(y) {
+            if (y > 0) {
+                y = 0;
+            }
+            if (y < -this.content.height + this.view.height) {
+                y = -this.content.height + this.view.height;
+            }
+            return y;
+        }
+
+        moveContent(y) {
+            let completeMovement = progress=> {
+                this.updateHandle();
+                if (progress === 1) {
+                    delete this.animation;
                 }
-            },
-            function () {
-                openedPane.open();
-                closedPane.close();
-                delete self.animation;
-                self.currentPane = openedPane;
+            };
+            if (!this.animation) {
+                this.animation = true;
+                let ly = this.controlPosition(y);
+                this.content.onChannel().smoothy(param.speed, param.step)
+                    .execute(completeMovement).moveTo(0, ly);
             }
-        );
-    };
+            return this;
+        }
 
-    var TITLE_HEIGHT = 40;
-    var DEFAULT = 100;
-    function Pane(colors, text, elemSize) {
-        this.elemSize = elemSize;
-        this.width = DEFAULT;
-        this.height = DEFAULT;
-        this.colors = colors;
-        this.opened = false;
-        this.component = new svg.Translation();
-        this.title = new Button(this.width, TITLE_HEIGHT, this.colors, text);
-        var self = this;
-        this.title.onClick(function() {
-            if (self.opened) {
-                self.close();
+        processKeys(keycode) {
+            if (isUpArrow(keycode)) {
+                this.moveContent(this.content.y + 100);
+            }
+            else if (isDownArrow(keycode)) {
+                this.moveContent(this.content.y - 100);
             }
             else {
-                self.open();
+                return false;
             }
-        });
-        this.panel = new Panel(this.width, this.height-TITLE_HEIGHT, colors[0]);
-        this.panel.component.move(0, TITLE_HEIGHT+this.height/2);
-        this.component.add(this.title.component);
-        this.component.add(this.panel.component);
-        this.tools = [];
-    }
-    Pane.prototype.addTool = function(tool) {
-        this.tools.push(tool);
-        this.panel.add(tool.component);
-        tool.palette = this.palette;
-        var rowSize = Math.floor(this.width/this.elemSize);
-        var height = Math.floor(((this.tools.length-1)/rowSize)+1)*this.elemSize;
-        tool.component.move(
-            ((this.tools.length-1)%rowSize)*this.elemSize+this.elemSize/2,
-            height-this.elemSize/2);
-        this.panel.resizeContent(height);
-        return this;
-    };
-    Pane.prototype.position = function(x, y) {
-        this.component.move(x, y);
-        return this;
-    };
-    Pane.prototype.resize = function(width, height) {
-        this.width = width;
-        this.height = height;
-        this.title.resize(width, TITLE_HEIGHT).position(0, -height/2+TITLE_HEIGHT/2);
-        this.panel.resize(width, this.height-TITLE_HEIGHT).position(0, TITLE_HEIGHT/2);
-    };
-    Pane.prototype.open = function() {
-        if (!this.opened) {
-            this.opened = true;
-        }
-        return this;
-    };
-    Pane.prototype.close = function() {
-        if (this.opened) {
-            this.opened = false;
-        }
-        return this;
-    };
+            return true;
 
-    function Tool(component, callback) {
-        this.component = new svg.Translation().add(component);
-        component.tool = this;
-        this.callback = callback;
+            function isUpArrow(keycode) {
+                return keycode === 38;
+            }
+
+            function isDownArrow(keycode) {
+                return keycode === 40;
+            }
+        }
+
+    }
+
+    class Button {
+        constructor(width, height, colors, text) {
+            this.width = width;
+            this.height = height;
+            this.back = new svg.Rect(width, height).color(colors[0], colors[1], colors[2]);
+            this.component = new svg.Translation().add(this.back);
+            this.text = new svg.Text(text).font("Arial", 24);
+            this.component.add(this.text.position(0, 8));
+            this.glass = new svg.Rect(width, height).color([0, 0, 0]).opacity(0.001);
+            this.component.add(this.text.position(0, 8)).add(this.glass);
+        }
+
+        resize(width, height) {
+            this.width = width;
+            this.height = height;
+            this.back.dimension(width, height);
+            this.glass.dimension(width, height);
+            return this;
+        }
+
+        position(x, y) {
+            this.component.move(x, y);
+            return this;
+        }
+
+        onClick(handler) {
+            if (this.handler) {
+                svg.removeEvent(this.glass, "mouseup", this.handler);
+            }
+            this.handler = handler;
+            svg.addEvent(this.glass, "mouseup", this.handler);
+            return this;
+        }
+
+    }
+
+    class Palette {
+
+        constructor(width, height) {
+            this.width = width;
+            this.height = height;
+            this.component = new svg.Translation();
+            this.panes = [];
+            this.channel = svg.onChannel();
+        }
+
+        position(x, y) {
+            this.component.move(x, y);
+            return this;
+        }
+
+        addPane(pane) {
+            pane.palette = this;
+            if (this.panes.length === 0) {
+                this.currentPane = pane;
+                pane.open();
+            }
+            else {
+                pane.close();
+            }
+            pane.title.onClick(()=> {
+                if (this.currentPane !== pane) {
+                    let paneToClose = this.currentPane;
+                    let paneToOpen = pane;
+                    this.animate(paneToOpen, paneToClose);
+                }
+            });
+            this.panes.push(pane);
+            this.component.add(pane.component);
+            this.resizePanes();
+            return this;
+        }
+
+        resizePanes() {
+            var y = -this.height / 2;
+            var panelHeight = this.height - this.panes.length * TITLE_HEIGHT;
+            for (var i = 0; i < this.panes.length; i++) {
+                var pane = this.panes[i];
+                if (pane.opened) {
+                    pane.resize(this.width, panelHeight + TITLE_HEIGHT);
+                    pane.position(0, y + pane.height / 2);
+                    y += TITLE_HEIGHT + panelHeight;
+                }
+                else {
+                    pane.resize(this.width, TITLE_HEIGHT);
+                    pane.position(0, y + pane.height / 2);
+                    y += TITLE_HEIGHT;
+                }
+            }
+        }
+
+        animate(openedPane, closedPane) {
+            const STEPS = 100;
+            const DELAY = 2;
+            let panelHeight = this.height - this.panes.length * TITLE_HEIGHT;
+            let delta = panelHeight / STEPS;
+            this.channel.play(DELAY, STEPS,
+                i=> {
+                    var y = -this.height / 2;
+                    for (let p = 0; p < this.panes.length; p++) {
+                        let pane = this.panes[p];
+                        if (pane === openedPane) {
+                            pane.resize(this.width, (i + 1) * delta + TITLE_HEIGHT);
+                            pane.position(0, y + pane.height / 2);
+                            y += (i + 1) * delta + TITLE_HEIGHT;
+                        }
+                        else if (pane === closedPane) {
+                            pane.resize(this.width, panelHeight - (i + 1) * delta + TITLE_HEIGHT);
+                            pane.position(0, y + pane.height / 2);
+                            y += panelHeight - (i + 1) * delta + TITLE_HEIGHT;
+                        }
+                        else {
+                            pane.position(0, y + pane.height / 2);
+                            y += TITLE_HEIGHT;
+                        }
+                    }
+                },
+                ()=> {
+                    openedPane.open();
+                    closedPane.close();
+                    delete this.animation;
+                    this.currentPane = openedPane;
+                }
+            );
+        }
+    }
+
+    const TITLE_HEIGHT = 40;
+    const DEFAULT_PANE_HEIGHT = 100;
+    class Pane {
+
+        constructor(colors, text, elemSize) {
+            this.elemSize = elemSize;
+            this.width = DEFAULT_PANE_HEIGHT;
+            this.height = DEFAULT_PANE_HEIGHT;
+            this.colors = colors;
+            this.opened = false;
+            this.component = new svg.Translation();
+            this.title = new Button(this.width, TITLE_HEIGHT, this.colors, text);
+            this.title.onClick(()=> {
+                if (this.opened) {
+                    this.close();
+                }
+                else {
+                    this.open();
+                }
+            });
+            this.panel = new Panel(this.width, this.height - TITLE_HEIGHT, colors[0]);
+            this.panel.component.move(0, TITLE_HEIGHT + this.height / 2);
+            this.component.add(this.title.component);
+            this.component.add(this.panel.component);
+            this.tools = [];
+        }
+
+        addTool(tool) {
+            this.tools.push(tool);
+            this.panel.add(tool.component);
+            tool.palette = this.palette;
+            var rowSize = Math.floor(this.width / this.elemSize);
+            var height = Math.floor(((this.tools.length - 1) / rowSize) + 1) * this.elemSize;
+            tool.component.move(
+                ((this.tools.length - 1) % rowSize) * this.elemSize + this.elemSize / 2,
+                height - this.elemSize / 2);
+            this.panel.resizeContent(height);
+            return this;
+        }
+
+        position(x, y) {
+            this.component.move(x, y);
+            return this;
+        }
+
+        resize(width, height) {
+            this.width = width;
+            this.height = height;
+            this.title.resize(width, TITLE_HEIGHT).position(0, -height / 2 + TITLE_HEIGHT / 2);
+            this.panel.resize(width, this.height - TITLE_HEIGHT).position(0, TITLE_HEIGHT / 2);
+        }
+
+        open() {
+            if (!this.opened) {
+                this.opened = true;
+            }
+            return this;
+        }
+
+        close() {
+            if (this.opened) {
+                this.opened = false;
+            }
+            return this;
+        }
+
+    }
+
+    class Tool {
+
+        constructor(component, callback) {
+            this.component = new svg.Translation().add(component);
+            component.tool = this;
+            this.callback = callback;
+        }
+
     }
 
     return {

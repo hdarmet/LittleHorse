@@ -232,6 +232,16 @@ exports.mockRuntime = function() {
             timeout.handler();
             return this;
         },
+        advanceTo(timeoutId) {
+            for (var i=0; i<timeouts.length && timeouts[i].id!==timeoutId; i++);
+            if (i<timeouts.length) {
+                var timeout = timeouts[i];
+                timeouts.splice(i, 1);
+            }
+            time = timeout.time;
+            timeout.handler();
+            return this;
+        },
         finished() {
             return timeouts.length===0;
         },
@@ -260,6 +270,7 @@ exports.mockRuntime = function() {
 
 exports.registerRuntime =  function(targetRuntime, register) {
 
+    let timeoutId = 0;
     let target = targetRuntime;
     let mock =  exports.mockRuntime();
     let anchors = {};
@@ -424,14 +435,17 @@ exports.registerRuntime =  function(targetRuntime, register) {
             return target.now();
         },
         timeout(handler, delay) {
+            let id = timeoutId++;
             return target.timeout(function() {
-                addHistory({type:'timeout', delay:delay});
+                addHistory({type:'timeout', id:id, delay:delay});
                 handler();
             }, delay);
         },
         interval(handler, delay) {
+            let id = timeoutId++;
             return target.interval(function() {
-                addHistory({type:'timeout', delay:delay});
+                addHistory({type:'timeout', id:id, delay:delay});
+                id = timeoutId++;
                 handler();
             }, delay);
         },

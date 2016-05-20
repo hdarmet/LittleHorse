@@ -164,6 +164,18 @@ describe('Little games', function() {
             svg = SVG(runtime);
         });
 
+        it("plays azar and get a azar", function (done) {
+            this.timeout(100000);
+            testUtils.checkScenario(
+                function() {
+                    playAzar(svg,
+                        {
+                            speed:20
+                        });
+                },
+                "./azar/azar.json", 'content', runtime, done);
+        });
+
         it("plays azar and get a chance", function (done) {
             this.timeout(100000);
             testUtils.checkScenario(

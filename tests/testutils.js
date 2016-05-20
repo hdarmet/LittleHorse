@@ -43,7 +43,7 @@ function checkScenario(play, scenario, root, runtime, done) {
                 }
             }
             else if (fact.type === 'timeout') {
-                runtime.advance();
+                runtime.advanceTo(fact.id);
             }
         }
     });
