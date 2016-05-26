@@ -81,8 +81,22 @@ exports.SVG = function(runtime) {
         }
     }
 
-    class Drawing {
+    class SvgElement {
+
+        constructor() {}
+
+        mark(id) {
+            this.id = id;
+            this.component && this.component.mark(id);
+            return this;
+        }
+
+    }
+
+    class Drawing extends SvgElement {
+
         constructor(width, height) {
+            super();
             this.children = [];
             this.x = 0;
             this.y = 0;
@@ -206,7 +220,7 @@ exports.SVG = function(runtime) {
         }
 
         getTarget(x, y) {
-            if (this._active) {
+            if (this._active && this.inside(x,y)) {
                 for (var i = this.children.length - 1; i >= 0; i--) {
                     var target = this.children[i].getTarget(x, y);
                     if (target) {
@@ -218,8 +232,10 @@ exports.SVG = function(runtime) {
         }
     }
 
-    class Handler {
+    class Handler extends SvgElement {
+
         constructor() {
+            super();
             this.children = [];
             this._active = true;
             this.component = svgr.create("g");
@@ -323,6 +339,9 @@ exports.SVG = function(runtime) {
             if (this._active) {
                 if (!this._opacity || this._opacity > 0) {
                     for (var i = this.children.length - 1; i >= 0; i--) {
+                        if (this.children[i].dummy) {
+                            return null;
+                        }
                         var target = this.children[i].getTarget(x, y);
                         if (target) {
                             return target;
@@ -335,21 +354,28 @@ exports.SVG = function(runtime) {
     }
 
     class Ordered extends Handler {
+
         constructor(layerCount) {
             super();
             this.children = [];
             this._active = true;
             this.component = svgr.create("g");
             for (var i = 0; i < layerCount; i++) {
-                this.children[i] = new Rect(0, 0).opacity(0);
+                this.children[i] = this._dummy();
                 svgr.add(this.component, this.children[i].component);
             }
+        }
+
+        _dummy() {
+            var dummy = new Rect(0, 0).opacity(0);
+            dummy.dummy = true;
+            return dummy;
         }
 
         order(layerCount) {
             this.clear();
             for (var i = 0; i < layerCount; i++) {
-                this.children[i] = new Rect(0, 0).opacity(0);
+                this.children[i] = this._dummy();
                 svgr.add(this.component, this.children[i].component);
             }
             return this;
@@ -363,7 +389,7 @@ exports.SVG = function(runtime) {
         }
 
         unset(layer) {
-            var dummy = new Rect(0, 0).opacity(0);
+            var dummy = this._dummy();
             svgr.replace(this.component, this.children[layer].component, dummy.component);
             this.children[layer] = dummy;
             return this;
@@ -513,8 +539,10 @@ exports.SVG = function(runtime) {
         }
     }
 
-    class Shape {
+    class Shape extends SvgElement {
+
         constructor() {
+            super();
             this._active = true;
         }
 
@@ -1334,6 +1362,13 @@ exports.SVG = function(runtime) {
                     return (local.x>=-box.width && local.x<=0 && local.y>=-box.height/2 && local.y<=box.height/2);
             }
         }
+
+        getTarget(x, y) {
+            if (!this._opacity || this._opacity > 0) {
+                return this.inside(x, y) ? this : null;
+            }
+            return null;
+        }
     }
 
     class Line extends Shape {
@@ -1432,6 +1467,12 @@ exports.SVG = function(runtime) {
             }
         }
 
+        getTarget(x, y) {
+            if (!this._opacity || this._opacity > 0) {
+                return this.inside(x, y) ? this : null;
+            }
+            return null;
+        }
     }
 
     class Path extends Shape {
@@ -1564,6 +1605,12 @@ exports.SVG = function(runtime) {
                 && local.y >= -this.height / 2 && local.y <= this.height / 2;
         }
 
+        getTarget(x, y) {
+            if (!this._opacity || this._opacity > 0) {
+                return this.inside(x, y) ? this : null;
+            }
+            return null;
+        }
     }
 
     class Animator {

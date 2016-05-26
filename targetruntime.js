@@ -7,12 +7,20 @@ exports.targetRuntime = function() {
     var xlink = "http://www.w3.org/1999/xlink";
     var handlerCount = 0;
 
+    function mark(id) {
+        this.markId = id;
+    }
+
     return {
         createDOM: function(tag){
-            return document.createElement(tag);
+            let elem = document.createElement(tag);
+            elem.mark = mark;
+            return elem;
         },
         create(tag) {
-            return document.createElementNS(svgNS, tag);
+            let elem = document.createElementNS(svgNS, tag);
+            elem.mark = mark;
+            return elem;
         },
         attrNS(component, name, value) {
             component.setAttributeNS(svgNS, name, value);

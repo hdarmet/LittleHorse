@@ -12,6 +12,7 @@ exports.mockRuntime = function() {
     let screenWidth=1500, screenHeight=1000;
 
     class Element {
+
         constructor(tag, id) {
             this.id = id;
             this.tag = tag;
@@ -32,6 +33,10 @@ exports.mockRuntime = function() {
                 }
                 return null;
             }
+        }
+
+        mark(id) {
+            this.id = id;
         }
 
         event(eventName, event) {
@@ -57,62 +62,20 @@ exports.mockRuntime = function() {
         },
         create(tag) {
             var elem = new Element(tag, idGenerator++);
-            if (tag==='rect') {
-                elem.getBoundingClientRect = ()=> {
-                    return {left:elem.x, top:elem.y, width:elem.width, height: elem.height};
-                }
-            }
-            else if (tag==='svg') {
-                elem.getBoundingClientRect = ()=> {
-                    return {left:0, top:0, width:elem.width, height: elem.height};
-                }
-            }
-            else if (tag==='circle') {
-                elem.getBoundingClientRect = ()=> {
-                    return {left:-elem.r, top:-elem.r, width:elem.r*2, height: elem.r*2};
-                }
-            }
-            else if (tag==='ellipse') {
-                elem.getBoundingClientRect = ()=> {
-                    return {left:-elem.rx, top:-elem.ry, width:elem.rx*2, height: elem.ry*2};
-                }
-            }
-            else if (tag==='text') {
-                elem.setBoundingClientRect = (width, height)=>{
-                    elem.bbWidth = width;
-                    elem.bbHeight = height;
-                };
-                elem.getBoundingClientRect = ()=> {
-                    for (let i = 0; i<bboxes.length; i++){
-                        let bbox = bboxes[i];
-                        if(bbox.id===elem.id){
-                            bboxes.splice(i,1);
-                            return {left:elem.x, top:elem.y, width:bbox.width, height:bbox.height};
-                        }
+            elem.setBoundingClientRect = (width, height)=>{
+                elem.bbWidth = width;
+                elem.bbHeight = height;
+            };
+            elem.getBoundingClientRect = ()=> {
+                for (let i = 0; i<bboxes.length; i++){
+                    let bbox = bboxes[i];
+                    if(bbox.id===elem.id){
+                        bboxes.splice(i,1);
+                        return {left:elem.x, top:elem.y, width:bbox.width, height:bbox.height};
                     }
-                    return {left:elem.x, top:elem.y, width:size.width, height:size.height};
                 }
-            }
-            else if (tag==='path') {
-                var maxx = null;
-                var maxy = null;
-                var minx = null;
-                var miny = null;
-
-                elem.getBoundingClientRect = ()=> {
-                    var points = elem.points.split(" ");
-                    for (var i in points) {
-                        var vals = points[i].split(",");
-                        var x = Number(vals[0]);
-                        var y = Number(vals[1]);
-                        if (maxx===null || maxx<x) maxx=x;
-                        if (minx===null || minx>x) minx=x;
-                        if (maxy===null || maxy<y) maxx=y;
-                        if (miny===null || miny>y) minx=y;
-                    }
-                    return {left:minx, top:miny, width:maxx, height:maxy};
-                }
-            }
+                return {left:elem.x, top:elem.y, width:size.width, height:size.height};
+            };
             return elem;
         },
         attrNS(component, name, value) {
@@ -327,14 +290,12 @@ exports.registerRuntime =  function(targetRuntime, register) {
             let elem  = new Wrapper();
             elem.target = target.create(tag);
             elem.mock = mock.create(tag);
-            if (tag === "text"){
-                elem.target._getBoundingClientRect = elem.target.getBoundingClientRect;
-                elem.target.getBoundingClientRect = function(){
-                    let bbox = elem.target._getBoundingClientRect();
-                    addBoundingBox(elem.mock.id, bbox.width, bbox.height);
-                    return bbox;
-                }
-            }
+            elem.target._getBoundingClientRect = elem.target.getBoundingClientRect;
+            elem.target.getBoundingClientRect = function(){
+                let bbox = elem.target._getBoundingClientRect();
+                addBoundingBox(elem.mock.id, bbox.width, bbox.height);
+                return bbox;
+            };
             return elem;
         },
         attrNS(component, name, value) {

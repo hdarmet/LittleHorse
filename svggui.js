@@ -2,7 +2,7 @@
  * Created by HDA3014 on 06/02/2016.
  */
 
-exports.Gui = function(svg) {
+exports.Gui = function(svg, param) {
 
     class Canvas {
 

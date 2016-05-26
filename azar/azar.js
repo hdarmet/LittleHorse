@@ -158,7 +158,7 @@ exports.playAzar = function(svg, param) {
 
         constructor(name, url, game) {
             this.game = game;
-            this.component = new svg.Translation();
+            this.component = new svg.Translation().mark(name);
             this.imageBase = new svg.Translation()
                 .add(new svg.Image(url).position(200, 150).dimension(360, 270).clickable())
                 .add(new svg.Text(name).font("Arial", 48, 96).position(200, 350));

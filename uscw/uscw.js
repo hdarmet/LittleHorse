@@ -7,7 +7,10 @@ var targetRuntime = require("../targetruntime.js").targetRuntime;
 var Gui = require("../svggui").Gui;
 
 var svg = SVG(targetRuntime());
-var gui = Gui(svg);
+var gui = Gui(svg, {
+    speed: 10,
+    step: 10
+});
 
 var MARGIN = 30;
 var REDUCTION_FACTOR = 2 / 3;
@@ -16,11 +19,6 @@ var LINE_ENLARGE_FACTOR = 0.3;
 var LINE_CONTROL_FACTOR = 0.5;
 var HEX_WIDTH = 51;
 var ALL_DIRECTIONS = ["ne", "e", "se", "sw", "w", "nw"];
-
-var param = {
-    speed: 10,
-    step: 10
-};
 
 function makeOrdered(ordered) {
     ordered = ordered || [];
