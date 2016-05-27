@@ -45,24 +45,24 @@ exports.mockRuntime = function() {
     }
 
     return {
-        listeners : {},
+        listeners: {},
         createDOM(tag) {
             let elem = new Element(tag, idGenerator++);
-            if (tag==='textarea') {
-                elem.enter = text=>{
+            if (tag === 'textarea') {
+                elem.enter = text=> {
                     elem.value = text;
                     elem.listeners && elem.listeners.input && elem.listeners.input({});
                 };
 
                 elem.getBoundingClientRect = ()=> {
-                    return {left:elem.x, top:elem.y, width:elem.width, height: elem.height};
+                    return {left: elem.x, top: elem.y, width: elem.width, height: elem.height};
                 }
             }
             return elem;
         },
         create(tag) {
             var elem = new Element(tag, idGenerator++);
-            elem.setBoundingClientRect = (width, height)=>{
+            elem.setBoundingClientRect = (width, height)=> {
                 elem.bbWidth = width;
                 elem.bbHeight = height;
             };
@@ -71,10 +71,47 @@ exports.mockRuntime = function() {
                     let bbox = bboxes[i];
                     if(bbox.id===elem.id){
                         bboxes.splice(i,1);
-                        return {left:elem.x, top:elem.y, width:bbox.width, height:bbox.height};
+                        return {left:bbox.x, top:bbox.y, width:bbox.width, height:bbox.height};
                     }
                 }
-                return {left:elem.x, top:elem.y, width:size.width, height:size.height};
+                if (tag === 'rect') {
+                        return {left: elem.x, top: elem.y, width: elem.width, height: elem.height};
+                }
+                else if (tag === 'svg') {
+                        return {left: 0, top: 0, width: elem.width, height: elem.height};
+                }
+                else if (tag === 'circle') {
+                        return {left: -elem.r, top: -elem.r, width: elem.r * 2, height: elem.r * 2};
+                }
+                else if (tag === 'ellipse') {
+                        return {left: -elem.rx, top: -elem.ry, width: elem.rx * 2, height: elem.ry * 2};
+                }
+                else if (tag === 'text') {
+                        return {
+                            left: elem.x, top: elem.y,
+                            width: elem.fontSize*2,
+                            height: elem.messageText.length*elem.fontSize
+                        };
+                }
+                else if (tag === 'path') {
+                    let maxx = null;
+                    let maxy = null;
+                    let minx = null;
+                    let miny = null;
+                    let points = elem.points.split(" ");
+                    for (let p of points) {
+                        if (p.match(/[0-9]+[\.[0-9]+],[0-9]+[\.[0-9]+]/)) {
+                            let vals = p.split(",");
+                            let x = Number(vals[0]);
+                            let y = Number(vals[1]);
+                            if (maxx === null || maxx < x) maxx = x;
+                            if (minx === null || minx > x) minx = x;
+                            if (maxy === null || maxy < y) maxy = y;
+                            if (miny === null || miny > y) miny = y;
+                        }
+                    }
+                    return {left: minx, top: miny, width: maxx, height: maxy};
+                }
             };
             return elem;
         },
@@ -265,8 +302,8 @@ exports.registerRuntime =  function(targetRuntime, register) {
         }
     }
 
-    function addBoundingBox(id, width, height){
-        lastFact.bboxes.push({id:id, width:width, height:height});
+    function addBoundingBox(id, x, y, width, height){
+        lastFact.bboxes.push({id:id, x:x, y:y, width:width, height:height});
     }
 
     function addRandom(rand) {
@@ -293,7 +330,7 @@ exports.registerRuntime =  function(targetRuntime, register) {
             elem.target._getBoundingClientRect = elem.target.getBoundingClientRect;
             elem.target.getBoundingClientRect = function(){
                 let bbox = elem.target._getBoundingClientRect();
-                addBoundingBox(elem.mock.id, bbox.width, bbox.height);
+                addBoundingBox(elem.mock.id, bbox.x, bbox.y, bbox.width, bbox.height);
                 return bbox;
             };
             return elem;

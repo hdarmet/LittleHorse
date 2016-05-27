@@ -789,7 +789,7 @@ exports.SVG = function(runtime) {
             return this;
         }
 
-        radiu(radius) {
+        radius(radius) {
             this.r = radius;
             this._draw();
             return this;

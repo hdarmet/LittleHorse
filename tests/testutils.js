@@ -7,7 +7,12 @@ var readline = require("readline");
 
 function inspect(object, model) {
     for (key in model) {
-        assert.equal(object[key], model[key]);
+        if (typeof(object[key])==="object") {
+            inspect(object[key], model[key]);
+        }
+        else {
+            assert.equal(object[key], model[key]);
+        }
     }
 }
 
