@@ -87,7 +87,7 @@ exports.SVG = function(runtime) {
 
         mark(id) {
             this.id = id;
-            this.component && this.component.mark(id);
+            this.component && this.component.mark && this.component.mark(id);
             return this;
         }
 
@@ -1555,8 +1555,6 @@ exports.SVG = function(runtime) {
             this.y = 0;
             this.width = 0;
             this.height = 0;
-            //this.fillColor = [true];
-            var self = this;
             this._draw();
         }
 

@@ -160,7 +160,7 @@ exports.playAzar = function(svg, param) {
             this.game = game;
             this.component = new svg.Translation().mark(name);
             this.imageBase = new svg.Translation()
-                .add(new svg.Image(url).position(200, 150).dimension(360, 270).clickable())
+                .add(new svg.Image(url).mark("image").position(200, 150).dimension(360, 270).clickable())
                 .add(new svg.Text(name).font("Arial", 48, 96).position(200, 350));
             this.component.add(this.imageBase);
             this.frame = new svg.Rect(360, 270).position(200, 150).color([], 4, [255, 0, 0]).opacity(0);
@@ -169,7 +169,7 @@ exports.playAzar = function(svg, param) {
                 this.game.startPlay();
             }, ":|");
             this.component.add(this.mood.component.move(20, 300));
-            this.chance = new svg.Text("?").font("Arial", 80).color([100, 100, 200]).position(200, 0);
+            this.chance = new svg.Text("?").mark("chance").font("Arial", 80).color([100, 100, 200]).position(200, 0);
             this.component.add(this.chance);
         }
 

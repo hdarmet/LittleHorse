@@ -40,6 +40,7 @@ exports.mockRuntime = function() {
         }
 
         event(eventName, event) {
+            console.log(this.tag);
             this.listeners[eventName](event);
         }
     }

@@ -5,6 +5,24 @@ var assert = require('assert');
 var fs = require("fs");
 var readline = require("readline");
 
+function retrieve(element, path) {
+    let segments = path.split(".");
+    for (let i=0; i<segments.length; i++) {
+        let segment = segments[i];
+        if (segment.match(/^\[.+\]$/)) {
+            let label = segment.slice(1, segment.length-1);
+            element = element.getElement(label);
+        }
+        else {
+            element = element[segment];
+        }
+        if (!element) {
+            return null;
+        }
+    }
+    return element;
+}
+
 function inspect(object, model) {
     for (key in model) {
         if (typeof(object[key])==="object") {
@@ -56,4 +74,5 @@ function checkScenario(play, scenario, root, runtime, done) {
 }
 
 exports.inspect = inspect;
+exports.retrieve = retrieve;
 exports.checkScenario = checkScenario;
