@@ -39,6 +39,7 @@ function checkScenario(play, scenario, root, runtime, done) {
     var rl = readline.createInterface({input: rs});
     rl.on('line', function (line) {
         var fact = JSON.parse(line);
+        runtime.screenSize(fact.screenSize.width, fact.screenSize.height);
         fact.event && (fact.event.preventDefault = function(){});
         if (fact.randoms) {
             for (var i = 0; i < fact.randoms.length; i++) {
@@ -56,7 +57,12 @@ function checkScenario(play, scenario, root, runtime, done) {
         else {
             var registeredSnapshot = fact.anchors.content;
             var snapshot = runtime.json(runtime.anchor(root));
-            assert.equal(registeredSnapshot, snapshot);
+            try {
+                assert.equal(registeredSnapshot, snapshot);
+            } catch (error) {
+                console.log ("Error on line : "+fact.order);
+                throw error;
+            }
             if (fact.type === 'event') {
                 if (fact.name==="input"){
                     fact.component.enter(fact.event.text);

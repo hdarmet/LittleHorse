@@ -35,14 +35,6 @@ exports.mockRuntime = function() {
             }
         }
 
-        mark(id) {
-            this.id = id;
-        }
-
-        event(eventName, event) {
-            console.log(this.tag);
-            this.listeners[eventName](event);
-        }
     }
 
     return {
@@ -115,6 +107,9 @@ exports.mockRuntime = function() {
                 }
             };
             return elem;
+        },
+        mark(component, label) {
+            component.id = label;
         },
         attrNS(component, name, value) {
             component[name] = value;
@@ -260,8 +255,8 @@ exports.mockRuntime = function() {
             bboxes.push(value);
         },
         fireEvent(anchorKey, id, eventName, event) {
-            let result = this.anchor(anchorKey).getElement(id);
-            result && result.event(eventName, event);
+            let result = id==="global" ? this : this.anchor(anchorKey).getElement(id);
+            result && this.event(result, eventName, event);
         },
         preventDefault: function(event) {
         }
@@ -295,6 +290,7 @@ exports.registerRuntime =  function(targetRuntime, register) {
             }
         }
         lastFact = fact;
+        fact.screenSize = target.screenSize();
         fact.randoms = [];
         fact.anchors = {};
         fact.bboxes = [];
@@ -335,6 +331,10 @@ exports.registerRuntime =  function(targetRuntime, register) {
                 return bbox;
             };
             return elem;
+        },
+        mark(component, label) {
+            target.mark(component.target, label);
+            mock.mark(component.mock, label);
         },
         attrNS(component, name, value) {
             target.attrNS(component.target, name, value);

@@ -87,7 +87,7 @@ exports.SVG = function(runtime) {
 
         mark(id) {
             this.id = id;
-            this.component && this.component.mark && this.component.mark(id);
+            this.component && svgr.mark(this.component, id);
             return this;
         }
 
