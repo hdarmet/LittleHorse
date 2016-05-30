@@ -35,6 +35,9 @@ exports.mockRuntime = function() {
             }
         }
 
+        event(eventName, event) {
+            this.listeners[eventName] && this.listeners[eventName](event);
+        }
     }
 
     return {
