@@ -4,7 +4,7 @@
  */
 console.log("SVGHandler loaded...");
 
-exports.SVG = function(runtime) {
+exports.SVG = function(runtimee) {
 
     if (!Array.prototype.add) {
         Object.defineProperty(Array.prototype, "add", {
@@ -28,7 +28,7 @@ exports.SVG = function(runtime) {
         });
     }
 
-    var svgr = runtime;// || targetruntime();
+    var svgr = runtimee;
 
     function print(points) {
         if (points.length==0) return "";
@@ -1806,11 +1806,8 @@ exports.SVG = function(runtime) {
     function event(component, eventName, event) {
         svgr.event(component.component, eventName, event);
     }
-    function screenSize(width, height){
-        return svgr.screenSize(width, height);
-    }
-    function getSvgr(){
-        return svgr;
+    function screenSize(){
+        return svgr.screenSize();
     }
 
     return {
@@ -1854,8 +1851,7 @@ exports.SVG = function(runtime) {
         interval : interval,
         clearTimeout : clearTimeout,
         clearInterval : clearInterval,
-        request: request,
-        getSvgr: getSvgr
+        request: request
     }
 };
 
