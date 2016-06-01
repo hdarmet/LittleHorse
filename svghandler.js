@@ -339,12 +339,11 @@ exports.SVG = function(runtime) {
             if (this._active) {
                 if (!this._opacity || this._opacity > 0) {
                     for (var i = this.children.length - 1; i >= 0; i--) {
-                        if (this.children[i].dummy) {
-                            return null;
-                        }
-                        var target = this.children[i].getTarget(x, y);
-                        if (target) {
-                            return target;
+                        if (!this.children[i].dummy) {
+                            var target = this.children[i].getTarget(x, y);
+                            if (target) {
+                                return target;
+                            }
                         }
                     }
                 }
@@ -1160,7 +1159,7 @@ exports.SVG = function(runtime) {
         }
 
         _draw() {
-            let point = (x, y)=> this.points.push(x, y);
+            let point = (x, y)=> this.points.push({x:x, y:y});
 
             this.points = [];
             var dist = Math.sqrt((this.hx - this.bx) * (this.hx - this.bx) + (this.hy - this.by) * (this.hy - this.by));
@@ -1408,12 +1407,12 @@ exports.SVG = function(runtime) {
             Shape.prototype.prepareAnimator.call(this, animator);
             animator.move = (sx1, sy1, sx2, sy2, ex1, ey1, ex2, ey2)=> {
                 animator.process([sx1, sy1, sx2, sy2], [ex1, ey1, ex2, ey2], coords=>
-                        this.start(coords[0], coords[1]).end(coords[3], coords[4]));
+                    this.start(coords[0], coords[1]).end(coords[3], coords[4]));
                 return animator;
             };
             animator.moveTo = (ex1, ey1, ex2, ey2)=> {
                 animator.process([self.x1, self.y1, self.x2, self.y2], [ex1, ey1, ex2, ey2], coords=>
-                        this.start(coords[0], coords[1]).end(coords[3], coords[4]));
+                    this.start(coords[0], coords[1]).end(coords[3], coords[4]));
                 return animator;
             };
             animator.start = (sx1, sy1, ex1, ey1)=> {
@@ -1807,9 +1806,16 @@ exports.SVG = function(runtime) {
     function event(component, eventName, event) {
         svgr.event(component.component, eventName, event);
     }
+    function screenSize(width, height){
+        return svgr.screenSize(width, height);
+    }
+    function getSvgr(){
+        return svgr;
+    }
 
     return {
         Drawing : Drawing,
+        Handler: Handler,
         Ordered : Ordered,
         Translation : Translation,
         Rotation : Rotation,
@@ -1842,12 +1848,14 @@ exports.SVG = function(runtime) {
         addGlobalEvent : addGlobalEvent,
         removeGlobalEvent : removeGlobalEvent,
         event : event,
+        screenSize: screenSize,
         random : random,
         timeout : timeout,
         interval : interval,
         clearTimeout : clearTimeout,
         clearInterval : clearInterval,
-        request: request
+        request: request,
+        getSvgr: getSvgr
     }
 };
 
