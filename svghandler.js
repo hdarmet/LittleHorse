@@ -4,7 +4,7 @@
  */
 console.log("SVGHandler loaded...");
 
-exports.SVG = function(runtimee) {
+exports.SVG = function(runtime) {
 
     if (!Array.prototype.add) {
         Object.defineProperty(Array.prototype, "add", {
@@ -28,7 +28,7 @@ exports.SVG = function(runtimee) {
         });
     }
 
-    var svgr = runtimee;
+    var svgr = runtime;
 
     function print(points) {
         if (points.length==0) return "";
