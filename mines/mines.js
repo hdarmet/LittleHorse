@@ -110,9 +110,9 @@ exports.playMines = function(svg, param) {
         desactivate() {
             if (this.type === "M") {
                 this.component.onClick(null);
-                if (!flagged) {
-                    this.component.add(flag);
-                    flag.clickable(false);
+                if (!this.flagged) {
+                    this.component.add(this.flag);
+                    this.flag.clickable(false);
                 }
             }
         }

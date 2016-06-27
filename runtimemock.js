@@ -38,6 +38,10 @@ exports.mockRuntime = function() {
         event(eventName, event) {
             this.listeners[eventName] && this.listeners[eventName](event);
         }
+
+        toString() {
+            return JSON.stringify(this, function(key, value) {return key==="parent" || key==="children" ? undefined : value;});
+        }
     }
 
     return {

@@ -7,27 +7,27 @@ exports.Gui = function(svg, param) {
     class Canvas {
 
         constructor(width, height) {
-            this.drawing = new svg.Drawing(width, height);
-            this.drawing.background = new svg.Translation();
-            this.drawing.glass = new svg.Rect(width, height).position(width / 2, height / 2).opacity(0.001);
-            this.drawing.add(this.drawing.background).add(this.drawing.glass);
+            this.component = new svg.Drawing(width, height);
+            this.component.background = new svg.Translation().mark("background");
+            this.component.glass = new svg.Rect(width, height).mark("glass").position(width / 2, height / 2).opacity(0.001);
+            this.component.add(this.component.background).add(this.component.glass);
             this.currentFocus = null;
             let drag = null;
-            svg.addEvent(this.drawing.glass, 'mousedown', event=> {
-                let target = this.drawing.background.getTarget(event.clientX, event.clientY);
+            svg.addEvent(this.component.glass, 'mousedown', event=> {
+                let target = this.component.background.getTarget(event.clientX, event.clientY);
                 drag = target;
                 if (target) {
                     svg.event(target, 'mousedown', event);
                 }
             });
-            svg.addEvent(this.drawing.glass, 'mousemove', event=> {
-                let target = drag || this.drawing.background.getTarget(event.clientX, event.clientY);
+            svg.addEvent(this.component.glass, 'mousemove', event=> {
+                let target = drag || this.component.background.getTarget(event.clientX, event.clientY);
                 if (target) {
                     svg.event(target, 'mousemove', event);
                 }
             });
-            svg.addEvent(this.drawing.glass, 'mouseup', event=> {
-                let target = drag || this.drawing.background.getTarget(event.clientX, event.clientY);
+            svg.addEvent(this.component.glass, 'mouseup', event=> {
+                let target = drag || this.component.background.getTarget(event.clientX, event.clientY);
                 if (target) {
                     this.currentFocus = this.getFocus(target);
                     svg.event(target, 'mouseup', event);
@@ -35,7 +35,7 @@ exports.Gui = function(svg, param) {
                 }
                 drag = null;
             });
-            svg.addEvent(this.drawing.glass, 'mouseout', event=> {
+            svg.addEvent(this.component.glass, 'mouseout', event=> {
                 if (drag) {
                     svg.event(drag, 'mouseup', event);
                 }
@@ -46,6 +46,11 @@ exports.Gui = function(svg, param) {
                     event.preventDefault();
                 }
             });
+        }
+
+        mark(label) {
+            this.component.mark(label);
+            return this;
         }
 
         getFocus(component) {
@@ -66,24 +71,24 @@ exports.Gui = function(svg, param) {
         }
 
         show(anchor) {
-            this.drawing.show(anchor);
+            this.component.show(anchor);
             return this;
         }
 
         add(svgObject) {
-            this.drawing.background.add(svgObject);
+            this.component.background.add(svgObject);
             return this;
         }
 
         remove(svgObject) {
-            this.drawing.background.remove(svgObject);
+            this.component.background.remove(svgObject);
             return this;
         }
 
         dimension(width, height) {
-            this.drawing.dimension(width, height);
-            this.drawing.glass.dimension(width, height);
-            this.drawing.glass.position(width / 2, height / 2);
+            this.component.dimension(width, height);
+            this.component.glass.dimension(width, height);
+            this.component.glass.position(width / 2, height / 2);
             return this;
         }
     }
