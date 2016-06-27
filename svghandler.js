@@ -1,4 +1,4 @@
-'use strict'
+﻿'use strict'
 /**
  * Created by HDA3014 on 07/01/2016.
  */
@@ -28,7 +28,7 @@ exports.SVG = function(runtime) {
         });
     }
 
-    var svgr = runtime;
+    var svgr = runtime;// || targetruntime();
 
     function print(points) {
         if (points.length==0) return "";
@@ -92,6 +92,260 @@ exports.SVG = function(runtime) {
         }
 
     }
+
+    class DomElement {
+
+        constructor() {}
+
+        mark(id) {
+            this.id = id;
+            this.component && svgr.mark(this.component, id);
+            return this;
+        }
+
+    }
+
+    class Screen extends DomElement {
+        constructor(width, height){
+            super();
+            this.component = svgr.createDOM("div");
+            this.dimension(width, height);
+            this.children = [];
+        }
+
+        add(domObject) {
+            svgr.add(this.component, domObject.component);
+            domObject.parent = this;
+            this.children.push(domObject);
+            return this;
+        }
+
+        remove(domObject) {
+            svgr.remove(this.component, domObject.component);
+            var index = this.children.indexOf(domObject);
+            if (index > -1) {
+                domObject.parent = null;
+                this.children.splice(index, 1);
+            }
+            return this;
+        }
+
+        show(id) {
+            this.anchor = id;
+            svgr.add(svgr.anchor(this.anchor), this.component);
+            return this;
+        }
+
+        dimension(width, height){
+            this.width = width;
+            this.height = height;
+            this._draw();
+        }
+
+        _draw(){
+            var style = "left:" + 0 + "px;";
+            style += "top:" + 0 + "px;";
+            style += "width:" + this.width + "px;";
+            style += "height:" + this.height + "px;";
+            style += "position: absolute;";
+            svgr.attr(this.component, "style", style);
+        }
+
+        globalPoint(...args) {
+            return getPoint(args);
+        }
+
+        localPoint(...args) {
+            return getPoint(args);
+        }
+    }
+
+    class Block extends DomElement{
+        constructor(){
+            super();
+            this.component = svgr.createDOM("div");
+            this.children = [];
+            this._draw();
+        }
+
+        add(domObject) {
+            svgr.add(this.component, domObject.component);
+            domObject.parent = this;
+            this.children.push(domObject);
+            return this;
+        }
+
+        remove(domObject) {
+            svgr.remove(this.component, domObject.component);
+            var index = this.children.indexOf(domObject);
+            if (index > -1) {
+                domObject.parent = null;
+                this.children.splice(index, 1);
+            }
+            return this;
+        }
+
+        move(x, y){
+            this.x = x;
+            this.y = y;
+            this._draw();
+            return this;
+        }
+
+        dimension(width, height){
+            this.width = width;
+            this.height = height;
+            this._draw();
+            return this;
+        }
+
+        _draw(){
+            svgr.attr(this.component, "left", this.x);
+            svgr.attr(this.component, "top", this.y);
+            svgr.attr(this.component, "width", this.width);
+            svgr.attr(this.component, "height", this.height);
+            svgr.attr(this.component, "position", "absolute");
+        }
+    }
+
+    class TextItem extends DomElement {
+
+        constructor(x, y, width, height, component){
+            super();
+            this.component = component;
+            this.anchorText = TextArea.CENTER;
+            this.fontName = "arial";
+            this.fontSize = 12;
+            this.dimension(width, height);
+            this.position(x, y);
+            this.messageText = "";
+            this.placeHolderText = "";
+        }
+
+        focus() {
+            svgr.focus(this.component);
+        }
+
+        dimension(width, height) {
+            this.width = width;
+            this.height = height;
+            svgr.attr(this.component, "width", width);
+            svgr.attr(this.component, "height", height);
+            this._draw();
+            return this;
+        }
+
+        position(x, y) {
+            this.x = x;
+            this.y = y;
+            svgr.attr(this.component, "x", x);
+            svgr.attr(this.component, "y", y);
+            this._draw();
+            return this;
+        }
+
+        anchor(anchorText) {
+            this.anchorText = anchorText;
+            this._draw();
+            return this;
+        }
+
+        font(fontName, fontSize) {
+            this.fontName = fontName;
+            this.fontSize = fontSize;
+            this._draw();
+            return this;
+        }
+
+        color(fillColor, strokeWidth, strokeColor) {
+            this.fillColor = fillColor;
+            this.strokeWidth = strokeWidth;
+            this.strokeColor = strokeColor;
+            this._draw();
+            return this;
+        }
+
+        message(messageText){
+            this.messageText = messageText;
+            this._draw();
+            return this;
+        }
+
+        placeHolder(placeHolderText){
+            this.placeHolderText = placeHolderText;
+            this._draw();
+            return this;
+        }
+
+        _draw(style){
+            style += "left:" + (this.x || 0) + "px;";
+            style += "top:" + (this.y || 0) + "px;";
+            style += "width:" + (this.width || 0) + "px;";
+            style += "height:" + (this.height || 0) + "px;";
+            style += "text-align:" + (this.anchorText || TextItem.CENTER) + ";";
+            style += "font-family:" + (this.fontName || "Arial") + ";";
+            style += "font-size:" + (this.fontSize || 20) +"px;";
+            style += "background-color:" + ((this.fillColor && this.fillColor.length) ? "rgb(" + this.fillColor.join(",") + ");" : "transparent;");
+            style += "border:" + (this.strokeWidth || 0) + "px solid black;";
+            style += "outline:" + "none;";
+            style += "color:" + ((this.strokeColor && this.strokeColor.length) ? "rgb(" + this.strokeColor.join(",") + ");" : "transparent;");
+            svgr.attr(this.component, "style", style);
+            svgr.attr(this.component, "value", this.messageText || '');
+            svgr.attr(this.component, "placeholder", this.placeHolderText || '');
+            console.log(style);
+        }
+    }
+
+    TextItem.CENTER = "center";
+
+
+    class TextArea extends TextItem {
+
+        constructor(x, y, width, height){
+            super(x, y, width, height, svgr.createDOM("textarea"));
+            this.scroll(TextArea.CLIPPED);
+        }
+
+        scroll(mode){
+            this.mode = mode;
+            this._draw();
+            return this;
+        }
+
+        _draw(){
+            var style = "overflow:" + (this.mode || TextArea.CLIPPED) +";";
+            style += "resize:" + "none;";
+            style += "position: absolute;";
+            super._draw(style);
+        }
+    }
+
+    TextArea.SCROLL = "auto";
+    TextArea.CLIPPED = "hidden";
+    TextArea.SHOW_ALL = "visible";
+
+    class TextField extends TextItem {
+
+        constructor(x, y, width, height){
+            super(x, y, width, height, svgr.createDOM("input"));
+            this.type(TextField.TEXT);
+        }
+
+        type(inputType){
+            this.inputType = inputType;
+            this._draw();
+        }
+
+        _draw(){
+            svgr.attr(this.component, "type", this.inputType);
+            var style = "position: absolute;";
+            super._draw(style);
+        }
+
+    }
+    TextField.PASSWORD = "password";
+    TextField.TEXT = "text";
+
 
     class Drawing extends SvgElement {
 
@@ -430,7 +684,7 @@ exports.SVG = function(runtime) {
                 return animator;
             };
             animator.moveTo = (ex, ey)=> {
-                animator.process([self.x, self.y], [ex, ey], coords => this.move(coords[0], coords[1]));
+                animator.process([this.x, this.y], [ex, ey], coords => this.move(coords[0], coords[1]));
                 return animator;
             }
         }
@@ -1407,12 +1661,12 @@ exports.SVG = function(runtime) {
             Shape.prototype.prepareAnimator.call(this, animator);
             animator.move = (sx1, sy1, sx2, sy2, ex1, ey1, ex2, ey2)=> {
                 animator.process([sx1, sy1, sx2, sy2], [ex1, ey1, ex2, ey2], coords=>
-                    this.start(coords[0], coords[1]).end(coords[3], coords[4]));
+                        this.start(coords[0], coords[1]).end(coords[3], coords[4]));
                 return animator;
             };
             animator.moveTo = (ex1, ey1, ex2, ey2)=> {
                 animator.process([self.x1, self.y1, self.x2, self.y2], [ex1, ey1, ex2, ey2], coords=>
-                    this.start(coords[0], coords[1]).end(coords[3], coords[4]));
+                        this.start(coords[0], coords[1]).end(coords[3], coords[4]));
                 return animator;
             };
             animator.start = (sx1, sy1, ex1, ey1)=> {
@@ -1806,11 +2060,16 @@ exports.SVG = function(runtime) {
     function event(component, eventName, event) {
         svgr.event(component.component, eventName, event);
     }
-    function screenSize(){
-        return svgr.screenSize();
+    function screenSize(width, height){
+        return svgr.screenSize(width, height);
     }
 
     return {
+        Screen : Screen,
+        Block : Block,
+        TextItem : TextItem,
+        TextArea : TextArea,
+        TextField : TextField,
         Drawing : Drawing,
         Handler: Handler,
         Ordered : Ordered,

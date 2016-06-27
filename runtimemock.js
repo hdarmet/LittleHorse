@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Created by HDA3014 on 03/03/2016.
  */
 exports.mockRuntime = function() {
@@ -75,23 +75,25 @@ exports.mockRuntime = function() {
                     }
                 }
                 if (tag === 'rect') {
-                    return {left: elem.x, top: elem.y, width: elem.width, height: elem.height};
+                        return {left: elem.x, top: elem.y, width: elem.width, height: elem.height};
                 }
                 else if (tag === 'svg') {
-                    return {left: 0, top: 0, width: elem.width, height: elem.height};
+                        return {left: 0, top: 0, width: elem.width, height: elem.height};
                 }
                 else if (tag === 'circle') {
-                    return {left: -elem.r, top: -elem.r, width: elem.r * 2, height: elem.r * 2};
+                        return {left: -elem.r, top: -elem.r, width: elem.r * 2, height: elem.r * 2};
                 }
                 else if (tag === 'ellipse') {
-                    return {left: -elem.rx, top: -elem.ry, width: elem.rx * 2, height: elem.ry * 2};
+                        return {left: -elem.rx, top: -elem.ry, width: elem.rx * 2, height: elem.ry * 2};
                 }
                 else if (tag === 'text') {
-                    return {
-                        left: elem.x, top: elem.y,
-                        width: elem.fontSize*2,
-                        height: elem.messageText.length*elem.fontSize
-                    };
+                        return {
+                            left: elem.x, top: elem.y,
+                            width: elem.fontSize*2,
+                            height: elem.text.length*elem.fontSize // marche ?
+                            //height: elem.messageText.length*elem.fontSize
+
+                        };
                 }
                 else if (tag === 'path') {
                     let maxx = null;
@@ -145,6 +147,10 @@ exports.mockRuntime = function() {
         remove(parent, child) {
             parent.children.splice(parent.children.indexOf(child), 1);
             child.parent = null;
+        },
+        focus(component) {
+            target.focus(component);
+            mock.focus(component);
         },
         first(component) {
             return component.children.length===0 ? null : component.children[0];
@@ -382,6 +388,8 @@ exports.registerRuntime =  function(targetRuntime, register) {
             parent.children.splice(parent.children.indexOf(child), 1);
             child.parent = null;
         },
+        focus(component) {
+        },
         first(component) {
             return component.children.length===0 ? null : component.children[0];
         },
@@ -398,6 +406,7 @@ exports.registerRuntime =  function(targetRuntime, register) {
         addEvent(component, eventName, handler) {
             handler.wrapper = (event)=> {
                 var hEvent = {};
+                //console.log(event);
                 if (event instanceof MouseEvent) {
                     hEvent.clientX = event.clientX;
                     hEvent.clientY = event.clientY;
@@ -414,6 +423,9 @@ exports.registerRuntime =  function(targetRuntime, register) {
         addGlobalEvent(eventName, handler) {
             handler.wrapper = function(event) {
                 var hEvent = {};
+                if(event instanceof KeyboardEvent) {
+                    hEvent.keyCode = event.keyCode;
+                }
                 if (!event.proc){
                     addHistory({type:'event', name:eventName, event:hEvent, component:"global"});
                     event.proc = true;
