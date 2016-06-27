@@ -281,6 +281,7 @@ exports.Gui = function(svg, param) {
 
         manageDnD() {
             svg.addEvent(this.handle, 'mousedown', event=> {
+                svg.runtime.preventDefault(event);
                 let ref = this.handle.localPoint(event.clientX, event.clientY);
                 this.handle.mousemoveHandler = event=> {
                     let mouse = this.handle.localPoint(event.clientX, event.clientY);
