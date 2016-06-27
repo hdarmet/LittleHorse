@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Created by HDA3014 on 03/03/2016.
  */
 exports.mockRuntime = function() {
@@ -37,6 +37,10 @@ exports.mockRuntime = function() {
 
         event(eventName, event) {
             this.listeners[eventName] && this.listeners[eventName](event);
+        }
+
+        toString() {
+            return JSON.stringify(this, function(key, value) {return key==="parent" || key==="children" ? undefined : value;});
         }
     }
 
@@ -96,7 +100,7 @@ exports.mockRuntime = function() {
                     let maxy = null;
                     let minx = null;
                     let miny = null;
-                    let points = elem.points ? elem.points.split(" ") : elem.d.split(" ");
+                    let points = elem.d.split(" ");
                     for (let p of points) {
                         if (p.match(/[0-9]+[\.[0-9]+],[0-9]+[\.[0-9]+]/)) {
                             let vals = p.split(",");

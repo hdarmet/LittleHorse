@@ -1,4 +1,4 @@
-'use strict'
+﻿'use strict'
 /**
  * Created by HDA3014 on 07/01/2016.
  */
@@ -1576,7 +1576,6 @@ exports.SVG = function(runtime) {
             }
             this.lines = [];
             var lines = this.messageText.split("\n");
-
             svgr.attr(this.component, "x", this.x);
             svgr.attr(this.component, "y", this.y - (lines.length - 1) / 2 * this.lineSpacing);
             svgr.attr(this.component, "text-anchor", this.anchorText);
@@ -2111,7 +2110,7 @@ exports.SVG = function(runtime) {
         interval : interval,
         clearTimeout : clearTimeout,
         clearInterval : clearInterval,
-        request: request,
+        request: request
     }
 };
 

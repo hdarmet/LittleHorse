@@ -3,7 +3,7 @@
  */
 let assert = require('assert');
 let testUtils = require('./testutils');
-let targetRuntime = require('../targetRuntime').targetRuntime;
+//let targetRuntime = require('../targetRuntime').targetRuntime;
 let mockRuntime = require('../runtimemock').mockRuntime;
 let SVG = require('../svghandler').SVG;
 
