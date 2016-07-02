@@ -3,6 +3,7 @@
  */
 
 var Gui = require("../svggui.js").Gui;
+var FileManager = require("../filemanager.js").FileManager;
 var Hex = require("../uscw/hextools.js").Hex;
 
 exports.mapEditor = function(svg) {
@@ -11,6 +12,8 @@ exports.mapEditor = function(svg) {
         speed: 10,
         step: 10
     });
+
+    var fileManager = FileManager(svg, gui);
 
     var hexM = Hex(svg);
 
@@ -390,20 +393,14 @@ exports.mapEditor = function(svg) {
         }
     }
 
-    /*
-     var result = svg.request("/rest", {name:"Dupont", age:7})
-     .onSuccess(function(){console.log(result.name)})
-     .onFailure(function(code){console.log("Ko:"+code)});
-     */
-
     var map = new hexM.Map(31, 31, hexM.HEX_WIDTH, ["a", "b", "c", "d"], [180, 240, 180]).addGlasses(function (hex, x, y, piece, center) {
         palette.action(hex, x, y, piece, center);
     });
 
-    var drawing = new gui.Canvas(1500, 1200)
+    var drawing = new gui.Canvas(1500, 1050)
         .add(new gui.Frame(1000, 1000).set(map.component).position(510, 510).component);
-    var paneSaveLoad = new gui.Pane([[255, 230, 150], 4, [10, 10, 10]], "Save/load", 120);
-    var paneTerrain = new gui.Pane([[235, 230, 150], 4, [10, 10, 10]], "Terrain", 120);
+    var paneSaveLoad = new fileManager.FilePane([[255, 230, 150], 4, [10, 10, 10]], "Save/load", 120, "/uscw/edit");
+    var paneTerrain = new gui.Pane([svg.BEIGE, 4, [10, 10, 10]], "Terrain", 120);
     var panePath = new gui.Pane([[215, 230, 150], 4, [10, 10, 10]], "Path", 120);
     var paneBuilding = new gui.Pane([[195, 230, 150], 4, [10, 10, 10]], "Building", 120);
     var palette = new gui.Palette(400, 1000).position(1230, 510)

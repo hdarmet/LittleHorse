@@ -114,16 +114,19 @@ exports.SVG = function(runtime) {
         }
 
         add(domObject) {
-            svgr.add(this.component, domObject.component);
-            domObject.parent = this;
-            this.children.push(domObject);
+            var index = this.children.indexOf(domObject);
+            if (index === -1) {
+                svgr.add(this.component, domObject.component);
+                domObject.parent = this;
+                this.children.push(domObject);
+            }
             return this;
         }
 
         remove(domObject) {
-            svgr.remove(this.component, domObject.component);
             var index = this.children.indexOf(domObject);
             if (index > -1) {
+                svgr.remove(this.component, domObject.component);
                 domObject.parent = null;
                 this.children.splice(index, 1);
             }
@@ -220,10 +223,28 @@ exports.SVG = function(runtime) {
             this.position(x, y);
             this.messageText = "";
             this.placeHolderText = "";
+            svgr.addEvent(component, "input", ()=>{
+                this.messageText = svgr.value(component);
+                for (let handler of this.onInputListeners) {
+                    handler(this.messageText);
+                }
+            });
+            this.onInputListeners = [];
+        }
+
+        onInput(handler) {
+            this.onInputListeners.add(handler);
+            return this;
         }
 
         focus() {
             svgr.focus(this.component);
+            return this;
+        }
+
+        select() {
+            svgr.select(this.component);
+            return this;
         }
 
         dimension(width, height) {
@@ -287,6 +308,7 @@ exports.SVG = function(runtime) {
             style += "font-size:" + (this.fontSize || 20) +"px;";
             style += "background-color:" + ((this.fillColor && this.fillColor.length) ? "rgb(" + this.fillColor.join(",") + ");" : "transparent;");
             style += "border:" + (this.strokeWidth || 0) + "px solid black;";
+            style += "margin:" + -(this.strokeWidth || 0) + "px;";
             style += "outline:" + "none;";
             style += "color:" + ((this.strokeColor && this.strokeColor.length) ? "rgb(" + this.strokeColor.join(",") + ");" : "transparent;");
             svgr.attr(this.component, "style", style);
@@ -297,6 +319,8 @@ exports.SVG = function(runtime) {
     }
 
     TextItem.CENTER = "center";
+    TextItem.LEFT = "left";
+    TextItem.RIGHT = "right";
 
 
     class TextArea extends TextItem {
@@ -338,11 +362,12 @@ exports.SVG = function(runtime) {
 
         _draw(){
             svgr.attr(this.component, "type", this.inputType);
-            var style = "position: absolute;";
+            let style = "position:absolute;";
             super._draw(style);
         }
 
     }
+
     TextField.PASSWORD = "password";
     TextField.TEXT = "text";
 
@@ -1999,35 +2024,7 @@ exports.SVG = function(runtime) {
     }
 
     function request(url, data) {
-        var http = new XMLHttpRequest();
-        http.open("POST", url, true);
-        http.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-        http.send(JSON.stringify(data));
-        var result = {
-            onSuccess(successFunction) {
-                result.success = successFunction;
-                return result;
-            },
-            onFailure(failureFunction) {
-                result.failure = failureFunction;
-                return result;
-            }
-        };
-        http.onreadystatechange=function(){
-            if (http.readyState==4){
-                if (http.status==200) {
-                    var fromServer = JSON.parse(http.responseText);
-                    for (var key in fromServer) {
-                        result[key] = fromServer[key];
-                    }
-                    result.success && result.success();
-                }
-                else {
-                    result.failure && result.failure(http.status);
-                }
-            }
-        };
-        return result;
+        return svgr.request(url, data);
     }
 
     function random() {
@@ -2110,7 +2107,32 @@ exports.SVG = function(runtime) {
         interval : interval,
         clearTimeout : clearTimeout,
         clearInterval : clearInterval,
-        request: request
+        request: request,
+
+        GREY : [128, 128, 128],
+        LIGHT_GREY : [200, 200, 200],
+
+        BLUE : [0, 0, 200],
+        DARK_BLUE : [0, 0, 100],
+        LIGHT_BLUE : [50, 150, 200],
+
+        GREEN : [0, 200, 0],
+        DARK_GREEN : [0, 100, 0],
+        LIGHT_GREEN : [120, 200, 120],
+
+        RED : [250, 0, 0],
+        DARK_RED : [100, 0, 0],
+        LIGHT_RED : [200, 100, 100],
+
+        ORANGE:[220, 100, 0],
+        DARK_ORANGE:[170, 70, 0],
+        LIGHT_ORANGE:[255, 204, 0],
+        BEIGE:[235, 230, 150],
+
+        BLACK : [0, 0, 0],
+        ALMOST_BLACK : [10, 10, 10],
+        WHITE : [255, 255, 255],
+        ALMOST_WHITE: [240, 240, 240]
     }
 };
 

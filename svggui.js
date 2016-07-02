@@ -4,30 +4,44 @@
 
 exports.Gui = function(svg, param) {
 
+    function canvas(component) {
+        while(component) {
+            if (component.canvas) {
+                return component.canvas;
+            }
+            else {
+                component = component.parent;
+            }
+        }
+    }
+
     class Canvas {
 
         constructor(width, height) {
-            this.component = new svg.Drawing(width, height);
+            this.component = new svg.Screen(width, height);
+            this.component.canvas = this;
+            this.drawing = new svg.Drawing(width, height);
+            this.component.add(this.drawing);
             this.component.background = new svg.Translation().mark("background");
             this.component.glass = new svg.Rect(width, height).mark("glass").position(width / 2, height / 2).opacity(0.001);
-            this.component.add(this.component.background).add(this.component.glass);
+            this.drawing.add(this.component.background).add(this.component.glass);
             this.currentFocus = null;
             let drag = null;
             svg.addEvent(this.component.glass, 'mousedown', event=> {
-                let target = this.component.background.getTarget(event.clientX, event.clientY);
+                let target = this.component.background.getTarget(event.pageX, event.pageY);
                 drag = target;
                 if (target) {
                     svg.event(target, 'mousedown', event);
                 }
             });
             svg.addEvent(this.component.glass, 'mousemove', event=> {
-                let target = drag || this.component.background.getTarget(event.clientX, event.clientY);
+                let target = drag || this.component.background.getTarget(event.pageX, event.pageY);
                 if (target) {
                     svg.event(target, 'mousemove', event);
                 }
             });
             svg.addEvent(this.component.glass, 'mouseup', event=> {
-                let target = drag || this.component.background.getTarget(event.clientX, event.clientY);
+                let target = drag || this.component.background.getTarget(event.pageX, event.pageY);
                 if (target) {
                     this.currentFocus = this.getFocus(target);
                     svg.event(target, 'mouseup', event);
@@ -66,8 +80,7 @@ exports.Gui = function(svg, param) {
         }
 
         processKeys(key) {
-            this.currentFocus && this.currentFocus.processKeys && this.currentFocus.processKeys(key);
-            return true;
+            return this.currentFocus && this.currentFocus.processKeys && this.currentFocus.processKeys(key);
         }
 
         show(anchor) {
@@ -90,6 +103,14 @@ exports.Gui = function(svg, param) {
             this.component.glass.dimension(width, height);
             this.component.glass.position(width / 2, height / 2);
             return this;
+        }
+
+        get width() {
+            return this.component.width;
+        }
+
+        get height() {
+            return this.component.height;
         }
     }
 
@@ -352,8 +373,6 @@ exports.Gui = function(svg, param) {
         }
 
         _draw() {
-            let length;
-
             let buildHorizontalHandle= ()=> {
                 if (this.handleSize < HANDLE_THICKNESS * 2) {
                     this.handle.reset()
@@ -446,13 +465,13 @@ exports.Gui = function(svg, param) {
             this.view = new svg.Drawing(width, height).position(-width / 2, -height / 2);
             this.translate = new svg.Translation();
             this.component.add(this.view.add(this.translate)).add(this.border);
-            this.vHandle = new Handle([[255, 204, 0], 3, [220, 100, 0]], vHandleCallback).vertical(width / 2, -height / 2, height / 2);
-            this.component.add(this.vHandle.component);
+            this.vHandle = new Handle([svg.LIGHT_ORANGE, 3, svg.ORANGE], vHandleCallback);
             this.back = new svg.Rect(width, height).color(color, 0, []);
             this.content = new svg.Translation();
             this.content.width = width;
             this.content.height = height;
             this.translate.add(this.back.position(width / 2, height / 2)).add(this.content);
+            this._handleVisibility();
         }
 
         position(x, y) {
@@ -465,9 +484,25 @@ exports.Gui = function(svg, param) {
             this.height = height;
             this.border.dimension(width, height);
             this.view.dimension(width, height).position(-width / 2, -height / 2);
-            this.vHandle.vertical(width / 2, -height / 2, height / 2);
+            this._handleVisibility();
             this.back.dimension(width, height).position(width / 2, height / 2);
             return this;
+        }
+
+        _handleVisibility() {
+            if (this.height>0) {
+                if (!this.handleVisible) {
+                    this.handleVisible = true;
+                    this.component.add(this.vHandle.component);
+                }
+                this.vHandle.vertical(this.width / 2, -this.height / 2, this.height / 2);
+            }
+            else {
+                if (this.handleVisible) {
+                    delete this.handleVisible;
+                    this.component.remove(this.vHandle.component);
+                }
+            }
         }
 
         updateHandle() {
@@ -486,28 +521,29 @@ exports.Gui = function(svg, param) {
             return this;
         }
 
-        resizeContent(height) {
+        resizeContent(width, height) {
             if (height > this.height) {
                 this.content.height = height;
-                var width = this.content.width;
+                this.content.width = width;
                 this.back.position(width / 2, height / 2);
                 this.back.dimension(width, height);
-                this.updateHandle();
             }
+            this.updateHandle();
             return this;
         }
 
         controlPosition(y) {
+            if (y < this.view.height - this.content.height) {
+                y = this.view.height - this.content.height;
+            }
             if (y > 0) {
                 y = 0;
-            }
-            if (y < -this.content.height + this.view.height) {
-                y = -this.content.height + this.view.height;
             }
             return y;
         }
 
         moveContent(y) {
+            let vy = y;
             let completeMovement = progress=> {
                 this.updateHandle();
                 if (progress === 1) {
@@ -516,7 +552,7 @@ exports.Gui = function(svg, param) {
             };
             if (!this.animation) {
                 this.animation = true;
-                let ly = this.controlPosition(y);
+                let ly = this.controlPosition(vy);
                 this.content.onChannel().smoothy(param.speed, param.step)
                     .execute(completeMovement).moveTo(0, ly);
             }
@@ -546,7 +582,107 @@ exports.Gui = function(svg, param) {
 
     }
 
+    class Grid {
+
+        constructor(width, height, rowHeight) {
+            this.width = width;
+            this.height = height;
+            this.rowHeight = rowHeight;
+            this.component = new svg.Translation();
+            this.content = new Panel(width, height, svg.LIGHT_GREY);
+            this.component.add(this.content.component);
+            this.columns = [];
+            this.rows = [];
+            this.selected = null;
+        }
+
+        position(x, y) {
+            this.x = x;
+            this.y = y;
+            this.component.move(x, y);
+            return this;
+        }
+
+        column(x, renderer, select, unselect) {
+            this.columns.add({x:x, renderer:renderer, select:select, unselect:unselect});
+            return this;
+        }
+
+        textColumn(x, width, fieldName) {
+            let renderer = (item)=>{
+                return new svg.Text(item[fieldName])
+                    .anchor("start")
+                    .font("arial", 32).color(svg.ALMOST_BLACK)
+                    .position(0, 32/4);
+            };
+            let select = (item, svgObject)=> {
+                svgObject.color(svg.ALMOST_WHITE);
+            };
+            let unselect = (item, svgObject)=> {
+                svgObject.color(svg.ALMOST_BLACK);
+            };
+            return this.column(x, renderer, select, unselect);
+        }
+
+        select(index, item) {
+            if (this.selected) {
+                this.selected.back.opacity(0);
+                for (let c=0; c<this.columns.length; c++) {
+                    this.columns[c].unselect(this.selected.item, this.selected.row.children[c]);
+                }
+            }
+            this.selected = this.rows[index];
+            this.selected.back.opacity(1);
+            for (let c=0; c<this.columns.length; c++) {
+                this.columns[c].select(this.selected.item, this.selected.row.children[c]);
+            }
+            if (this._onSelect) {
+                this._onSelect(index, item);
+            }
+        }
+
+        onSelect(select) {
+            this._onSelect = select;
+            return this;
+        }
+
+        add(item) {
+            this._row(item, this.rows.length);
+        }
+
+        _row(item, index) {
+            let row = new svg.Translation();
+            let back = new svg.Rect(this.width, this.rowHeight)
+                .position(this.width/2, 0).color(svg.DARK_BLUE).opacity(0);
+            let glass = new svg.Rect(this.width, this.rowHeight)
+                .position(this.width/2, 0).color(svg.BLACK).opacity(0.005);
+            svg.addEvent(glass, "click", ()=>{this.select(index, item)});
+            let baseRow = new svg.Translation(0, index*this.rowHeight+this.rowHeight/2)
+                .add(back).add(row).add(glass);
+            baseRow.back = back;
+            baseRow.row = row;
+            baseRow.item = item;
+            this.content.add(baseRow);
+            for (let c=0; c<this.columns.length; c++) {
+                let cell = this.columns[c].renderer(item);
+                row.add(new svg.Translation(this.columns[c].x, 0).add(cell));
+            }
+            this.rows.add(baseRow);
+        }
+
+        fill(items) {
+            for (let i=0; i<items.length; i++) {
+                this.add(items[i]);
+            }
+            let contentHeight = items.length*this.rowHeight;
+            this.content.resizeContent(this.width, contentHeight);
+            return this;
+        }
+
+    }
+
     class Button {
+
         constructor(width, height, colors, text) {
             this.width = width;
             this.height = height;
@@ -571,12 +707,12 @@ exports.Gui = function(svg, param) {
             return this;
         }
 
-        onClick(handler) {
-            if (this.handler) {
-                svg.removeEvent(this.glass, "mouseup", this.handler);
+        onClick(click) {
+            if (this._onClick) {
+                svg.removeEvent(this.glass, "mouseup", this._onClick);
             }
-            this.handler = handler;
-            svg.addEvent(this.glass, "mouseup", this.handler);
+            this._onClick = click;
+            svg.addEvent(this.glass, "mouseup", this._onClick);
             return this;
         }
 
@@ -674,13 +810,13 @@ exports.Gui = function(svg, param) {
     }
 
     const TITLE_HEIGHT = 40;
-    const DEFAULT_PANE_HEIGHT = 100;
+    const DEFAULT_PANE_DIMENSION = 100;
     class Pane {
 
         constructor(colors, text, elemSize) {
             this.elemSize = elemSize;
-            this.width = DEFAULT_PANE_HEIGHT;
-            this.height = DEFAULT_PANE_HEIGHT;
+            this.width = DEFAULT_PANE_DIMENSION;
+            this.height = DEFAULT_PANE_DIMENSION;
             this.colors = colors;
             this.opened = false;
             this.component = new svg.Translation();
@@ -704,13 +840,20 @@ exports.Gui = function(svg, param) {
             this.tools.push(tool);
             this.panel.add(tool.component);
             tool.palette = this.palette;
-            var rowSize = Math.floor(this.width / this.elemSize);
-            var height = Math.floor(((this.tools.length - 1) / rowSize) + 1) * this.elemSize;
-            tool.component.move(
-                ((this.tools.length - 1) % rowSize) * this.elemSize + this.elemSize / 2,
-                height - this.elemSize / 2);
-            this.panel.resizeContent(height);
+            this._resizeContent();
             return this;
+        }
+
+        _resizeContent() {
+            let rowSize = Math.floor(this.width / this.elemSize) || 1;
+            let height = Math.floor(((this.tools.length - 1) / rowSize) + 1) * this.elemSize;
+            this.panel.resizeContent(this.width, height);
+            for (let t=0; t<this.tools.length; t++) {
+                let y = Math.floor((t / rowSize) + 1) * this.elemSize;
+                this.tools[t].component.move(
+                    (t % rowSize) * this.elemSize + this.elemSize / 2,
+                    y - this.elemSize / 2);
+            }
         }
 
         position(x, y) {
@@ -721,8 +864,10 @@ exports.Gui = function(svg, param) {
         resize(width, height) {
             this.width = width;
             this.height = height;
-            this.title.resize(width, TITLE_HEIGHT).position(0, -height / 2 + TITLE_HEIGHT / 2);
-            this.panel.resize(width, this.height - TITLE_HEIGHT).position(0, TITLE_HEIGHT / 2);
+            this.title.resize(this.width, TITLE_HEIGHT).position(0, -this.height / 2 + TITLE_HEIGHT / 2);
+            this.panel.resize(this.width, this.height - TITLE_HEIGHT).position(0, TITLE_HEIGHT / 2);
+            this._resizeContent();
+            return this;
         }
 
         open() {
@@ -751,13 +896,338 @@ exports.Gui = function(svg, param) {
 
     }
 
+    class Popin {
+
+        constructor(width, height) {
+            this.width = width;
+            this.height = height;
+            this.content = new svg.Translation();
+            this.background = new svg.Rect(this.width, this.height).color(svg.BEIGE, 4, svg.ORANGE);
+            this.component = new svg.Translation().add(this.background).add(this.content);
+            this.items = [];
+        }
+
+        show(canvas, x=canvas.width/2, y=canvas.height/2) {
+            this.canvas = canvas;
+            this.component.move(x, y);
+            this.mask = new svg.Rect(canvas.width, canvas.height).color(svg.BLACK).opacity(0.5)
+                .position(canvas.width/2, canvas.height/2);
+            this.canvas.add(this.mask);
+            svg.addEvent(this.mask, "click", ()=>{
+               this.cancel();
+            });
+            this.canvas.add(this.component);
+            return this;
+        }
+
+        close() {
+            for (let item of this.items) {
+                item.close && item.close();
+            }
+            this.canvas.remove(this.component);
+            this.canvas.remove(this.mask);
+            return this;
+        }
+
+        cancel() {
+            this.close();
+        }
+
+        disableOk() {
+            this.okEnabled = false;
+            this.okIconBackground && this.okIconBackground.color(svg.LIGHT_GREY, 3, svg.GREY);
+        }
+
+        enableOk() {
+            this.okEnabled = true;
+            this.okIconBackground && this.okIconBackground.color(svg.GREEN, 3, svg.DARK_GREEN);
+        }
+
+        whenOk(ifOk) {
+            let glass = new svg.Circle(40).color(svg.BLACK).opacity(0.005);
+            ifOk=ifOk||this.close;
+            svg.addEvent(glass, "click", ()=>{
+                if (this.okEnabled) {
+                    ifOk.call(this);
+                }
+            });
+            this.okIconBackground = new svg.Circle(40);
+            this.enableOk();
+            this.okIcon = new svg.Translation()
+                .add(this.okIconBackground)
+                .add(new svg.Polygon(0, 0).color(svg.WHITE, 2, svg.GREY)
+                    .add(-25, -10).add(-5, 10).add(30, -20).add(-5, 25))
+                .add(glass);
+            this.content.add(this.okIcon);
+            this.placeButtons();
+            return this;
+        }
+
+        whenCancel(ifCancel) {
+            let glass = new svg.Circle(40).color(svg.BLACK).opacity(0.005);
+            ifCancel=ifCancel||this.close;
+            svg.addEvent(glass, "click", ()=>{ifCancel.call(this);});
+            this.cancelIcon = new svg.Translation().add(new svg.Rotation(45)
+                .add(new svg.Circle(40).color(svg.RED, 3, svg.DARK_RED))
+                .add(new svg.Polygon(0, 0).color(svg.WHITE, 2, svg.GREY)
+                    .add(-5, 30).add(-5, 5).add(-30, 5).add(-30, -5).add(-5, -5).add(-5, -30)
+                    .add(5, -30).add(5, -5).add(30, -5).add(30, 5).add(5, 5).add(5, 30)
+                )
+                .add(glass)
+            );
+            this.content.add(this.cancelIcon);
+            this.placeButtons();
+            return this;
+        }
+
+        placeButtons() {
+            if (this.okIcon && this.cancelIcon) {
+                this.okIcon.move(-50, this.height/2-50);
+                this.cancelIcon.move(50, this.height/2-50)
+            }
+            else if (this.okIcon) {
+                this.okIcon.move(-0, this.height/2-50);
+            }
+            else if (this.cancelIcon) {
+                this.cancelIcon.move(0, this.height/2-50)
+            }
+        }
+
+        add(item) {
+            this.content.add(item.component);
+            item.open && item.open();
+            this.items.add(item);
+            return this;
+        }
+
+        remove(item) {
+            this.content.remove(item.component);
+            item.close && item.close();
+            this.items.remove(item);
+            return this;
+        }
+
+        focus() {
+            return false;
+        }
+    }
+
+    class WarningPopin extends Popin {
+
+        constructor(message, whenOk, canvas) {
+            super(800, 300);
+            this._title = new Label(0, 0, "Warning !").anchor('middle').font("arial", 40);
+            this.fileNameLabel = new Label(0, 0, message);
+            this.add(this._title.position(0, -100));
+            this.add(this.fileNameLabel.anchor("middle").position(0, 0));
+            this.whenOk(function() {
+                this.close();
+                whenOk && whenOk();
+            });
+            this.show(canvas);
+        }
+
+        title(title) {
+            this._title.message(title);
+            return this;
+        }
+    }
+
+    class ConfirmPopin extends Popin {
+
+        constructor(message, whenOk, canvas) {
+            super(800, 300);
+            this.title = new Label(0, 0, "Confirm").anchor('middle').font("arial", 40);
+            this.fileNameLabel = new Label(0, 0, message);
+            this.add(this.title.position(0, -100));
+            this.add(this.fileNameLabel.anchor("middle").position(0, 0));
+            this.whenOk(function() {
+                this.close();
+                whenOk && whenOk();
+            }).whenCancel();
+            this.show(canvas);
+        }
+
+        title(title) {
+            this._title.message(title);
+            return this;
+        }
+
+    }
+
+    class Label {
+
+        constructor(x, y, message) {
+            this.x = x;
+            this.y = y;
+            this._anchor = "start";
+            this.textMessage = message;
+            this.component = new svg.Translation().move(x, y);
+            this.text = new svg.Text(this.textMessage).anchor(this._anchor).color(svg.ORANGE);
+            this.component.add(this.text);
+            this.fontName = "arial";
+            this.fontSize = 32;
+            this.text.font(this.fontName, this.fontSize);
+        }
+
+        anchor(anchor) {
+            this._anchor = anchor;
+            this.text.anchor(this._anchor);
+            return this;
+        }
+
+        message(message) {
+            this.textMessage = message;
+            this.text.message(message);
+            return this;
+        }
+
+        hideControl() {
+            canvas(this.component).component.remove(this.control);
+        }
+
+        position(x, y) {
+            this.x = x;
+            this.y = y;
+            this.component.move(x, y);
+            return this;
+        }
+
+        font(fontName, fontSize) {
+            this.fontName = fontName;
+            this.fontSize = fontSize;
+            this.text.font(fontName, fontSize);
+            return this;
+        }
+
+        close() {
+        }
+
+    }
+
+    class TextField {
+
+        constructor(x, y, width, height, message) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.textMessage = message;
+            this.frame = new svg.Rect(width, height).color(svg.LIGHT_GREY, 3, svg.GREY);
+            this.glass = new svg.Rect(width, height).color(svg.BLACK).opacity(0.005);
+            svg.addEvent(this.glass, "click", ()=>{
+               this.showControl();
+            });
+            this.component = new svg.Translation().move(x, y).add(this.frame);
+            this.text = new svg.Text(this.textMessage).anchor("start");
+            this.component.add(this.text).add(this.glass);
+            this.control = new svg.TextField(x, y, width, height).message(message)
+                .color(svg.WHITE, 3, svg.ALMOST_BLACK).anchor(svg.TextItem.LEFT);
+            this.control.onInput((message)=>{
+                this.textMessage = message;
+                this.text.message(message);
+                let valid = true;
+                if (this._pattern) {
+                    valid = this._pattern.test(message);
+                }
+                if (valid) {
+                    this.control.color(svg.WHITE, 3, svg.ALMOST_BLACK);
+                }
+                else {
+                    this.control.color(svg.WHITE, 3, svg.RED);
+                }
+                if (this._onInput) {
+                    this._onInput(message, valid);
+                }
+            });
+            svg.addEvent(this.control, "blur", ()=>{
+                this.hideControl();
+            });
+            this.fontName = "arial";
+            this.fontSize = 32;
+            this.text.font(this.fontName, this.fontSize);
+            this.control.font(this.fontName, this.fontSize);
+            this._draw();
+        }
+
+        pattern(pattern) {
+            this._pattern = pattern;
+            return this;
+        }
+
+        message(message) {
+            this.textMessage = message;
+            this.text.message(message);
+            this.control.message(message);
+            return this;
+        }
+
+        showControl() {
+            canvas(this.component).component.add(this.control);
+            this._draw();
+            this.control.focus().select();
+        }
+
+        hideControl() {
+            canvas(this.component).component.remove(this.control);
+        }
+
+        position(x, y) {
+            this.x = x;
+            this.y = y;
+            this.component.move(x, y);
+            this._draw();
+            return this;
+        }
+
+        dimension(width, height) {
+            this.width = width;
+            this.height = height;
+            this.frame.dimension(width, height);
+            this.control.dimension(width, height);
+            this._draw();
+            return this;
+        }
+
+        font(fontName, fontSize) {
+            this.fontSize = fontSize;
+            this.text.font(fontName, fontSize);
+            this.control.font(fontName, fontSize);
+            this._draw();
+            return this;
+        }
+
+        _draw() {
+            this.text.position(- this.width / 2 + this.fontSize / 4, this.fontSize / 4);
+            let position = this.component.globalPoint(-this.width/2, -this.height/2);
+            if (position) {
+                this.control.position(position.x, position.y);
+            }
+        }
+
+        close() {
+            this.hideControl();
+        }
+
+        onInput(input) {
+            this._onInput = input;
+        }
+    }
+
     return {
         Canvas:Canvas,
+        canvas:canvas,
         Frame:Frame,
         Handle:Handle,
         Panel:Panel,
         Pane:Pane,
         Palette:Palette,
-        Tool:Tool
+        Tool:Tool,
+        Popin:Popin,
+        ConfirmPopin:ConfirmPopin,
+        WarningPopin:WarningPopin,
+        Grid:Grid,
+        TextField:TextField,
+        Label:Label
     }
 };

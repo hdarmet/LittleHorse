@@ -10,6 +10,7 @@ exports.mockRuntime = function() {
     let randoms = [];
     let bboxes = [];
     let screenWidth=1500, screenHeight=1000;
+    let responses = [];
 
     class Element {
 
@@ -121,13 +122,33 @@ exports.mockRuntime = function() {
             component.id = label;
         },
         attrNS(component, name, value) {
-            component[name] = value;
+            if (value!==undefined) {
+                component[name] = value;
+            }
+            else {
+                return component[name];
+            }
         },
         attr(component, name, value) {
-            component[name] = value;
+            if (value!==undefined) {
+                component[name] = value;
+                if (name==="value") {
+                    component.valueText = value;
+                }
+            }
+            else {
+                return component[name];
+            }
         },
         attrXlink(component, name, value) {
             component[name] = value;
+        },
+        value(component, value) {
+            if (value!== undefined) {
+                component.valueText = value;
+            } else {
+                return component.valueText;
+            }
         },
         declareAnchor(key) {
             if (!anchors[key]){
@@ -151,6 +172,10 @@ exports.mockRuntime = function() {
         focus(component) {
             target.focus(component);
             mock.focus(component);
+        },
+        select(component) {
+            target.select(component);
+            mock.select(component);
         },
         first(component) {
             return component.children.length===0 ? null : component.children[0];
@@ -271,7 +296,37 @@ exports.mockRuntime = function() {
             let result = id==="global" ? this : this.anchor(anchorKey).getElement(id);
             result && this.event(result, eventName, event);
         },
-        preventDefault: function(event) {
+        preventDefault(event) {
+        },
+        request(url, data) {
+            var result = {
+                onSuccess(successFunction) {
+                    result.success = successFunction;
+                    return result;
+                },
+                onFailure(failureFunction) {
+                    result.failure = failureFunction;
+                    return result;
+                }
+            };
+            this.timeout(()=>{
+                let response = responses.pop();
+                if (response !==undefined) {
+                    if (typeof(response)==="Number") {
+                        result.failure && result.failure(response);
+                    }
+                    else {
+                        result.success && result.success(response);
+                    }
+                }
+                else {
+                    result.failure && result.failure(503);
+                }
+            }, 0);
+            return result;
+        },
+        respond(response) {
+            responses.push(response);
         }
 
     };
@@ -350,16 +405,20 @@ exports.registerRuntime =  function(targetRuntime, register) {
             mock.mark(component.mock, label);
         },
         attrNS(component, name, value) {
-            target.attrNS(component.target, name, value);
             mock.attrNS(component.mock, name, value);
+            return target.attrNS(component.target, name, value);
         },
         attr(component, name, value) {
-            target.attr(component.target, name, value);
             mock.attr(component.mock, name, value);
+            return target.attr(component.target, name, value);
         },
         attrXlink(component, name, value) {
             target.attrXlink(component.target, name, value);
             mock.attrXlink(component.mock, name, value);
+        },
+        value(component) {
+            mock.value(component.mock);
+            return target.attr(component.target);
         },
         text(component, message) {
             target.text(component.target, message);
@@ -390,6 +449,8 @@ exports.registerRuntime =  function(targetRuntime, register) {
         },
         focus(component) {
         },
+        select(component) {
+        },
         first(component) {
             return component.children.length===0 ? null : component.children[0];
         },
@@ -405,8 +466,7 @@ exports.registerRuntime =  function(targetRuntime, register) {
         },
         addEvent(component, eventName, handler) {
             handler.wrapper = (event)=> {
-                var hEvent = {};
-                //console.log(event);
+                let hEvent = {};
                 if (event instanceof MouseEvent) {
                     hEvent.clientX = event.clientX;
                     hEvent.clientY = event.clientY;
@@ -480,6 +540,24 @@ exports.registerRuntime =  function(targetRuntime, register) {
         },
         preventDefault(event) {
             target.preventDefault(event);
+        },
+        request(url, data) {
+            let result = target.request(url, data);
+            result.onSuccess = (successFunction)=> {
+                    result.success = (response)=>{
+                        addHistory({type:'request', code:200, data:response});
+                        successFunction(response);
+                    };
+                    return result;
+                };
+            result.onFailure = (failureFunction)=> {
+                    result.failure = (httpCode)=>{
+                        addHistory({type:'request', code:httpCode, data:{}});
+                        failureFunction(httpCode);
+                    };
+                    return result;
+                };
+            return result;
         }
     };
 };

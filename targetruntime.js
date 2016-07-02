@@ -20,13 +20,26 @@ exports.targetRuntime = function() {
             component.mark = label;
         },
         attrNS(component, name, value) {
-            component.setAttributeNS(svgNS, name, value);
+            if (value!==undefined) {
+                component.setAttributeNS(svgNS, name, value);
+            }
+            else {
+                return component.getAttributeNS(svgNS, name);
+            }
         },
         attr(component, name, value) {
-            component.setAttribute(name, value);
+            if (value!==undefined) {
+                component.setAttribute(name, value);
+            }
+            else {
+                return component.getAttribute(name);
+            }
         },
         attrXlink(component, name, value) {
             component.setAttributeNS(xlink, name, value);
+        },
+        value(component) {
+            return component.value;
         },
         text(component, message) {
             component.innerHTML = message;
@@ -41,13 +54,16 @@ exports.targetRuntime = function() {
             parent.removeChild(child);
         },
         first(component) {
-            component.firstChild;
+            return component.firstChild;
         },
         replace(parent, who, byWhom) {
             parent.replaceChild(byWhom, who);
         },
         focus(component) {
             component.focus();
+        },
+        select(component) {
+            component.select();
         },
         boundingRect(component) {
             return component.getBoundingClientRect();
@@ -115,6 +131,35 @@ exports.targetRuntime = function() {
         },
         random() {
             return Math.random();
+        },
+        request(url, data) {
+            var http = new XMLHttpRequest();
+            http.open("POST", url, true);
+            http.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+            http.send(JSON.stringify(data));
+            var result = {
+                onSuccess(successFunction) {
+                    result.success = successFunction;
+                    return result;
+                },
+                onFailure(failureFunction) {
+                    result.failure = failureFunction;
+                    return result;
+                }
+            };
+            http.onreadystatechange = function () {
+                if (http.readyState == 4) {
+                    if (http.status == 200) {
+                        var fromServer = JSON.parse(http.responseText);
+                        result.success && result.success(fromServer);
+                    }
+                    else {
+                        result.failure && result.failure(http.status);
+                    }
+                }
+            };
+            return result;
         }
+
     };
 };
