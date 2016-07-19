@@ -38,8 +38,14 @@ exports.targetRuntime = function() {
         attrXlink(component, name, value) {
             component.setAttributeNS(xlink, name, value);
         },
-        value(component) {
-            return component.value;
+        value(component, value) {
+            if (value!==undefined) {
+                component.value = value;
+                return this;
+            }
+            else {
+                return component.value;
+            }
         },
         text(component, message) {
             component.innerHTML = message;

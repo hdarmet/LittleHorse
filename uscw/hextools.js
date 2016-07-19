@@ -56,100 +56,400 @@ exports.Hex = function(svg) {
 
     class Map {
 
-        constructor(colCount, rowCount, width, ordered, background) {
-            this.hexWidth = width;
+        constructor(colCount, rowCount, hexWidth, ordered, backgroundColor) {
+            this.rowOffset = 0;
+            this.hexWidth = hexWidth;
             this.rowCount = rowCount;
             this.colCount = colCount;
+            this.ordered = ordered;
             this.rows = [];
             this.hexes = [];
             this.hexSupport = new svg.Translation();
             this.itemSupport = new svg.Translation();
             this.component = new svg.Translation();
-            this.component.width = (colCount * 2 + 1) * svg.Hexagon.height(width) + MARGIN * 2;
-            this.component.height = (rowCount * 3 + 1) / 2 * width + MARGIN * 2;
+            this.background = new svg.Rect(0, 0).color(backgroundColor);
+            this.component.width = (colCount * 2 + 1) * svg.Hexagon.height(this.hexWidth) + MARGIN * 2;
+            this.component.height = (rowCount * 3 + 1) / 2 * this.hexWidth + MARGIN * 2;
             this.component
-                .add(new svg.Rect(this.component.width, this.component.height)
-                    .position(this.component.width / 2, this.component.height / 2).color(background))
+                .add(this.background)
                 .add(this.hexSupport).add(this.itemSupport);
-            this._createHexes(rowCount, colCount, width, ordered);
-            this._linkHexes(rowCount, colCount);
+            this.createHexes();
         }
 
-        _createHexes(rowCount, colCount, width, ordered) {
-            for (let i = 0; i < rowCount; i++) {
+        _updateSize() {
+            this.component.width = (this.colCount * 2 + 1) * svg.Hexagon.height(this.hexWidth) + MARGIN * 2;
+            this.component.height = (this.rows.length * 3 + 1) / 2 * this.hexWidth + MARGIN * 2;
+            this.background
+                .dimension(this.component.width, this.component.height)
+                .position(this.component.width / 2, this.component.height / 2);
+        }
+
+        createHexes() {
+            for (let i = 0; i < this.rowCount; i++) {
+                this.createBottomRow();
+            }
+        }
+
+        createBottomRow() {
+            console.log("Create bottom row");
+            if (this.rows.length < Map.MAX_ROWS) {
                 let row = [];
                 this.rows.push(row);
-                if (i % 2 === 1) {
+                if ((this.rows.length + this.rowOffset - 1) % 2 === 1) {
                     row.push(null);
                 }
-                for (let j = 0; j < colCount; j++) {
-                    let hex = new Hex(j * 2 + (i % 2), i, width, ordered);
+                for (let c = 0; c < this.colCount; c++) {
+                    let x = c * 2 + ((this.rows.length - 1 + this.rowOffset) % 2);
+                    let y = this.rows.length - 1;
+                    let hex = new Hex(x, y, this.hexWidth, this.ordered);
+                    if (this.hexCallback) {
+                        hex.addGlass(this.hexCallback);
+                    }
                     hex.map = this;
                     row.push(hex, hex);
                     this.hexes.push(hex);
                     this.hexSupport.add(hex.component);
                     this.itemSupport.add(hex.itemSupport);
                 }
+                this.linkRow(this.rows.length - 1);
+                if (this.rows.length > 1) {
+                    this.linkRow(this.rows.length - 2);
+                    this.refreshSurfacesInRow(this.rows.length - 2);
+                }
+                this.refreshLinesInRow(this.rows.length - 1);
+                this.refreshBordersInRow(this.rows.length - 1);
+                this._updateSize();
             }
         }
 
-        _linkHexes(rowCount, colCount) {
-            for (let i = 0; i < rowCount; i++) {
-                for (let j = 0; j < colCount; j++) {
-                    let hex = this.rows[i][j * 2 + 1];
-                    if (i > 0) {
-                        if (i % 2 === 1) {
-                            hex.nw = this.rows[i - 1][j * 2];
-                            if (j * 2 < colCount * 2 - 1) {
-                                hex.ne = this.rows[i - 1][j * 2 + 2];
-                            }
-                        }
-                        else {
-                            hex.ne = this.rows[i - 1][j * 2 + 1];
-                            if (j > 0) {
-                                hex.nw = this.rows[i - 1][j * 2 - 1];
-                            }
-                        }
+        removeBottomRow() {
+            console.log("Delete bottom row");
+            if (this.rows.length > Map.MIN_ROWS) {
+                let row = this.rows[this.rows.length - 1];
+                let index = (this.rows.length - 1 + this.rowOffset) % 2;
+                for (let c = 0; c < this.colCount; c++) {
+                    let hex = row[index + c * 2];
+                    this.hexes.remove(hex);
+                    this.hexSupport.remove(hex.component);
+                    this.itemSupport.remove(hex.itemSupport);
+                }
+                this.rows.remove(row);
+                this.linkRow(this.rows.length - 1);
+                this.refreshSurfacesInRow(this.rows.length - 1);
+                this._updateSize();
+            }
+        }
+
+        createTopRow() {
+            console.log("Create top row");
+            if (this.rows.length < Map.MAX_ROWS) {
+                this.hexes.forEach(hex=>hex.position(hex.x, hex.y + 1));
+                let row = [];
+                this.rows.unshift(row);
+                this.rowOffset = this.rowOffset ? 0 : 1;
+                if ((this.rows.length + this.rowOffset - 1) % 2 === 1) {
+                    row.push(null);
+                }
+                for (let c = 0; c < this.colCount; c++) {
+                    let x = c * 2 + this.rowOffset;
+                    let hex = new Hex(x, 0, this.hexWidth, this.ordered);
+                    if (this.hexCallback) {
+                        hex.addGlass(this.hexCallback);
                     }
-                    if (i < rowCount - 1) {
-                        if (i % 2 === 1) {
-                            hex.sw = this.rows[i + 1][j * 2];
-                            if (j * 2 < colCount * 2 - 1) {
-                                hex.se = this.rows[i + 1][j * 2 + 2];
-                            }
-                        }
-                        else {
-                            hex.se = this.rows[i + 1][j * 2 + 1];
-                            if (j > 0) {
-                                hex.sw = this.rows[i + 1][j * 2 - 1];
-                            }
-                        }
+                    hex.map = this;
+                    row.push(hex, hex);
+                    this.hexes.push(hex);
+                    this.hexSupport.add(hex.component);
+                    this.itemSupport.add(hex.itemSupport);
+                }
+                this.linkRow(0);
+                if (this.rows.length > 1) {
+                    this.linkRow(1);
+                    this.refreshSurfacesInRow(1);
+                }
+                this.refreshLinesInRow(0);
+                this.refreshBordersInRow(0);
+                this._updateSize();
+            }
+        }
+
+        removeTopRow() {
+            console.log("Delete top row");
+            if (this.rows.length > Map.MIN_ROWS) {
+                let row = this.rows[0];
+                let index = this.rowOffset;
+                for (let c = 0; c < this.colCount; c++) {
+                    let hex = row[index + c * 2];
+                    this.hexes.remove(hex);
+                    this.hexSupport.remove(hex.component);
+                    this.itemSupport.remove(hex.itemSupport);
+                }
+                this.rows.remove(row);
+                this.rowOffset = this.rowOffset ? 0 : 1;
+                this.hexes.forEach(hex=>hex.position(hex.x, hex.y - 1));
+                this.linkRow(0);
+                this.refreshSurfacesInRow(0);
+                this._updateSize();
+            }
+        }
+
+        createRightColumn() {
+            console.log("Create right column");
+            if (this.colCount < Map.MAX_COLS) {
+                this.colCount++;
+                let offset = this.rowOffset;
+                for (let r = 0; r < this.rows.length; r++) {
+                    let x = (this.colCount - 1) * 2 + offset;
+                    offset = offset ? 0 : 1;
+                    let hex = new Hex(x, r, this.hexWidth, this.ordered);
+                    if (this.hexCallback) {
+                        hex.addGlass(this.hexCallback);
                     }
-                    if (i % 2 === 1) {
-                        if (j > 0) {
-                            hex.w = this.rows[i][j * 2 - 1];
-                        }
-                        if (j * 2 < colCount * 2 - 1) {
-                            hex.e = this.rows[i][j * 2 + 3];
-                        }
+                    hex.map = this;
+                    this.rows[r].push(hex, hex);
+                    this.hexes.push(hex);
+                    this.hexSupport.add(hex.component);
+                    this.itemSupport.add(hex.itemSupport);
+                }
+                this.linkColumn(this.colCount - 1);
+                if (this.colCount > 1) {
+                    this.linkColumn(this.colCount - 2);
+                    this.refreshSurfacesInColumn(this.colCount - 2);
+                }
+                this.refreshLinesInColumn(this.colCount - 1);
+                this.refreshBordersInColumn(this.colCount - 1);
+                this._updateSize();
+            }
+        }
+
+        removeRightColumn() {
+            console.log("Remove right column");
+            if (this.colCount > Map.MIN_COLS) {
+                for (let r = 0; r < this.rows.length; r++) {
+                    let hex = this.rows[r].pop();
+                    this.rows[r].pop();
+                    this.hexes.remove(hex);
+                    this.hexSupport.remove(hex.component);
+                    this.itemSupport.remove(hex.itemSupport);
+                }
+                this.colCount--;
+                this.linkColumn(this.colCount - 1);
+                this.refreshLinesInColumn(this.colCount - 1);
+                this.refreshBordersInColumn(this.colCount - 1);
+                this._updateSize();
+            }
+        }
+
+        createLeftColumn() {
+            console.log("Create left column");
+            if (this.colCount < Map.MAX_COLS) {
+                this.colCount++;
+                let offset = this.rowOffset;
+                this.hexes.forEach(hex=>hex.position(hex.x + 2, hex.y));
+                for (let r = 0; r < this.rows.length; r++) {
+                    let hex = new Hex(offset, r, this.hexWidth, this.ordered);
+                    if (this.hexCallback) {
+                        hex.addGlass(this.hexCallback);
+                    }
+                    hex.map = this;
+                    this.rows[r].splice(offset, 0, hex, hex);
+                    offset = offset ? 0 : 1;
+                    this.hexes.push(hex);
+                    this.hexSupport.add(hex.component);
+                    this.itemSupport.add(hex.itemSupport);
+                }
+                this.linkColumn(0);
+                if (this.colCount > 1) {
+                    this.linkColumn(1);
+                    this.refreshSurfacesInColumn(1);
+                }
+                this.refreshLinesInColumn(0);
+                this.refreshBordersInColumn(0);
+                this._updateSize();
+            }
+        }
+
+        removeLeftColumn() {
+            console.log("Remove left column");
+            if (this.colCount > Map.MIN_COLS) {
+                let offset = this.rowOffset;
+                for (let r = 0; r < this.rows.length; r++) {
+                    let hex = this.rows[r][offset];
+                    this.rows[r].splice(offset, 2);
+                    offset = offset ? 0 : 1;
+                    this.hexes.remove(hex);
+                    this.hexSupport.remove(hex.component);
+                    this.itemSupport.remove(hex.itemSupport);
+                }
+                this.hexes.forEach(hex=>hex.position(hex.x - 2, hex.y));
+                this.colCount--;
+                this.linkColumn(0);
+                this.refreshLinesInColumn(0);
+                this.refreshBordersInColumn(0);
+                this._updateSize();
+            }
+        }
+
+        forEachHexInRow(rowIndex, handler) {
+            let row = this.rows[rowIndex];
+            let offset = (rowIndex+this.rowOffset)%2;
+            for (let c = 0; c < this.colCount; c++) {
+                let hex = row[offset+c*2];
+                handler(c, hex);
+            }
+        }
+
+        forEachHexInColumn(colIndex, handler) {
+            for (let r = 0; r < this.rows.length; r++) {
+                let row = this.rows[r];
+                let offset = (r+this.rowOffset)%2;
+                let hex = row[offset+colIndex*2];
+                handler(r, hex);
+            }
+        }
+
+        linkHex(col, row) {
+            let hex = this.rows[row][col * 2 + 1];
+            if (row > 0) {
+                if ((row+this.rowOffset) % 2 === 1) {
+                    hex.nw = this.rows[row - 1][col * 2];
+                    if (col * 2 < this.colCount * 2 - 1) {
+                        hex.ne = this.rows[row - 1][col * 2 + 2];
                     }
                     else {
-                        if (j > 0) {
-                            hex.w = this.rows[i][j * 2 - 2];
-                        }
-                        if (j * 2 < colCount * 2 - 1) {
-                            hex.e = this.rows[i][j * 2 + 2];
-                        }
+                        hex.ne && delete hex.ne;
                     }
                 }
+                else {
+                    hex.ne = this.rows[row - 1][col * 2 + 1];
+                    if (col > 0) {
+                        hex.nw = this.rows[row - 1][col * 2 - 1];
+                    }
+                    else {
+                        hex.nw && delete hex.nw;
+                    }
+                }
+            }
+            else {
+                hex.nw && delete hex.nw;
+                hex.ne && delete hex.ne;
+            }
+            if (row < this.rows.length-1) {
+                if ((row+this.rowOffset) % 2 === 1) {
+                    hex.sw = this.rows[row + 1][col * 2];
+                    if (col * 2 < this.colCount * 2 - 1) {
+                        hex.se = this.rows[row + 1][col * 2 + 2];
+                    }
+                    else {
+                        hex.se && delete hex.se;
+                    }
+                }
+                else {
+                    hex.se = this.rows[row + 1][col * 2 + 1];
+                    if (col > 0) {
+                        hex.sw = this.rows[row + 1][col * 2 - 1];
+                    }
+                    else {
+                        hex.sw && delete hex.sw;
+                    }
+                }
+            }
+            else {
+                hex.sw && delete hex.sw;
+                hex.se && delete hex.se;
+            }
+            if ((row+this.rowOffset) % 2 === 1) {
+                if (col > 0) {
+                    hex.w = this.rows[row][col * 2 - 1];
+                }
+                else {
+                    hex.w && delete hex.w;
+                }
+                if (col * 2 < this.colCount * 2 - 1) {
+                    hex.e = this.rows[row][col * 2 + 3];
+                }
+                else {
+                    hex.e && delete hex.e;
+                }
+            }
+            else {
+                if (col > 0) {
+                    hex.w = this.rows[row][col * 2 - 2];
+                }
+                else {
+                    hex.w && delete hex.w;
+                }
+                if (col * 2 < this.colCount * 2 - 1) {
+                    hex.e = this.rows[row][col * 2 + 2];
+                }
+                else {
+                    hex.e && delete hex.e;
+                }
+            }
+            this.showLink(hex, "nw");
+            this.showLink(hex, "w");
+            this.showLink(hex, "sw");
+            this.showLink(hex, "se");
+            this.showLink(hex, "e");
+            this.showLink(hex, "ne");
+        }
 
+        showLink(hex, link) {
+            let targetHex = hex[link];
+            if (targetHex) {
+                console.log("Link : hex["+hex.x+","+hex.y+"] -"+link+"-> hex["+targetHex.x+","+targetHex.y+"]");
+            }
+            else {
+                console.log("Link : hex["+hex.x+","+hex.y+"] -"+link+"-> null");
             }
         }
 
-        logHexLinks(hex) {
-            for (let d in ALL_DIRECTIONS) {
-                hex[ALL_DIRECTIONS[d]] && console.log(hex.toString() + " nw " + hex[ALL_DIRECTIONS[d]].toString());
-            }
+        linkRow(row) {
+            this.forEachHexInRow(row, (col, hex)=>{
+                this.linkHex(col, row);
+            });
+        }
+
+        refreshSurfacesInRow(row) {
+            this.forEachHexInRow(row, (col, hex)=>{
+                hex.refreshSurfaces();
+            });
+        }
+
+        refreshLinesInRow(row) {
+            this.forEachHexInRow(row, (col, hex)=>{
+                hex.refreshLineEntries();
+            });
+        }
+
+        refreshBordersInRow(row) {
+            this.forEachHexInRow(row, (col, hex)=>{
+                hex.refreshBorderSides();
+            });
+        }
+
+        linkColumn(col) {
+            this.forEachHexInColumn(col, (row, hex)=>{
+                this.linkHex(col, row);
+            });
+        }
+
+        refreshSurfacesInColumn(col) {
+            this.forEachHexInColumn(col, (row, hex)=>{
+                hex.refreshSurfaces();
+            });
+        }
+
+        refreshLinesInColumn(col) {
+            this.forEachHexInColumn(col, (row, hex)=>{
+                hex.refreshLineEntries();
+            });
+        }
+
+        refreshBordersInColumn(col) {
+            this.forEachHexInColumn(col, (row, hex)=>{
+                hex.refreshBorderSides();
+            });
         }
 
         getHex(x, y) {
@@ -163,7 +463,7 @@ exports.Hex = function(svg) {
             let w = this.hexWidth / 2;
             let c = Math.floor(x / h);
             let r = Math.floor(y / (w * 3));
-            if (r == this.rowCount) {
+            if (r === this.rowCount) {
                 r = this.rowCount - 1;
             }
             if (c < 0 || c >= this.colCount * 2 || r < 0 || r >= this.rowCount) {
@@ -193,15 +493,9 @@ exports.Hex = function(svg) {
         }
 
         addGlasses(callback) {
+            this.hexCallback = callback;
             this.hexes.forEach(function (hex) {
                 hex.addGlass(callback)
-            });
-            return this;
-        }
-
-        removeGlasses() {
-            this.hexes.forEach(function (hex) {
-                hex.removeGlass()
             });
             return this;
         }
@@ -211,6 +505,10 @@ exports.Hex = function(svg) {
             return this;
         }
     }
+    Map.MIN_COLS = 2;
+    Map.MAX_COLS = 9;
+    Map.MIN_ROWS = 2;
+    Map.MAX_ROWS = 9;
 
     class Hex {
 
@@ -219,23 +517,31 @@ exports.Hex = function(svg) {
             this.y = y;
             this.width = width;
             this.hex = new svg.Hexagon(width, "V").color([120, 250, 120]);
-            let height = this.hex.height();
-            this.component = createSupport();
+            this.component = new svg.Translation();
             this.ordered = makeOrdered(ordered);
             this.hexSupport = new svg.Ordered(ordered ? ordered.length : 0);
             this.component
                 .add(this.hex)
                 .add(this.hexSupport.active(false))
                 .add(new svg.Hexagon(this.width, "V").color([], 2, [100, 100, 100]).opacity(0.3).active(false));
-            this.itemSupport = createSupport();
+            this.itemSupport = new svg.Translation();
             this.surfaces = {};
             this.lines = {};
             this.borders = {};
             this.items = [];
+            this.position(x, y);
+        }
 
-            function createSupport() {
-                return new svg.Translation((x + 1) * height + MARGIN, (y + 1) * width * 3 / 2 - width / 2 + MARGIN);
-            }
+        position(x, y) {
+            let height = this.hex.height();
+            this.x = x;
+            this.y = y;
+            let px = (x + 1) * height + MARGIN;
+            let py = (y + 1) * this.width * 3 / 2 - this.width / 2 + MARGIN;
+            this.component.move(px, py);
+            this.itemSupport.move(px, py);
+            console.log("Move hex["+this.x+","+this.y+"] to ("+px+","+py+")");
+            return this;
         }
 
         setOrder(ordered) {
@@ -255,6 +561,14 @@ exports.Hex = function(svg) {
                 this.se && this.se.drawSurface(surface.type);
                 this.sw && this.sw.drawSurface(surface.type);
                 this.w && this.w.drawSurface(surface.type);
+            }
+            return this;
+        }
+
+        refreshSurfaces() {
+            for (let surfaceType in this.surfaces) {
+                let surface = this.surfaces[surfaceType];
+                surface.draw();
             }
             return this;
         }
@@ -304,6 +618,74 @@ exports.Hex = function(svg) {
             return this.lines[type];
         }
 
+        getLineEntry(direction, type) {
+            let line = this.getLine(type);
+            return line ? line.getEntry(direction) : null;
+        }
+
+        addLineEntry(direction, type, value, builder) {
+            let invDir = inverseDirection(direction);
+            let invHex = this[direction];
+            doIt(this, direction);
+            invHex && doIt(invHex, invDir);
+
+            function doIt(hex, direction) {
+                let line = hex.getLine(type);
+                if (line) {
+                    line.addEntry(direction, value);
+                }
+                else {
+                    line = builder();
+                    hex.setLine(line);
+                    line.addEntry(direction, value);
+                }
+            }
+        }
+
+        removeLineEntry(direction, type) {
+            let invDir = inverseDirection(direction);
+            let invHex = this[direction];
+            doIt(this, direction);
+            invHex && doIt(invHex, invDir);
+
+            function doIt(hex, direction) {
+                let line = this.getLine(type);
+                if (line) {
+                    line.removeEntry(direction);
+                    if (isEmpty(line.getEntries())) {
+                        this.removeLine(type);
+                    }
+                }
+            }
+        }
+
+        refreshLineEntries() {
+            doIt(this, "ne");
+            doIt(this, "e");
+            doIt(this, "se");
+            doIt(this, "sw");
+            doIt(this, "w");
+            doIt(this, "nw");
+
+            function doIt(hex, direction) {
+                let invDir = inverseDirection(direction);
+                let invHex = hex[direction];
+                if (invHex) {
+                    for (let type in invHex.lines) {
+                        let line = invHex.getLine(type);
+                        if (line && line.getEntry(invDir)) {
+                            let hexLine = hex.getLine(type);
+                            if (!hexLine) {
+                                hexLine = line.duplicate();
+                                hex.setLine(hexLine);
+                            }
+                            hexLine.addEntry(direction, line.getEntry(invDir));
+                        }
+                    }
+                }
+            }
+        }
+
         setBorder(border) {
             if (!this.borders[border.type]) {
                 this.borders[border.type] = border.setHex(this);
@@ -323,6 +705,99 @@ exports.Hex = function(svg) {
 
         getBorder(type) {
             return this.borders[type];
+        }
+
+        getBorderSide(direction, type) {
+            var border = this.getBorder(type);
+            return border ? border.getSide(direction) : null;
+        }
+
+        putBorderSide(direction, type, value, builder, force) {
+            var border = this.getBorder(type);
+            if (border) {
+                if (!border.getSide(direction) && !border.getSide("c") || force) {
+                    border.addSide(direction, value);
+                }
+            }
+            else {
+                border = builder();
+                this.setBorder(border);
+                border.addSide(direction, value);
+            }
+        }
+
+        unputBorderSide(direction, type) {
+            var border = this.getBorder(type);
+            if (border) {
+                border.removeSide(direction);
+                if (isEmpty(border.getSides())) {
+                    this.removeBorder(type);
+                }
+            }
+        }
+
+        addBorderSide(direction,type, value, builder) {
+            this.putBorderSide(direction, type, value, builder, true);
+            let invDir = inverseDirection(direction);
+            let invHex = this[direction];
+            invHex && invHex.putBorderSide(invDir, type, value, builder, true);
+        }
+
+        setBorderSide(direction, type, value, builder) {
+            let border = this.getBorder(type);
+            if (border) {
+                this.removeBorder(type);
+            }
+            border = builder();
+            this.setBorder(border);
+            border.addSide(direction, value);
+            if (direction === "c") {
+                for (var d of ALL_DIRECTIONS) {
+                    this[d] && this[d].putBorderSide(inverseDirection(d), type, value, builder, true);
+                }
+            }
+        }
+
+        removeBorderSide(direction, type, value, builder) {
+            this.unputBorderSide(direction, type);
+            if (direction === "c") {
+                for (var d of ALL_DIRECTIONS) {
+                    this.putBorderSide(d, type, value, builder, false);
+                }
+            }
+            else {
+                let invDir = inverseDirection(direction);
+                let invHex = this[direction];
+                invHex && invHex.unputBorderSide(invDir, type);
+            }
+        }
+
+        refreshBorderSides() {
+            doIt(this, "ne");
+            doIt(this, "e");
+            doIt(this, "se");
+            doIt(this, "sw");
+            doIt(this, "w");
+            doIt(this, "nw");
+
+            function doIt(hex, direction) {
+                let invDir = inverseDirection(direction);
+                let invHex = hex[direction];
+                if (invHex) {
+                    for (let type in invHex.borders) {
+                        let border = invHex.getBorder(type);
+                        if (border && (border.getSide(invDir) || border.getSide("c"))) {
+                            let hexBorder = hex.getBorder(type);
+                            if (!hexBorder) {
+                                hexBorder = border.duplicate();
+                                hex.setBorder(hexBorder);
+                            }
+                            let size = border.getSide(invDir) || border.getSide("c");
+                            hexBorder.addSide(direction, size);
+                        }
+                    }
+                }
+            }
         }
 
         putItem(item, x, y) {
@@ -369,17 +844,6 @@ exports.Hex = function(svg) {
             svg.removeEvent(this.hex, 'mousedown');
             return this;
         }
-
-        /*
-         removeGlass() {
-         svg.removeEvent(this.hex, 'click', event=> {
-         var local = this.hex.localPoint(event.clientX, event.clientY);
-         callback(this, local.x, local.y, this.getPiece(local), this.isCenter(local));
-         });
-         svg.removeEvent(this.hex, 'mousedown');
-         return this;
-         }
-         */
 
         isCenter(local) {
             return local.x * local.x + local.y * local.y < this.width * this.width / 4;
@@ -522,6 +986,10 @@ exports.Hex = function(svg) {
             this.component = new svg.Translation();
         }
 
+        duplicate() {
+            return new Border(this.type, {}, this.colors);
+        }
+
         addSide(direction, value) {
             this.sides[direction] = value;
             this.draw();
@@ -632,7 +1100,6 @@ exports.Hex = function(svg) {
         }
     }
 
-
     class Line {
 
         constructor(type, entries, colors) {
@@ -640,6 +1107,10 @@ exports.Hex = function(svg) {
             this.colors = colors;
             this.entries = entries;
             this.component = new svg.Translation();
+        }
+
+        duplicate() {
+            return new Line(this.type, {}, this.colors);
         }
 
         addEntry(direction, value) {
@@ -709,7 +1180,6 @@ exports.Hex = function(svg) {
                 }
                 return control;
             }
-
         }
 
         _endProcess(entry, angle) {

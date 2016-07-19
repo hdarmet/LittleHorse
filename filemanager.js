@@ -2,8 +2,6 @@
  * Created by HDA3014 on 06/02/2016.
  */
 
-var SVG = require("../svghandler.js").SVG;
-
 exports.FileManager = function(svg, gui) {
 
     class FileGrid extends gui.Grid {
@@ -277,6 +275,11 @@ exports.FileManager = function(svg, gui) {
             this.fileName = "";
         }
 
+        newPopin(popinClass) {
+            this.popinClass = popinClass;
+            return this;
+        }
+
         getContent() {
             return "Content of : "+this.fileName;
         }
@@ -411,6 +414,7 @@ exports.FileManager = function(svg, gui) {
 
         action() {
             console.log("New...");
+            new this.manager.popinClass().show(gui.canvas(this.component));
         }
 
     }

@@ -312,7 +312,7 @@ exports.SVG = function(runtime) {
             style += "outline:" + "none;";
             style += "color:" + ((this.strokeColor && this.strokeColor.length) ? "rgb(" + this.strokeColor.join(",") + ");" : "transparent;");
             svgr.attr(this.component, "style", style);
-            svgr.attr(this.component, "value", this.messageText || '');
+            svgr.value(this.component, this.messageText || '');
             svgr.attr(this.component, "placeholder", this.placeHolderText || '');
             console.log(style);
         }
@@ -509,6 +509,11 @@ exports.SVG = function(runtime) {
             }
             return null;
         }
+
+        boundingRect() {
+            return svgr.boundingRect(this.component);
+        }
+
     }
 
     class Handler extends SvgElement {
@@ -584,7 +589,8 @@ exports.SVG = function(runtime) {
         }
 
         onClick(handler) {
-            this.accept(new Visitor("onClick", handler));
+            svgr.addEvent(this.component, "click", handler);
+            //this.accept(new Visitor("onClick", handler));
             return this;
         }
 
@@ -597,12 +603,12 @@ exports.SVG = function(runtime) {
             this.accept(new Visitor("color", fillColor, stroke, strokeColor));
             return this;
         }
-
+/*
         clickable(flag) {
             this.accept(new Visitor("clickable", flag));
             return this;
         }
-
+*/
         prepareAnimator(animator) {
             animator.opacity = (sopacity, eopacity)=> {
                 animator.process([sopacity], [eopacity], coords=> this.opacity(coords[0]));
@@ -833,17 +839,18 @@ exports.SVG = function(runtime) {
             visitor.visit(this);
             return this;
         }
-
+/*
         clickable(flag = true) {
             this.clickflag = flag;
             this._setOnClick();
             this._setOnRightClick();
             return this;
         }
-
+*/
         onClick(handler) {
-            this.clickHandler = handler;
-            this._setOnClick();
+            svgr.addEvent(this.component, "click", handler);
+            //this.clickHandler = handler;
+            //this._setOnClick();
             return this;
         }
 
@@ -988,6 +995,11 @@ exports.SVG = function(runtime) {
             }
             return null;
         }
+
+        boundingRect() {
+            return svgr.boundingRect(this.component);
+        }
+
     }
 
     class Rect extends Shape {
@@ -1551,12 +1563,171 @@ exports.SVG = function(runtime) {
     }
     Hexagon.height = width=> Sqrt2 * width;
 
+    class Chevron extends Shape {
+
+        constructor(width, height, thickness, direction) {
+            super();
+            this.component = svgr.create("path");
+            this.x = 0;
+            this.y = 0;
+            this.width = width;
+            this.height = height;
+            this.thickness = thickness;
+            this.dir = direction;
+            this._draw();
+        }
+
+        position(x, y) {
+            this.x = x;
+            this.y = y;
+            this._draw();
+            return this;
+        }
+
+        dimension(width, height, thickness) {
+            this.width = width;
+            this.height = height;
+            this.thickness = thickness;
+            this._draw();
+            return this;
+        }
+
+        direction(direction) {
+            this.dir = direction;
+            this._draw();
+            return this;
+        }
+
+        _draw() {
+            let point=(x, y)=> {
+                this.points.push({x:this.x+x, y:this.y+y});
+                return (this.x+x)+","+(this.y+y)+" ";
+            };
+            this.points=[];
+            switch(this.dir) {
+                case "N":
+                {
+                    let w = this.width / 2 - this.thickness;
+                    let h = this.height - this.thickness;
+                    let angle = Math.atan2(w, h);
+                    let deltaX = this.thickness * Math.sin(angle);
+                    let deltaY = this.thickness * Math.cos(angle);
+                    this.drawing = "M " + point(-w + deltaY / 2, h / 2 + deltaX / 2);
+                    this.drawing += "C " + point(-w + deltaY / 2 - deltaX, h / 2 + deltaX / 2 + deltaY)
+                        + point(-w - deltaY / 2 - deltaX, h / 2 - deltaX / 2 + deltaY)
+                        + point(-w - deltaY / 2, h / 2 - deltaX / 2);
+                    this.drawing += "L " + point(-deltaY / 2, -h / 2 - deltaX / 2);
+                    this.drawing += "Q " + point(0, -h / 2 - deltaX / 2 - deltaY * deltaY / deltaX / 2)
+                        + point(deltaY / 2, -h / 2 - deltaX / 2);
+                    this.drawing += "L " + point(w + deltaY / 2, h / 2 - deltaX / 2);
+                    this.drawing += "C " + point(w + deltaY / 2 + deltaX, h / 2 - deltaX / 2 + deltaY)
+                        + point(w - deltaY / 2 + deltaX, h / 2 + deltaX / 2 + deltaY)
+                        + point(w - deltaY / 2, h / 2 + deltaX / 2);
+                    this.drawing += "L " + point(deltaX / 2, -h / 2 + deltaX / 2 + deltaY * deltaY / deltaX);
+                    this.drawing += "Q " + point(0, -h / 2 + deltaX / 2 + deltaY * deltaY / deltaX / 2)
+                        + point(-deltaY / 2, -h / 2 + deltaX / 2 + deltaY * deltaY / deltaX);
+                    this.drawing += "L " + point(-w + deltaY / 2, h / 2 + deltaX / 2);
+                }
+                    break;
+                case "E":
+                {
+                    let w = this.width - this.thickness;
+                    let h = this.height / 2 - this.thickness;
+                    let angle = Math.atan2(h, w);
+                    let deltaX = this.thickness * Math.cos(angle);
+                    let deltaY = this.thickness * Math.sin(angle);
+                    this.drawing = "M " + point(-w / 2 - deltaY / 2, -h + deltaX / 2);
+                    this.drawing += "C " + point(-w / 2 - deltaY / 2 - deltaX, -h + deltaX / 2 - deltaY)
+                        + point(-w / 2 + deltaY / 2 - deltaX, -h - deltaX / 2 - deltaY)
+                        + point(-w / 2 + deltaY / 2, -h - deltaX / 2);
+                    this.drawing += "L " + point(w / 2 + deltaY / 2, -deltaX / 2);
+                    this.drawing += "Q " + point(w / 2 + deltaY / 2 + deltaX * deltaX / deltaY / 2, 0)
+                        + point(w / 2 + deltaY / 2, deltaX / 2);
+                    this.drawing += "L " + point(-w / 2 + deltaY / 2, h + deltaX / 2);
+                    this.drawing += "C " + point(-w / 2 + deltaY / 2 - deltaX, h + deltaX / 2 + deltaY)
+                        + point(-w / 2 - deltaY / 2 - deltaX, h - deltaX / 2 + deltaY)
+                        + point(-w / 2 - deltaY / 2, h - deltaX / 2);
+                    this.drawing += "L " + point(w / 2 - deltaY / 2 - deltaX * deltaX / deltaY, deltaX / 2);
+                    this.drawing += "Q " + point(w / 2 - deltaY / 2 - deltaX * deltaX / deltaY / 2, 0)
+                        + point(w / 2 - deltaY / 2 - deltaX * deltaX / deltaY, -deltaX / 2);
+                    this.drawing += "L " + point(-w / 2 - deltaY / 2, -h + deltaX / 2);
+                }
+                    break;
+                case "S":
+                {
+                    let w = this.width / 2 - this.thickness;
+                    let h = this.height - this.thickness;
+                    let angle = Math.atan2(w, h);
+                    let deltaX = this.thickness * Math.sin(angle);
+                    let deltaY = this.thickness * Math.cos(angle);
+                    this.drawing = "M " + point(-w + deltaY / 2, -h / 2 - deltaX / 2);
+                    this.drawing += "C " + point(-w + deltaY / 2 - deltaX, -h / 2 - deltaX / 2 - deltaY)
+                        + point(-w - deltaY / 2 - deltaX, -h / 2 + deltaX / 2 - deltaY)
+                        + point(-w - deltaY / 2, -h / 2 + deltaX / 2);
+                    this.drawing += "L " + point(-deltaY / 2, h / 2 + deltaX / 2);
+                    this.drawing += "Q " + point(0, h / 2 + deltaX / 2 + deltaY * deltaY / deltaX / 2)
+                        + point(deltaY / 2, h / 2 + deltaX / 2);
+                    this.drawing += "L " + point(w + deltaY / 2, -h / 2 + deltaX / 2);
+                    this.drawing += "C " + point(w + deltaY / 2 + deltaX, -h / 2 + deltaX / 2 - deltaY)
+                        + point(w - deltaY / 2 + deltaX, -h / 2 - deltaX / 2 - deltaY)
+                        + point(w - deltaY / 2, -h / 2 - deltaX / 2);
+                    this.drawing += "L " + point(deltaX / 2, h / 2 - deltaX / 2 - deltaY * deltaY / deltaX);
+                    this.drawing += "Q " + point(0, h / 2 - deltaX / 2 - deltaY * deltaY / deltaX / 2)
+                        + point(-deltaY / 2, h / 2 - deltaX / 2 - deltaY * deltaY / deltaX);
+                    this.drawing += "L " + point(-w + deltaY / 2, -h / 2 - deltaX / 2);
+                }
+                    break;
+                case "W":
+                {
+                    let w = this.width - this.thickness;
+                    let h = this.height / 2 - this.thickness;
+                    let angle = Math.atan2(h, w);
+                    let deltaX = this.thickness * Math.cos(angle);
+                    let deltaY = this.thickness * Math.sin(angle);
+                    this.drawing = "M " + point(w / 2 + deltaY / 2, -h + deltaX / 2);
+                    this.drawing += "C " + point(w / 2 + deltaY / 2 + deltaX, -h + deltaX / 2 - deltaY)
+                        + point(w / 2 - deltaY / 2 + deltaX, -h - deltaX / 2 - deltaY)
+                        + point(w / 2 - deltaY / 2, -h - deltaX / 2);
+                    this.drawing += "L " + point(-w / 2 - deltaY / 2, -deltaX / 2);
+                    this.drawing += "Q " + point(-w / 2 - deltaY / 2 - deltaX * deltaX / deltaY / 2, 0)
+                        + point(-w / 2 - deltaY / 2, deltaX / 2);
+                    this.drawing += "L " + point(w / 2 - deltaY / 2, h + deltaX / 2);
+                    this.drawing += "C " + point(w / 2 - deltaY / 2 + deltaX, h + deltaX / 2 + deltaY)
+                        + point(w / 2 + deltaY / 2 + deltaX, h - deltaX / 2 + deltaY)
+                        + point(w / 2 + deltaY / 2, h - deltaX / 2);
+                    this.drawing += "L " + point(-w / 2 + deltaY / 2 + deltaX * deltaX / deltaY, deltaX / 2);
+                    this.drawing += "Q " + point(-w / 2 + deltaY / 2 + deltaX * deltaX / deltaY / 2, 0)
+                        + point(-w / 2 + deltaY / 2 + deltaX * deltaX / deltaY, -deltaX / 2);
+                    this.drawing += "L " + point(w / 2 + deltaY / 2, -h + deltaX / 2);
+                }
+                    break;
+            }
+            svgr.attr(this.component, "d", this.drawing);
+        }
+
+        globalPoint(...args) {
+            var point = getPoint(args);
+            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+        }
+
+        localPoint(...args) {
+            var point = getPoint(args);
+            point = this.parent.localPoint(point);
+            return point ? {x: point.x - this.x, y: point.y - this.y} : null;
+        }
+
+        inside(x, y) {
+            var local = this.localPoint(x, y);
+            return insidePolygon(local.x + this.x, local.y + this.y, this.points);
+        }
+    }
+
     class Text extends Shape {
 
         constructor(message) {
             super();
             this.component = svgr.create("text");
-            this.messageText = "" + message;
+            this.messageText = message!==undefined ? "" + message : "";
             this.x = 0;
             this.y = 0;
             this.fontName = "arial";
@@ -1577,6 +1748,13 @@ exports.SVG = function(runtime) {
         position(x, y) {
             this.x = x;
             this.y = y;
+            this._draw();
+            return this;
+        }
+
+        dimension(width, height) {
+            this.width = width;
+            this.height = height; // TODO Not used yet...
             this._draw();
             return this;
         }
@@ -1606,14 +1784,36 @@ exports.SVG = function(runtime) {
             svgr.attr(this.component, "text-anchor", this.anchorText);
             svgr.attr(this.component, "font-family", this.fontName);
             svgr.attr(this.component, "font-size", this.fontSize);
-            svgr.text(this.component, lines[0]);
+            this._format(this.component, lines[0]);
             for (l = 1; l < lines.length; l++) {
                 var line = svgr.create("tspan");
+                svgr.add(this.component, line);
                 svgr.attr(line, "x", this.x);
                 svgr.attr(line, "y", this.y - (lines.length - l - 1) / 2 * this.lineSpacing);
-                svgr.text(line, lines[l]);
+                this._format(line, lines[l]);
                 this.lines[l - 1] = line;
-                svgr.add(this.component, line);
+            }
+        }
+
+        _format(line, text) {
+            if (text!==undefined && this.width!==undefined) {
+                let message = text;
+                let messageToShow = message;
+                let finished = false;
+                do {
+                    svgr.text(line, messageToShow);
+                    let bounds = this.boundingRect();
+                    if (bounds.width>this.width && message.length>0) {
+                        message = message.slice(0, message.length-1);
+                        messageToShow = message+"...";
+                    }
+                    else {
+                        finished = true;
+                    }
+                } while (!finished);
+            }
+            else {
+                svgr.text(line, text);
             }
         }
 
@@ -2085,6 +2285,7 @@ exports.SVG = function(runtime) {
         Path : Path,
         Text : Text,
         Image : Image,
+        Chevron:Chevron,
 
         Animator : Animator,
 

@@ -16,7 +16,7 @@ exports.playMines = function(svg, param) {
             this.y = y;
             this.game = game;
             this.cover = new svg.Translation()
-                .add(new svg.Rect(40, 40).color([180, 180, 180], 4, [50, 50, 50]).clickable());
+                .add(new svg.Rect(40, 40).color([180, 180, 180], 4, [50, 50, 50])/*.clickable()*/);
             this.flag = new svg.Translation()
                 .add(new svg.Triangle(16, 12, "E").position(3, -4).color([255, 0, 0], 3, [200, 50, 50]))
                 .add(new svg.Line(-7, -12, -7, 12).color([], 3, [10, 10, 10]));
@@ -43,12 +43,12 @@ exports.playMines = function(svg, param) {
                 if (!this.flagged) {
                     this.flagged = true;
                     this.component.add(this.flag);
-                    this.flag.clickable(true);
+                    //this.flag.clickable(true);
                 }
                 else {
                     this.flagged = false;
                     this.component.remove(this.flag);
-                    this.flag.clickable(false);
+                    //this.flag.clickable(false);
                 }
             };
             this.component.onRightClick(rightClickFunction);

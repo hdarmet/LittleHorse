@@ -89,6 +89,7 @@ exports.mapEditor = function(svg) {
         }
 
         surface(type, colors) {
+
             this.hex.setOrder([type]).setSurface(new hexM.Surface(type, colors));
             this.action(()=> {
                 this.pane.palette.action = hex=> {
@@ -103,45 +104,16 @@ exports.mapEditor = function(svg) {
         }
 
         line(type, size, colors) {
-            let getEntry = (hex, direction, type)=> {
-                let line = hex.getLine(type);
-                return line ? line.getEntry(direction) : null;
-            };
-
-            let addEntry = (hex, direction, type, value, colors)=> {
-                let line = hex.getLine(type);
-                if (line) {
-                    line.addEntry(direction, value);
-                }
-                else {
-                    line = new hexM.Line(type, {}, colors);
-                    hex.setLine(line);
-                    line.addEntry(direction, value);
-                }
-            };
-
-            let removeEntry = (hex, direction, type)=> {
-                let line = hex.getLine(type);
-                if (line) {
-                    line.removeEntry(direction);
-                    if (hexM.isEmpty(line.getEntries())) {
-                        hex.removeLine(type);
-                    }
-                }
-            };
 
             this.hex.setOrder([type]).setLine(new hexM.Line(type, {sw: size, e: size}, colors));
+
             this.action(()=> {
                 this.pane.palette.action = (hex, x, y, piece)=> {
-                    let invDir = hexM.inverseDirection(piece);
-                    let invHex = hex[piece];
-                    if (getEntry(hex, piece, type)) {
-                        removeEntry(hex, piece, type);
-                        invHex && removeEntry(invHex, invDir, type);
+                    if (hex.getLineEntry(piece, type)) {
+                        hex.removeLineEntry(piece, type);
                     }
                     else {
-                        addEntry(hex, piece, type, size, colors);
-                        invHex && addEntry(invHex, invDir, type, size, colors);
+                        hex.addLineEntry(piece, type, size, ()=>new hexM.Line(type, {}, colors));
                     }
                 }
 
@@ -150,73 +122,24 @@ exports.mapEditor = function(svg) {
 
         border(type, size, colors) {
 
-            let getSide = (hex, direction, type)=> {
-                var border = hex.getBorder(type);
-                return border ? border.getSide(direction) : null;
-            };
-
-            let addSide = (hex, direction, type, value, colors, force)=> {
-                var border = hex.getBorder(type);
-                if (border) {
-                    if (!border.getSide(direction) && !border.getSide("c") || force) {
-                        border.addSide(direction, value);
-                    }
-                }
-                else {
-                    border = new hexM.Border(type, {}, colors);
-                    hex.setBorder(border);
-                    border.addSide(direction, value);
-                }
-            };
-
-            let setSide = (hex, direction, type, value, colors)=> {
-                var border = hex.getBorder(type);
-                if (border) {
-                    hex.removeBorder(type);
-                }
-                border = new hexM.Border(type, {}, colors);
-                hex.setBorder(border);
-                border.addSide(direction, value);
-            };
-
-            let removeSide = (hex, direction, type)=> {
-                var border = hex.getBorder(type);
-                if (border) {
-                    border.removeSide(direction);
-                    if (hexM.isEmpty(border.getSides())) {
-                        hex.removeBorder(type);
-                    }
-                }
-            };
-
             this.hex.setOrder([type]).setBorder(new hexM.Border(type, {w: size, nw: size, sw: size, se: size}, colors))
+
             this.action(()=> {
                 this.pane.palette.action = (hex, x, y, piece, center)=> {
-                    let invDir = hexM.inverseDirection(piece);
-                    let invHex = hex[piece];
                     if (center) {
-                        if (getSide(hex, "c", type)) {
-                            removeSide(hex, "c", type);
-                            for (var d of hexM.ALL_DIRECTIONS) {
-                                addSide(hex, d, type, size, colors, false);
-                            }
+                        if (hex.getBorderSide("c", type)) {
+                            hex.removeBorderSide("c", type, size, ()=>new hexM.Border(type, {}, colors));
                         }
                         else {
-                            setSide(hex, "c", type, size, colors);
-                            for (var d of hexM.ALL_DIRECTIONS) {
-                                hex[d] && addSide(hex[d], hexM.inverseDirection(d),
-                                    type, size, colors, true);
-                            }
+                            hex.setBorderSide("c", type, size, ()=>new hexM.Border(type, {}, colors));
                         }
                     }
                     else {
-                        if (getSide(hex, piece, type)) {
-                            removeSide(hex, piece, type);
-                            invHex && removeSide(invHex, invDir, type);
+                        if (hex.getBorderSide(piece, type)) {
+                            hex.removeBorderSide(piece, type, size, ()=>new hexM.Border(type, {}, colors));
                         }
                         else {
-                            addSide(hex, piece, type, size, colors, true);
-                            invHex && addSide(invHex, invDir, type, size, colors, true);
+                            hex.addBorderSide(piece, type, size, ()=>new hexM.Border(type, {}, colors));
                         }
                     }
                 }
@@ -393,13 +316,182 @@ exports.mapEditor = function(svg) {
         }
     }
 
-    var map = new hexM.Map(31, 31, hexM.HEX_WIDTH, ["a", "b", "c", "d"], [180, 240, 180]).addGlasses(function (hex, x, y, piece, center) {
+    function createSurface(type, colors) {
+        let hex = new hexM.Hex(0, 0, hexM.HEX_WIDTH);
+        hex.component.move(0, 0);
+        hex.setOrder([type]).setSurface(new hexM.Surface(type, colors));
+        hex.component.add(new svg.Hexagon(hex.width, "V").color([], colors[1], colors[2]));
+        return hex;
+    }
+
+    class NewPopin extends gui.Popin {
+
+        constructor() {
+            super(1000, 700);
+            this.whenOk(function() {
+                this.close();
+            }).whenCancel();
+            this.hexSelector = new gui.Selector(-200, -200, 200, 100, [
+                createSurface("a", [[80, 180, 80], 4, [60, 140, 60]]).component,
+                createSurface("b", [[180, 80, 80], 4, [140, 60, 60]]).component,
+                createSurface("c", [[80, 80, 180], 4, [60, 60, 140]]).component
+            ]);
+            this.add(this.hexSelector);
+            this.turnSelector = new gui.NumberField(200, -200, 300, 100, 4).font("arial", 60).bounds(1, 300);
+            this.add(this.turnSelector);
+            this.mapResizer = new MapResizer(120, 130, action=>{
+                console.log("Action received : "+action);
+                if (action==="S+") {
+                    map.createBottomRow();
+                }
+                else if (action==="S-") {
+                    map.removeBottomRow();
+                }
+                else if (action==="N+") {
+                    map.createTopRow();
+                }
+                else if (action==="N-") {
+                    map.removeTopRow();
+                }
+                else if (action==="E+") {
+                    map.createRightColumn();
+                }
+                else if (action==="E-") {
+                    map.removeRightColumn();
+                }
+                else if (action==="W+") {
+                    map.createLeftColumn();
+                }
+                else if (action==="W-") {
+                    map.removeLeftColumn();
+                }
+            }).position(0, 50);
+            this.add(this.mapResizer)
+        }
+
+    }
+
+    class MapResizer {
+
+        constructor(colCount, rowCount, handler) {
+            this.colCount = colCount;
+            this.rowCount = rowCount;
+            this.handler = handler;
+            const backColor = svg.ORANGE;
+            const strokeColor = svg.RED;
+            const chevronWidth = 50;
+            const chevronHeight = 100;
+            const chevronThickness = 15;
+            const mapWidth = 450;
+            const mapHeight = 250;
+            const margin = 10;
+            const MAX_COLS = 999;
+            const MIN_COLS = 2;
+            const MAX_ROWS = 999;
+            const MIN_ROWS = 2;
+            this.colCountText = new svg.Text(this.colCount).font("Arial", 48).position(-mapWidth/2+chevronWidth+60, 10);
+            this.rowCountText = new svg.Text(this.rowCount).font("Arial", 48).position(0, -20);
+            let leftAdder = new svg.Chevron(chevronWidth, chevronHeight, chevronThickness, "W")
+                .color(backColor, 2, strokeColor).onClick(()=>{
+                    console.log("Add col in West");
+                    if (this.colCount<MAX_COLS) {
+                        this.handler("W+");
+                        this.colCount++;
+                        this.colCountText.message(this.colCount);
+                    }
+            });
+            let leftRemover = new svg.Chevron(chevronWidth, chevronHeight, chevronThickness, "E")
+                .color(backColor, 2, strokeColor).onClick(()=>{
+                    console.log("Remove col in West");
+                    if (this.colCount>MIN_COLS) {
+                        this.handler("W-");
+                        this.colCount--;
+                        this.colCountText.message(this.colCount);
+                    }
+            });
+            let rightAdder = new svg.Chevron(chevronWidth, chevronHeight, chevronThickness, "E")
+                .color(backColor, 2, strokeColor).onClick(()=>{
+                    console.log("Add col in East");
+                    if (this.colCount<MAX_COLS) {
+                        this.handler("E+");
+                        this.colCount++;
+                        this.colCountText.message(this.colCount);
+                    }
+            });
+            let rightRemover = new svg.Chevron(chevronWidth, chevronHeight, chevronThickness, "W")
+                .color(backColor, 2, strokeColor).onClick(()=>{
+                    console.log("Remove col in East");
+                    if (this.colCount>MIN_COLS) {
+                        this.handler("E-");
+                        this.colCount--;
+                        this.colCountText.message(this.colCount);
+                    }
+            });
+            let topAdder = new svg.Chevron(chevronHeight, chevronWidth, chevronThickness, "N")
+                .color(backColor, 2, strokeColor).onClick(()=>{
+                    console.log("Add row in North");
+                    if (this.rowCount<MAX_ROWS) {
+                        this.handler("N+");
+                        this.rowCount++;
+                        this.rowCountText.message(this.rowCount);
+                    }
+            });
+            let topRemover = new svg.Chevron(chevronHeight, chevronWidth, chevronThickness, "S")
+                .color(backColor, 2, strokeColor).onClick(()=>{
+                    console.log("Remove row in North");
+                    if (this.rowCount>MIN_ROWS) {
+                        this.handler("N-");
+                        this.rowCount--;
+                        this.rowCountText.message(this.rowCount);
+                    }
+            });
+            let bottomAdder = new svg.Chevron(chevronHeight, chevronWidth, chevronThickness, "S")
+                .color(backColor, 2, strokeColor).onClick(()=>{
+                    console.log("Add row in South");
+                    if (this.rowCount<MAX_ROWS) {
+                        this.handler("S+");
+                        this.rowCount++;
+                        this.rowCountText.message(this.rowCount);
+                    }
+            });
+            let bottomRemover = new svg.Chevron(chevronHeight, chevronWidth, chevronThickness, "N")
+                .color(backColor, 2, strokeColor).onClick(()=>{
+                    console.log("Remove row in South");
+                    if (this.rowCount>MIN_ROWS) {
+                        this.handler("S-");
+                        this.rowCount--;
+                        this.rowCountText.message(this.rowCount);
+                    }
+                });
+            this.component = new svg.Translation()
+                .add(new svg.Rect(mapWidth, mapHeight).color(svg.LIGHT_GREEN, 3, svg.GREEN))
+                .add(leftAdder.position(-mapWidth/2-chevronWidth/2-margin, 0))
+                .add(leftRemover.position(-mapWidth/2+chevronWidth/2+margin, 0))
+                .add(rightAdder.position(mapWidth/2+chevronWidth/2+margin, 0))
+                .add(rightRemover.position(mapWidth/2-chevronWidth/2-margin, 0))
+                .add(topAdder.position(0, -mapHeight/2-chevronWidth/2-margin))
+                .add(topRemover.position(0, -mapHeight/2+chevronWidth/2+margin))
+                .add(bottomAdder.position(0, mapHeight/2+chevronWidth/2+margin))
+                .add(bottomRemover.position(0, mapHeight/2-chevronWidth/2-margin))
+                .add(this.colCountText).add(this.rowCountText);
+        }
+
+        position(x, y) {
+            this.component.move(x, y);
+            return this;
+        }
+
+    }
+
+    var map = new hexM.Map(3, 3, hexM.HEX_WIDTH, ["a", "b", "c", "d"], [180, 240, 180])
+        .addGlasses(function (hex, x, y, piece, center) {
         palette.action(hex, x, y, piece, center);
     });
 
     var drawing = new gui.Canvas(1500, 1050)
         .add(new gui.Frame(1000, 1000).set(map.component).position(510, 510).component);
-    var paneSaveLoad = new fileManager.FilePane([[255, 230, 150], 4, [10, 10, 10]], "Save/load", 120, "/uscw/edit");
+    var paneSaveLoad = new fileManager.FilePane([[255, 230, 150], 4, [10, 10, 10]], "Save/load", 120, "/uscw/edit")
+        .newPopin(NewPopin);
     var paneTerrain = new gui.Pane([svg.BEIGE, 4, [10, 10, 10]], "Terrain", 120);
     var panePath = new gui.Pane([[215, 230, 150], 4, [10, 10, 10]], "Path", 120);
     var paneBuilding = new gui.Pane([[195, 230, 150], 4, [10, 10, 10]], "Building", 120);

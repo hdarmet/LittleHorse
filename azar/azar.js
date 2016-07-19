@@ -160,7 +160,7 @@ exports.playAzar = function(svg, param) {
             this.game = game;
             this.component = new svg.Translation().mark(name);
             this.imageBase = new svg.Translation()
-                .add(new svg.Image(url).mark("image").position(200, 150).dimension(360, 270).clickable())
+                .add(new svg.Image(url).mark("image").position(200, 150).dimension(360, 270)/*.clickable()*/)
                 .add(new svg.Text(name).font("Arial", 48, 96).position(200, 350));
             this.component.add(this.imageBase);
             this.frame = new svg.Rect(360, 270).position(200, 150).color([], 4, [255, 0, 0]).opacity(0);

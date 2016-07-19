@@ -1105,6 +1105,65 @@ exports.Gui = function(svg, param) {
 
     }
 
+    class Selector {
+
+        constructor(x, y, width, height, items) {
+            this.items = items;
+            this.component = new svg.Translation().move(x, y);
+            this.item = new svg.Translation();
+            this.leftChevron = new svg.Chevron(width/4, height, 15, "W").color(svg.ORANGE, 2, svg.RED).position(-width/2+width/8, 0);
+            svg.addEvent(this.leftChevron, "click", ()=>this.selectItem(this.currentItemIndex()+1));
+            this.rightChevron = new svg.Chevron(width/4, height, 15, "E").color(svg.ORANGE, 2, svg.RED).position(width/2-width/8, 0);
+            svg.addEvent(this.rightChevron, "click", ()=>this.selectItem(this.currentItemIndex()-1));
+            this.component.add(this.leftChevron).add(this.item).add(this.rightChevron);
+            this.showItem(0);
+        }
+
+        showItem(index) {
+            if (this.current) {
+                this.item.remove(this.current);
+            }
+            this.current = this.items[index];
+            if (this.current) {
+                this.item.add(this.current);
+            }
+        }
+
+        currentItem() {
+            return this.current;
+        }
+
+        currentItemIndex() {
+            for (let i=0; i<this.items.length; i++) {
+                if (this.items[i]===this.current) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        selectItem(index) {
+            if (this.items.length>0) {
+                while (index < 0) {
+                    index += this.items.length;
+                }
+                while (index >= this.items.length) {
+                    index -= this.items.length;
+                }
+                this.showItem(index);
+                return this;
+            }
+        }
+
+        options(items) {
+            this.items = items;
+            if (this.currentItemIndex()===-1) {
+                this.showItem(0)
+            }
+            return this;
+        }
+    }
+
     class TextField {
 
         constructor(x, y, width, height, message) {
@@ -1119,27 +1178,18 @@ exports.Gui = function(svg, param) {
                this.showControl();
             });
             this.component = new svg.Translation().move(x, y).add(this.frame);
-            this.text = new svg.Text(this.textMessage).anchor("start");
+            this.text = new svg.Text(message).anchor("start").dimension(width, height);
             this.component.add(this.text).add(this.glass);
             this.control = new svg.TextField(x, y, width, height).message(message)
                 .color(svg.WHITE, 3, svg.ALMOST_BLACK).anchor(svg.TextItem.LEFT);
-            this.control.onInput((message)=>{
-                this.textMessage = message;
-                this.text.message(message);
-                let valid = true;
-                if (this._pattern) {
-                    valid = this._pattern.test(message);
-                }
-                if (valid) {
-                    this.control.color(svg.WHITE, 3, svg.ALMOST_BLACK);
-                }
-                else {
-                    this.control.color(svg.WHITE, 3, svg.RED);
-                }
+            this.onInputFct = (message)=>{
+                let valid = this.controlValidity(message);
                 if (this._onInput) {
                     this._onInput(message, valid);
                 }
-            });
+                return valid;
+            };
+            this.control.onInput((message)=>{this.onInputFct(message);});
             svg.addEvent(this.control, "blur", ()=>{
                 this.hideControl();
             });
@@ -1150,6 +1200,29 @@ exports.Gui = function(svg, param) {
             this._draw();
         }
 
+        controlValidity(message) {
+            let valid = this.validate(message);
+            if (valid) {
+                this.textMessage = message;
+                this.text.message(message);
+                this.control.color(svg.WHITE, 3, svg.ALMOST_BLACK);
+            }
+            else {
+                this.control.color(svg.WHITE, 3, svg.RED);
+            }
+            return valid;
+        }
+
+        validate(message) {
+            if (this._pattern) {
+                let valid = this._pattern.test(message);
+                return valid;
+            }
+            else {
+                return true;
+            }
+        }
+
         pattern(pattern) {
             this._pattern = pattern;
             return this;
@@ -1157,8 +1230,8 @@ exports.Gui = function(svg, param) {
 
         message(message) {
             this.textMessage = message;
-            this.text.message(message);
             this.control.message(message);
+            this.text.message(message);
             return this;
         }
 
@@ -1184,6 +1257,7 @@ exports.Gui = function(svg, param) {
             this.width = width;
             this.height = height;
             this.frame.dimension(width, height);
+            this.text.dimension(width, height);
             this.control.dimension(width, height);
             this._draw();
             return this;
@@ -1214,6 +1288,72 @@ exports.Gui = function(svg, param) {
         }
     }
 
+    class NumberField extends TextField {
+
+        constructor(x, y, width, height, value) {
+            super(x, y, width/2, height, ""+value);
+            let basicOnInputFct = this.onInputFct;
+            this.onInputFct = (message)=>{
+                if (basicOnInputFct(message)) {
+                    this.numericValue = Number(message);
+                }
+            };
+            this.numericValue = value;
+            this.leftChevron = new svg.Chevron(width/6, height, 15, "W").color(svg.ORANGE, 2, svg.RED).position(-width/2+width/8, 0);
+            svg.addEvent(this.leftChevron, "click", ()=>{
+                this.value(this.numericValue-1);
+            });
+            this.rightChevron = new svg.Chevron(width/6, height, 15, "E").color(svg.ORANGE, 2, svg.RED).position(width/2-width/8, 0);
+            svg.addEvent(this.rightChevron, "click", ()=>{
+                this.value(this.numericValue+1);
+            });
+            this.component.add(this.leftChevron).add(this.rightChevron);
+            super.pattern(/^\-{0,1}[0-9]+$/);
+        }
+
+        bounds(min, max) {
+            this.min = min;
+            this.max = max;
+            return this;
+        }
+
+        validate(message) {
+            let valid = super.validate(message);
+            let value = Number(message);
+            if (valid) {
+                if (this.min!==undefined && this.min>value) {
+                    valid = false;
+                }
+                if (this.max!==undefined && this.max<value) {
+                    valid = false;
+                }
+            }
+            return valid;
+        }
+
+        message(message) {
+            super.message(message);
+            this.numericValue = Number(this.textMessage);
+        }
+
+        value(numericValue) {
+            if (numericValue!==undefined) {
+                this.numericValue = numericValue;
+                if (this.min && this.min>this.numericValue) {
+                    this.numericValue = this.min;
+                }
+                if (this.max && this.max<this.numericValue) {
+                    this.numericValue = this.max;
+                }
+                super.message("" + this.numericValue);
+                return this;
+            }
+            else {
+                return this.numericValue;
+            }
+        }
+    }
+
     return {
         Canvas:Canvas,
         canvas:canvas,
@@ -1228,6 +1368,8 @@ exports.Gui = function(svg, param) {
         WarningPopin:WarningPopin,
         Grid:Grid,
         TextField:TextField,
-        Label:Label
+        NumberField:NumberField,
+        Label:Label,
+        Selector:Selector
     }
 };

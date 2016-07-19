@@ -218,8 +218,8 @@ exports.play = function(svg, param) {
             this.id = id;
             this.fillColor = fillColor;
             this.strokeColor = strokeColor;
-            this.head = new svg.Polygon(0, 0).add([[5, 20], [30, 5], [30, 35]]).color(fillColor, 4, strokeColor).clickable();
-            this.corpse = new svg.Polygon(0, 0).add([[15, 55], [30, 5], [45, 55]]).color(fillColor, 4, strokeColor).clickable();
+            this.head = new svg.Polygon(0, 0).add([[5, 20], [30, 5], [30, 35]]).color(fillColor, 4, strokeColor)/*.clickable()*/;
+            this.corpse = new svg.Polygon(0, 0).add([[15, 55], [30, 5], [45, 55]]).color(fillColor, 4, strokeColor)/*.clickable()*/;
             this.horse.add(this.head).add(this.corpse);
             this.component = new svg.Translation().add(this.horse);
             this.setPosition(game.board.stables[this.name].getFreeSlot());
@@ -633,8 +633,8 @@ exports.play = function(svg, param) {
     menu.setLiveCount("Horses count", "horsesCount", 700, 350,
         function(i) {
             return new svg.Translation()
-                .add(new svg.Polygon(i*25,0).add([[5,20],[30,5],[30,35]]).clickable())
-                .add(new svg.Polygon(i*25,0).add([[15,55],[30,5],[45,55]]).clickable());
+                .add(new svg.Polygon(i*25,0).add([[5,20],[30,5],[30,35]])/*.clickable()*/)
+                .add(new svg.Polygon(i*25,0).add([[15,55],[30,5],[45,55]])/*.clickable()*/);
         }, 4,
         [[0, 255, 0], 4, [0, 100, 0]]);
 

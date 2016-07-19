@@ -9,8 +9,8 @@ exports.GameItems = function(svg) {
 
         constructor(exit) {
             this.component = new svg.Translation()
-                .add(new svg.Triangle(40, 60, "W").position(20, 30).color([100, 100, 255], 4, [80, 80, 120]).clickable())
-                .add(new svg.Triangle(40, 60, "W").position(40, 30).color([100, 100, 255], 4, [80, 80, 120]).clickable());
+                .add(new svg.Triangle(40, 60, "W").position(20, 30).color([100, 100, 255], 4, [80, 80, 120])/*.clickable()*/)
+                .add(new svg.Triangle(40, 60, "W").position(40, 30).color([100, 100, 255], 4, [80, 80, 120])/*.clickable()*/);
             this.component.onClick(()=> {
                 exit();
             });
@@ -22,9 +22,9 @@ exports.GameItems = function(svg) {
 
         constructor(action, type) {
             this.component = new svg.Translation()
-                .add(new svg.Circle(35).position(30, 30).color([255, 204, 0], 4, [220, 100, 0]).clickable())
-                .add(new svg.Circle(5).position(15, 20).color([255, 204, 0], 4, [220, 100, 0]).clickable())
-                .add(new svg.Circle(5).position(45, 20).color([255, 204, 0], 4, [220, 100, 0]).clickable());
+                .add(new svg.Circle(35).position(30, 30).color([255, 204, 0], 4, [220, 100, 0])/*.clickable()*/)
+                .add(new svg.Circle(5).position(15, 20).color([255, 204, 0], 4, [220, 100, 0])/*.clickable()*/)
+                .add(new svg.Circle(5).position(45, 20).color([255, 204, 0], 4, [220, 100, 0])/*.clickable()*/);
             this.component.onClick(function () {
                 action();
             });
@@ -294,8 +294,8 @@ exports.GameItems = function(svg) {
 
         addOption(label, todo, x, y, width, height) {
             this.options.push(new svg.Translation()
-                .add(new svg.Rect(width, height).color([100, 200, 100], 5, [50, 255, 50]).clickable())
-                .add(new svg.Text(label).color([50, 255, 50]).position(0, Math.round(height * .2)).font("Arial", Math.round(height * .6)).clickable()));
+                .add(new svg.Rect(width, height).color([100, 200, 100], 5, [50, 255, 50])/*.clickable()*/)
+                .add(new svg.Text(label).color([50, 255, 50]).position(0, Math.round(height * .2)).font("Arial", Math.round(height * .6))/*.clickable()*/));
             this.options[this.options.length - 1].onClick(todo);
             this.canvas.add(this.options[this.options.length - 1].move(x + width / 2, 150 + y));
         }
@@ -339,8 +339,8 @@ exports.GameItems = function(svg) {
                     frame: new svg.Rect(optionWidth, 50).position(delta + i * (optionWidth + 5), 100).color([150, 150, 250], 3, [255, 50, 50]),
                     text: new svg.Text(options[i].text).position(delta + i * (optionWidth + 5), 110).font("Arial", 30).color([50, 50, 255])
                 };
-                rects[i].frame.clickable().onClick(setCallback(rects[i].value));
-                rects[i].text.clickable().onClick(setCallback(rects[i].value));
+                rects[i].frame/*.clickable()*/.onClick(setCallback(rects[i].value));
+                rects[i].text/*.clickable()*/.onClick(setCallback(rects[i].value));
                 optionsComponent.add(rects[i].frame);
                 optionsComponent.add(rects[i].text);
             }
@@ -423,25 +423,25 @@ exports.GameItems = function(svg) {
 
             function createPhantom(fillColor, strokeColor) {
                 var base = new svg.Translation();
-                base.add(new svg.CurvedShield(60, 100, 0.5, "N").color(fillColor, 4, strokeColor).clickable())
-                    .add(new svg.Ellipse(8, 12).position(-12, 0).color(fillColor, 4, strokeColor).clickable())
-                    .add(new svg.Ellipse(8, 12).position(12, 0).color(fillColor, 4, strokeColor).clickable());
+                base.add(new svg.CurvedShield(60, 100, 0.5, "N").color(fillColor, 4, strokeColor)/*.clickable()*/)
+                    .add(new svg.Ellipse(8, 12).position(-12, 0).color(fillColor, 4, strokeColor)/*.clickable()*/)
+                    .add(new svg.Ellipse(8, 12).position(12, 0).color(fillColor, 4, strokeColor)/*.clickable()*/);
                 return base;
             }
 
             function createHuman(fillColor, strokeColor) {
                 var base = new svg.Translation();
-                base.add(new svg.CurvedShield(50, 66, 0.5, "N").position(0, 17).color(fillColor, 4, strokeColor).clickable())
-                    .add(new svg.Circle(20).position(0, -20).color(fillColor, 4, strokeColor).clickable());
+                base.add(new svg.CurvedShield(50, 66, 0.5, "N").position(0, 17).color(fillColor, 4, strokeColor)/*.clickable()*/)
+                    .add(new svg.Circle(20).position(0, -20).color(fillColor, 4, strokeColor)/*.clickable()*/);
                 return base;
             }
 
             function createBot(fillColor, strokeColor) {
                 var base = new svg.Translation();
-                base.add(new svg.Rect(60, 50).position(0, 25).color(fillColor, 4, strokeColor).clickable())
-                    .add(new svg.Rect(80, 10).position(0, 45).color(fillColor, 4, strokeColor).clickable())
-                    .add(new svg.Rect(50, 40).position(0, -20).color(fillColor, 4, strokeColor).clickable())
-                    .add(new svg.Rect(40, 30).position(0, -20).color(fillColor, 4, strokeColor).clickable());
+                base.add(new svg.Rect(60, 50).position(0, 25).color(fillColor, 4, strokeColor)/*.clickable()*/)
+                    .add(new svg.Rect(80, 10).position(0, 45).color(fillColor, 4, strokeColor)/*.clickable()*/)
+                    .add(new svg.Rect(50, 40).position(0, -20).color(fillColor, 4, strokeColor)/*.clickable()*/)
+                    .add(new svg.Rect(40, 30).position(0, -20).color(fillColor, 4, strokeColor)/*.clickable()*/);
                 return base;
             }
         }
