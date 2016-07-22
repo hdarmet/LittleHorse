@@ -28,7 +28,7 @@ exports.SVG = function(runtime) {
         });
     }
 
-    var svgr = runtime;// || targetruntime();
+    var svgr = runtime;
 
     function print(points) {
         if (points.length==0) return "";
@@ -371,7 +371,6 @@ exports.SVG = function(runtime) {
     TextField.PASSWORD = "password";
     TextField.TEXT = "text";
 
-
     class Drawing extends SvgElement {
 
         constructor(width, height) {
@@ -589,13 +588,22 @@ exports.SVG = function(runtime) {
         }
 
         onClick(handler) {
-            svgr.addEvent(this.component, "click", handler);
-            //this.accept(new Visitor("onClick", handler));
+            if (handler) {
+                svgr.addEvent(this.component, "click", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "click");
+            }
             return this;
         }
 
         onRightClick(handler) {
-            this.accept(new Visitor("onRightClick", handler));
+            if (handler) {
+                svgr.addEvent(this.component, "contextmenu", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "contextmenu");
+            }
             return this;
         }
 
@@ -603,12 +611,7 @@ exports.SVG = function(runtime) {
             this.accept(new Visitor("color", fillColor, stroke, strokeColor));
             return this;
         }
-/*
-        clickable(flag) {
-            this.accept(new Visitor("clickable", flag));
-            return this;
-        }
-*/
+
         prepareAnimator(animator) {
             animator.opacity = (sopacity, eopacity)=> {
                 animator.process([sopacity], [eopacity], coords=> this.opacity(coords[0]));
@@ -839,56 +842,26 @@ exports.SVG = function(runtime) {
             visitor.visit(this);
             return this;
         }
-/*
-        clickable(flag = true) {
-            this.clickflag = flag;
-            this._setOnClick();
-            this._setOnRightClick();
-            return this;
-        }
-*/
+
         onClick(handler) {
-            svgr.addEvent(this.component, "click", handler);
-            //this.clickHandler = handler;
-            //this._setOnClick();
+            if (handler) {
+                svgr.addEvent(this.component, "click", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "click");
+            }
+
             return this;
         }
 
         onRightClick(handler) {
-            this.rightClickHandler = handler;
-            this._setOnRightClick();
+            if (handler) {
+                svgr.addEvent(this.component, "contextmenu", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "contextmenu");
+            }
             return this;
-        }
-
-        _setOnClick() {
-            if (this.clickflag && this.clickHandler) {
-                this.component.clickHandler = this.clickHandler;
-                svgr.addEvent(this.component, "click", this.component.clickHandler);
-            }
-            else {
-                if (this.component.clickHandler) {
-                    svgr.removeEvent(this.component, "click", this.component.clickHandler);
-                    delete this.component.clickHandler;
-                }
-            }
-        }
-
-        _setOnRightClick() {
-            if (this.clickflag && this.rightClickHandler) {
-                var self = this;
-                this.component.rightClickHandler = function (event) {
-                    svgr.preventDefault(event);
-                    self.rightClickHandler();
-                    return false;
-                };
-                svgr.addEvent(this.component, "contextmenu", this.component.rightClickHandler);
-            }
-            else {
-                if (this.component.rightClickHandler) {
-                    svgr.removeEvent(this.component, "contextmenu", this.component.rightClickHandler);
-                    delete this.component.rightClickHandler;
-                }
-            }
         }
 
         color(fillColor, strokeWidth, strokeColor) {
