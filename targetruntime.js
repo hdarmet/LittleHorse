@@ -110,6 +110,9 @@ exports.targetRuntime = function() {
             if (component.listeners && component.listeners[eventName]) {
                 component.listeners[eventName](event);
             }
+            else {
+                component.parentNode && this.event(component.parentNode, eventName, event);
+            }
         },
         screenSize: function(){
             return {

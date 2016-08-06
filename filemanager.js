@@ -1,7 +1,7 @@
 /**
  * Created by HDA3014 on 06/02/2016.
  */
-
+console.log("File Manager loaded");
 exports.FileManager = function(svg, gui) {
 
     class FileGrid extends gui.Grid {

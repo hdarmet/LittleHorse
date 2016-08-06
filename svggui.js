@@ -4,6 +4,8 @@
 
 exports.Gui = function(svg, param) {
 
+    const WHEEL_STEP = 100;
+
     function canvas(component) {
         while(component) {
             if (component.canvas) {
@@ -27,20 +29,20 @@ exports.Gui = function(svg, param) {
             this.drawing.add(this.component.background).add(this.component.glass);
             this.currentFocus = null;
             let drag = null;
-            svg.addEvent(this.component.glass, 'mousedown', event=> {
+            this.component.glass.onMouseDown(event=> {
                 let target = this.component.background.getTarget(event.pageX, event.pageY);
                 drag = target;
                 if (target) {
                     svg.event(target, 'mousedown', event);
                 }
             });
-            svg.addEvent(this.component.glass, 'mousemove', event=> {
+            this.component.glass.onMouseMove(event=> {
                 let target = drag || this.component.background.getTarget(event.pageX, event.pageY);
                 if (target) {
                     svg.event(target, 'mousemove', event);
                 }
             });
-            svg.addEvent(this.component.glass, 'mouseup', event=> {
+            this.component.glass.onMouseUp(event=> {
                 let target = drag || this.component.background.getTarget(event.pageX, event.pageY);
                 if (target) {
                     this.currentFocus = this.getFocus(target);
@@ -49,11 +51,17 @@ exports.Gui = function(svg, param) {
                 }
                 drag = null;
             });
-            svg.addEvent(this.component.glass, 'mouseout', event=> {
+            this.component.glass.onMouseOut(event=> {
                 if (drag) {
                     svg.event(drag, 'mouseup', event);
                 }
                 drag = null;
+            });
+            this.component.glass.onMouseWheel(event=> {
+                let target = drag || this.component.background.getTarget(event.pageX, event.pageY);
+                if (target) {
+                    svg.event(target, 'wheel', event);
+                }
             });
             svg.addGlobalEvent("keydown", event=> {
                 if (this.processKeys(event.keyCode)) {
@@ -145,6 +153,22 @@ exports.Gui = function(svg, param) {
             this.component.add(this.hHandle.component);
             this.vHandle = new Handle([[255, 204, 0], 3, [220, 100, 0]], vHandleCallback).vertical(width / 2, -height / 2, height / 2);
             this.component.add(this.vHandle.component);
+            this.wheelHandler = (event)=> {
+                if (event.deltaX>0) {
+                    this.moveContent(this.content.x+WHEEL_STEP, this.content.y);
+                }
+                else if (event.deltaX<0) {
+                    this.moveContent(this.content.x-WHEEL_STEP, this.content.y);
+                }
+                if (event.deltaY>0) {
+                    this.moveContent(this.content.x, this.content.y+WHEEL_STEP);
+                }
+                else if (event.deltaY<0) {
+                    this.moveContent(this.content.x, this.content.y-WHEEL_STEP);
+                }
+                console.log("Wheel !! "+event.deltaX+" "+event.deltaY);
+            };
+            this.translate.onMouseWheel(this.wheelHandler);
         }
 
         position(x, y) {
@@ -154,20 +178,25 @@ exports.Gui = function(svg, param) {
 
         set(component) {
             if (this.content) {
+                this.content.onResize(null);
                 this.component.remove(this.content);
             }
             this.content = component;
+            this.content.onResize(()=>{
+                this.updateHandles();
+            });
             this.scale.add(this.content);
             this.updateHandles();
             return this;
         }
 
         updateHandles() {
-            let factor = this.scale.factor;
-            this.hHandle.dimension(this.view.width, this.content.width * factor)
-                .position((this.view.width / 2 - this.content.x * factor) / (this.content.width * factor) * this.view.width);
-            this.vHandle.dimension(this.view.height, this.content.height * factor)
-                .position((this.view.height / 2 - this.content.y * factor) / (this.content.height * factor) * this.view.height);
+            this.hHandle.dimension(this.view.width, this.content.width * this.scale.factor)
+                .position((this.view.width / 2 - this.content.x * this.scale.factor) /
+                    (this.content.width * this.scale.factor) * this.view.width);
+            this.vHandle.dimension(this.view.height, this.content.height * this.scale.factor)
+                .position((this.view.height / 2 - this.content.y * this.scale.factor) /
+                    (this.content.height * this.scale.factor) * this.view.height);
         }
 
         remove(component) {
@@ -316,13 +345,13 @@ exports.Gui = function(svg, param) {
                     return true;
                 };
                 this.handle.mouseupHandler = event=> {
-                    svg.removeEvent(this.handle, 'mousemove', this.handle.mousemoveHandler);
-                    svg.removeEvent(this.handle, 'mouseup', this.handle.mouseupHandler);
+                    this.handle.onMouseMove(null);
+                    this.handle.onMouseUp(null);
                     delete this.handle.mousemoveHandler;
                     delete this.handle.mouseupHandler;
                 };
-                svg.addEvent(this.handle, 'mousemove', this.handle.mousemoveHandler);
-                svg.addEvent(this.handle, 'mouseup', this.handle.mouseupHandler);
+                this.handle.onMouseMove(this.handle.mousemoveHandler);
+                this.handle.onMouseUp(this.handle.mouseupHandler);
             });
         }
 
@@ -456,7 +485,6 @@ exports.Gui = function(svg, param) {
                 var y = -position * this.content.height / this.view.height + this.view.height / 2;
                 this.content.move(x, y);
             };
-
             this.width = width;
             this.height = height;
             this.component = new svg.Translation();
@@ -468,6 +496,15 @@ exports.Gui = function(svg, param) {
             this.vHandle = new Handle([svg.LIGHT_ORANGE, 3, svg.ORANGE], vHandleCallback);
             this.back = new svg.Rect(width, height).color(color, 0, []);
             this.content = new svg.Translation();
+            this.wheelHandler = (event)=> {
+                if (event.deltaY>0) {
+                    this.moveContent(this.content.y+WHEEL_STEP);
+                }
+                else if (event.deltaY<0) {
+                    this.moveContent(this.content.y-WHEEL_STEP);
+                }
+            };
+            this.translate.onMouseWheel(this.wheelHandler);
             this.content.width = width;
             this.content.height = height;
             this.translate.add(this.back.position(width / 2, height / 2)).add(this.content);
@@ -1107,8 +1144,9 @@ exports.Gui = function(svg, param) {
 
     class Selector {
 
-        constructor(x, y, width, height, items) {
+        constructor(x, y, width, height, items, handler) {
             this.items = items;
+            this.handler = handler;
             this.component = new svg.Translation().move(x, y);
             this.item = new svg.Translation();
             this.leftChevron = new svg.Chevron(width/4, height, 15, "W").color(svg.ORANGE, 2, svg.RED).position(-width/2+width/8, 0);
@@ -1126,6 +1164,9 @@ exports.Gui = function(svg, param) {
             this.current = this.items[index];
             if (this.current) {
                 this.item.add(this.current);
+            }
+            if (this.handler) {
+                this.handler(this.currentItem(), this.currentItemIndex());
             }
         }
 

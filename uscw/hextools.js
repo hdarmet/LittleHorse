@@ -56,10 +56,14 @@ exports.Hex = function(svg) {
 
     class Map {
 
-        constructor(colCount, rowCount, hexWidth, ordered, backgroundColor) {
+        constructor(colCount, rowCount, hexWidth, ordered, baseSurface, backgroundColor) {
+            this.minColCount = Map.MIN_COLS;
+            this.maxColCount = Map.MAX_COLS;
+            this.minRowCount = Map.MIN_ROWS;
+            this.maxRowCount = Map.MAX_ROWS;
             this.rowOffset = 0;
             this.hexWidth = hexWidth;
-            this.rowCount = rowCount;
+            this.rowCount = 0;
             this.colCount = colCount;
             this.ordered = ordered;
             this.rows = [];
@@ -67,13 +71,25 @@ exports.Hex = function(svg) {
             this.hexSupport = new svg.Translation();
             this.itemSupport = new svg.Translation();
             this.component = new svg.Translation();
+            this.baseSurface = baseSurface;
             this.background = new svg.Rect(0, 0).color(backgroundColor);
             this.component.width = (colCount * 2 + 1) * svg.Hexagon.height(this.hexWidth) + MARGIN * 2;
             this.component.height = (rowCount * 3 + 1) / 2 * this.hexWidth + MARGIN * 2;
             this.component
                 .add(this.background)
                 .add(this.hexSupport).add(this.itemSupport);
-            this.createHexes();
+            this.component.onResize = (handler)=>{
+                this.background.onResize(handler);
+            };
+            this.createHexes(rowCount);
+        }
+
+        bounds(minColCount, maxColCount, minRowCount, maxRowCount) {
+            this.minColCount = minColCount;
+            this.maxColCount = maxColCount;
+            this.minRowCount = minRowCount;
+            this.maxRowCount = maxRowCount;
+            return this;
         }
 
         _updateSize() {
@@ -84,15 +100,40 @@ exports.Hex = function(svg) {
                 .position(this.component.width / 2, this.component.height / 2);
         }
 
-        createHexes() {
-            for (let i = 0; i < this.rowCount; i++) {
+        setBaseSurface(baseSurface) {
+            this.baseSurface = baseSurface;
+            this.hexes.forEach(hex=>hex.setBaseSurface(this.baseSurface));
+            return this;
+        }
+
+        createHexes(rowCount) {
+            for (let i = 0; i < rowCount; i++) {
                 this.createBottomRow();
             }
         }
 
+        createHex(x, y) {
+            let hex = new Hex(x, y, this.hexWidth, this.ordered, this.baseSurface);
+            if (this.hexCallback) {
+                hex.addGlass(this.hexCallback);
+            }
+            hex.map = this;
+            this.hexes.push(hex);
+            this.hexSupport.add(hex.component);
+            this.itemSupport.add(hex.itemSupport);
+            return hex;
+        }
+
+        removeHex(hex) {
+            this.hexes.remove(hex);
+            this.hexSupport.remove(hex.component);
+            this.itemSupport.remove(hex.itemSupport);
+        }
+
         createBottomRow() {
             console.log("Create bottom row");
-            if (this.rows.length < Map.MAX_ROWS) {
+            if (this.rows.length < this.maxRowCount) {
+                this.rowCount++;
                 let row = [];
                 this.rows.push(row);
                 if ((this.rows.length + this.rowOffset - 1) % 2 === 1) {
@@ -101,15 +142,8 @@ exports.Hex = function(svg) {
                 for (let c = 0; c < this.colCount; c++) {
                     let x = c * 2 + ((this.rows.length - 1 + this.rowOffset) % 2);
                     let y = this.rows.length - 1;
-                    let hex = new Hex(x, y, this.hexWidth, this.ordered);
-                    if (this.hexCallback) {
-                        hex.addGlass(this.hexCallback);
-                    }
-                    hex.map = this;
+                    var hex = this.createHex(x, y);
                     row.push(hex, hex);
-                    this.hexes.push(hex);
-                    this.hexSupport.add(hex.component);
-                    this.itemSupport.add(hex.itemSupport);
                 }
                 this.linkRow(this.rows.length - 1);
                 if (this.rows.length > 1) {
@@ -124,14 +158,13 @@ exports.Hex = function(svg) {
 
         removeBottomRow() {
             console.log("Delete bottom row");
-            if (this.rows.length > Map.MIN_ROWS) {
+            if (this.rows.length > this.minRowCount) {
+                this.rowCount--;
                 let row = this.rows[this.rows.length - 1];
                 let index = (this.rows.length - 1 + this.rowOffset) % 2;
                 for (let c = 0; c < this.colCount; c++) {
                     let hex = row[index + c * 2];
-                    this.hexes.remove(hex);
-                    this.hexSupport.remove(hex.component);
-                    this.itemSupport.remove(hex.itemSupport);
+                    this.removeHex(hex);
                 }
                 this.rows.remove(row);
                 this.linkRow(this.rows.length - 1);
@@ -142,7 +175,8 @@ exports.Hex = function(svg) {
 
         createTopRow() {
             console.log("Create top row");
-            if (this.rows.length < Map.MAX_ROWS) {
+            if (this.rows.length < this.maxRowCount) {
+                this.rowCount++;
                 this.hexes.forEach(hex=>hex.position(hex.x, hex.y + 1));
                 let row = [];
                 this.rows.unshift(row);
@@ -152,15 +186,8 @@ exports.Hex = function(svg) {
                 }
                 for (let c = 0; c < this.colCount; c++) {
                     let x = c * 2 + this.rowOffset;
-                    let hex = new Hex(x, 0, this.hexWidth, this.ordered);
-                    if (this.hexCallback) {
-                        hex.addGlass(this.hexCallback);
-                    }
-                    hex.map = this;
+                    let hex = this.createHex(x, 0);
                     row.push(hex, hex);
-                    this.hexes.push(hex);
-                    this.hexSupport.add(hex.component);
-                    this.itemSupport.add(hex.itemSupport);
                 }
                 this.linkRow(0);
                 if (this.rows.length > 1) {
@@ -175,14 +202,13 @@ exports.Hex = function(svg) {
 
         removeTopRow() {
             console.log("Delete top row");
-            if (this.rows.length > Map.MIN_ROWS) {
+            if (this.rows.length > this.minRowCount) {
+                this.rowCount--;
                 let row = this.rows[0];
                 let index = this.rowOffset;
                 for (let c = 0; c < this.colCount; c++) {
                     let hex = row[index + c * 2];
-                    this.hexes.remove(hex);
-                    this.hexSupport.remove(hex.component);
-                    this.itemSupport.remove(hex.itemSupport);
+                    this.removeHex(hex);
                 }
                 this.rows.remove(row);
                 this.rowOffset = this.rowOffset ? 0 : 1;
@@ -195,21 +221,14 @@ exports.Hex = function(svg) {
 
         createRightColumn() {
             console.log("Create right column");
-            if (this.colCount < Map.MAX_COLS) {
+            if (this.colCount < this.maxColCount) {
                 this.colCount++;
                 let offset = this.rowOffset;
                 for (let r = 0; r < this.rows.length; r++) {
                     let x = (this.colCount - 1) * 2 + offset;
                     offset = offset ? 0 : 1;
-                    let hex = new Hex(x, r, this.hexWidth, this.ordered);
-                    if (this.hexCallback) {
-                        hex.addGlass(this.hexCallback);
-                    }
-                    hex.map = this;
+                    let hex = this.createHex(x, r);
                     this.rows[r].push(hex, hex);
-                    this.hexes.push(hex);
-                    this.hexSupport.add(hex.component);
-                    this.itemSupport.add(hex.itemSupport);
                 }
                 this.linkColumn(this.colCount - 1);
                 if (this.colCount > 1) {
@@ -224,13 +243,11 @@ exports.Hex = function(svg) {
 
         removeRightColumn() {
             console.log("Remove right column");
-            if (this.colCount > Map.MIN_COLS) {
+            if (this.colCount > this.minColCount) {
                 for (let r = 0; r < this.rows.length; r++) {
                     let hex = this.rows[r].pop();
                     this.rows[r].pop();
-                    this.hexes.remove(hex);
-                    this.hexSupport.remove(hex.component);
-                    this.itemSupport.remove(hex.itemSupport);
+                    this.removeHex(hex);
                 }
                 this.colCount--;
                 this.linkColumn(this.colCount - 1);
@@ -242,21 +259,14 @@ exports.Hex = function(svg) {
 
         createLeftColumn() {
             console.log("Create left column");
-            if (this.colCount < Map.MAX_COLS) {
+            if (this.colCount < this.maxColCount) {
                 this.colCount++;
                 let offset = this.rowOffset;
                 this.hexes.forEach(hex=>hex.position(hex.x + 2, hex.y));
                 for (let r = 0; r < this.rows.length; r++) {
-                    let hex = new Hex(offset, r, this.hexWidth, this.ordered);
-                    if (this.hexCallback) {
-                        hex.addGlass(this.hexCallback);
-                    }
-                    hex.map = this;
+                    let hex = this.createHex(offset, r);
                     this.rows[r].splice(offset, 0, hex, hex);
                     offset = offset ? 0 : 1;
-                    this.hexes.push(hex);
-                    this.hexSupport.add(hex.component);
-                    this.itemSupport.add(hex.itemSupport);
                 }
                 this.linkColumn(0);
                 if (this.colCount > 1) {
@@ -271,15 +281,13 @@ exports.Hex = function(svg) {
 
         removeLeftColumn() {
             console.log("Remove left column");
-            if (this.colCount > Map.MIN_COLS) {
+            if (this.colCount > this.minColCount) {
                 let offset = this.rowOffset;
                 for (let r = 0; r < this.rows.length; r++) {
                     let hex = this.rows[r][offset];
                     this.rows[r].splice(offset, 2);
                     offset = offset ? 0 : 1;
-                    this.hexes.remove(hex);
-                    this.hexSupport.remove(hex.component);
-                    this.itemSupport.remove(hex.itemSupport);
+                    this.removeHex(hex);
                 }
                 this.hexes.forEach(hex=>hex.position(hex.x - 2, hex.y));
                 this.colCount--;
@@ -506,17 +514,18 @@ exports.Hex = function(svg) {
         }
     }
     Map.MIN_COLS = 2;
-    Map.MAX_COLS = 9;
+    Map.MAX_COLS = 99;
     Map.MIN_ROWS = 2;
-    Map.MAX_ROWS = 9;
+    Map.MAX_ROWS = 99;
 
     class Hex {
 
-        constructor(x, y, width, ordered) {
+        constructor(x, y, width, ordered, baseSurface) {
             this.x = x;
             this.y = y;
             this.width = width;
-            this.hex = new svg.Hexagon(width, "V").color([120, 250, 120]);
+            this.baseSurface = baseSurface;
+            this.hex = new svg.Hexagon(width, "V").color(this.baseSurface.color());
             this.component = new svg.Translation();
             this.ordered = makeOrdered(ordered);
             this.hexSupport = new svg.Ordered(ordered ? ordered.length : 0);
@@ -547,6 +556,12 @@ exports.Hex = function(svg) {
         setOrder(ordered) {
             this.ordered = makeOrdered(ordered);
             this.hexSupport.order(ordered.length);
+            return this;
+        }
+
+        setBaseSurface(baseSurface) {
+            this.baseSurface = baseSurface;
+            this.hex.color(this.baseSurface.color());
             return this;
         }
 
@@ -890,6 +905,10 @@ exports.Hex = function(svg) {
             this.type = type;
             this.colors = colors;
             this.component = new svg.Translation();
+        }
+
+        color() {
+            return this.colors[0];
         }
 
         setHex(hex) {

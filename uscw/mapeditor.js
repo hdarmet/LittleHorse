@@ -316,12 +316,15 @@ exports.mapEditor = function(svg) {
         }
     }
 
-    function createSurface(type, colors) {
-        let hex = new hexM.Hex(0, 0, hexM.HEX_WIDTH);
-        hex.component.move(0, 0);
-        hex.setOrder([type]).setSurface(new hexM.Surface(type, colors));
-        hex.component.add(new svg.Hexagon(hex.width, "V").color([], colors[1], colors[2]));
-        return hex;
+    function createSurfaceHexes(surfaces) {
+        let hexes = [];
+        for (let i=0; i<surfaces.length; i++) {
+            let hex = new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, surfaces[i]);
+            hex.component.move(0, 0);
+            hex.component.add(new svg.Hexagon(hex.width, "V").color([], surfaces[i].colors[1], surfaces[i].colors[2]));
+            hexes.push(hex);
+        }
+        return hexes;
     }
 
     class NewPopin extends gui.Popin {
@@ -331,15 +334,16 @@ exports.mapEditor = function(svg) {
             this.whenOk(function() {
                 this.close();
             }).whenCancel();
-            this.hexSelector = new gui.Selector(-200, -200, 200, 100, [
-                createSurface("a", [[80, 180, 80], 4, [60, 140, 60]]).component,
-                createSurface("b", [[180, 80, 80], 4, [140, 60, 60]]).component,
-                createSurface("c", [[80, 80, 180], 4, [60, 60, 140]]).component
-            ]);
+            this.hexSelector = new gui.Selector(-200, -200, 200, 100,
+                createSurfaceHexes(baseSurfaces).map(hex=>hex.component),
+                (component, index)=> {
+                    let surface = baseSurfaces[index];
+                    map.setBaseSurface(surface);
+                });
             this.add(this.hexSelector);
             this.turnSelector = new gui.NumberField(200, -200, 300, 100, 4).font("arial", 60).bounds(1, 300);
             this.add(this.turnSelector);
-            this.mapResizer = new MapResizer(120, 130, action=>{
+            this.mapResizer = new MapResizer(map.colCount, map.rowCount, action=>{
                 console.log("Action received : "+action);
                 if (action==="S+") {
                     map.createBottomRow();
@@ -365,7 +369,9 @@ exports.mapEditor = function(svg) {
                 else if (action==="W-") {
                     map.removeLeftColumn();
                 }
-            }).position(0, 50);
+            })
+            .bounds(map.minColCount, map.maxColCount, map.minRowCount, map.maxRowCount)
+            .position(0, 50);
             this.add(this.mapResizer)
         }
 
@@ -385,16 +391,16 @@ exports.mapEditor = function(svg) {
             const mapWidth = 450;
             const mapHeight = 250;
             const margin = 10;
-            const MAX_COLS = 999;
-            const MIN_COLS = 2;
-            const MAX_ROWS = 999;
-            const MIN_ROWS = 2;
+            this.maxColCount = 999;
+            this.minColCount = 2;
+            this.maxRowCount = 999;
+            this.minRowCount = 2;
             this.colCountText = new svg.Text(this.colCount).font("Arial", 48).position(-mapWidth/2+chevronWidth+60, 10);
             this.rowCountText = new svg.Text(this.rowCount).font("Arial", 48).position(0, -20);
             let leftAdder = new svg.Chevron(chevronWidth, chevronHeight, chevronThickness, "W")
                 .color(backColor, 2, strokeColor).onClick(()=>{
                     console.log("Add col in West");
-                    if (this.colCount<MAX_COLS) {
+                    if (this.colCount<this.maxColCount) {
                         this.handler("W+");
                         this.colCount++;
                         this.colCountText.message(this.colCount);
@@ -403,7 +409,7 @@ exports.mapEditor = function(svg) {
             let leftRemover = new svg.Chevron(chevronWidth, chevronHeight, chevronThickness, "E")
                 .color(backColor, 2, strokeColor).onClick(()=>{
                     console.log("Remove col in West");
-                    if (this.colCount>MIN_COLS) {
+                    if (this.colCount>this.minColCount) {
                         this.handler("W-");
                         this.colCount--;
                         this.colCountText.message(this.colCount);
@@ -412,7 +418,7 @@ exports.mapEditor = function(svg) {
             let rightAdder = new svg.Chevron(chevronWidth, chevronHeight, chevronThickness, "E")
                 .color(backColor, 2, strokeColor).onClick(()=>{
                     console.log("Add col in East");
-                    if (this.colCount<MAX_COLS) {
+                    if (this.colCount<this.maxColCount) {
                         this.handler("E+");
                         this.colCount++;
                         this.colCountText.message(this.colCount);
@@ -421,7 +427,7 @@ exports.mapEditor = function(svg) {
             let rightRemover = new svg.Chevron(chevronWidth, chevronHeight, chevronThickness, "W")
                 .color(backColor, 2, strokeColor).onClick(()=>{
                     console.log("Remove col in East");
-                    if (this.colCount>MIN_COLS) {
+                    if (this.colCount>this.minColCount) {
                         this.handler("E-");
                         this.colCount--;
                         this.colCountText.message(this.colCount);
@@ -430,7 +436,7 @@ exports.mapEditor = function(svg) {
             let topAdder = new svg.Chevron(chevronHeight, chevronWidth, chevronThickness, "N")
                 .color(backColor, 2, strokeColor).onClick(()=>{
                     console.log("Add row in North");
-                    if (this.rowCount<MAX_ROWS) {
+                    if (this.rowCount<this.maxRowCount) {
                         this.handler("N+");
                         this.rowCount++;
                         this.rowCountText.message(this.rowCount);
@@ -439,7 +445,7 @@ exports.mapEditor = function(svg) {
             let topRemover = new svg.Chevron(chevronHeight, chevronWidth, chevronThickness, "S")
                 .color(backColor, 2, strokeColor).onClick(()=>{
                     console.log("Remove row in North");
-                    if (this.rowCount>MIN_ROWS) {
+                    if (this.rowCount>this.minRowCount) {
                         this.handler("N-");
                         this.rowCount--;
                         this.rowCountText.message(this.rowCount);
@@ -448,7 +454,7 @@ exports.mapEditor = function(svg) {
             let bottomAdder = new svg.Chevron(chevronHeight, chevronWidth, chevronThickness, "S")
                 .color(backColor, 2, strokeColor).onClick(()=>{
                     console.log("Add row in South");
-                    if (this.rowCount<MAX_ROWS) {
+                    if (this.rowCount<this.maxRowCount) {
                         this.handler("S+");
                         this.rowCount++;
                         this.rowCountText.message(this.rowCount);
@@ -457,7 +463,7 @@ exports.mapEditor = function(svg) {
             let bottomRemover = new svg.Chevron(chevronHeight, chevronWidth, chevronThickness, "N")
                 .color(backColor, 2, strokeColor).onClick(()=>{
                     console.log("Remove row in South");
-                    if (this.rowCount>MIN_ROWS) {
+                    if (this.rowCount>this.minRowCount) {
                         this.handler("S-");
                         this.rowCount--;
                         this.rowCountText.message(this.rowCount);
@@ -476,6 +482,14 @@ exports.mapEditor = function(svg) {
                 .add(this.colCountText).add(this.rowCountText);
         }
 
+        bounds(minColCount, maxColCount, minRowCount, maxRowCount) {
+            this.minColCount = minColCount;
+            this.maxColCount = maxColCount;
+            this.minRowCount = minRowCount;
+            this.maxRowCount = maxRowCount;
+            return this;
+        }
+
         position(x, y) {
             this.component.move(x, y);
             return this;
@@ -483,7 +497,13 @@ exports.mapEditor = function(svg) {
 
     }
 
-    var map = new hexM.Map(3, 3, hexM.HEX_WIDTH, ["a", "b", "c", "d"], [180, 240, 180])
+    var baseSurfaces = [
+        new hexM.Surface("a", [[120, 220, 120], 4, [60, 140, 60]]),
+        new hexM.Surface("b", [[180, 80, 80], 4, [140, 60, 60]]),
+        new hexM.Surface("c", [[80, 80, 180], 4, [60, 60, 140]])
+    ];
+
+    var map = new hexM.Map(3, 3, hexM.HEX_WIDTH, ["a", "b", "c", "d"], baseSurfaces[0], [180, 240, 180])
         .addGlasses(function (hex, x, y, piece, center) {
         palette.action(hex, x, y, piece, center);
     });
@@ -501,42 +521,44 @@ exports.mapEditor = function(svg) {
         .addPane(panePath)
         .addPane(paneBuilding);
 
-    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH), paneTerrain).surface("a", [[80, 180, 80], 4, [60, 140, 60]]);
-    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH), paneTerrain).surface("b", [[80, 80, 180], 4, [60, 60, 140]]);
-    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH), panePath).line("c", 0.2, [[180, 180, 180], 4, [120, 120, 120]]);
-    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH), panePath).line("c", 0.3, [[180, 180, 180], 4, [120, 120, 120]]);
-    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH), panePath).border("d", 0.6, [[120, 120, 230], 4, [90, 90, 150]]);
-    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH), paneBuilding).commonItem(
+    for (let i=0; i<20; i++) {
+        new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneTerrain).surface("a", [[80, 180, 80], 4, [60, 140, 60]]);
+        new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneTerrain).surface("b", [[80, 80, 180], 4, [60, 60, 140]]);
+    }
+    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), panePath).line("c", 0.2, [[180, 180, 180], 4, [120, 120, 120]]);
+    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), panePath).line("c", 0.3, [[180, 180, 180], 4, [120, 120, 120]]);
+    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), panePath).border("d", 0.6, [[120, 120, 230], 4, [90, 90, 150]]);
+    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneBuilding).commonItem(
         function () {
             return new hexM.House(30, 20, [[180, 80, 80], 2, [140, 60, 60]], 30);
         },
         function () {
             return new hexM.House(30, 20, [[180, 80, 80], 2, [140, 60, 60]], 0);
         });
-    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH), paneBuilding).commonItem(
+    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneBuilding).commonItem(
         function () {
             return new hexM.RoundOpenTower(15, [[180, 180, 180], 2, [40, 40, 40]]);
         },
         function () {
             return new hexM.RoundOpenTower(15, [[180, 180, 180], 2, [40, 40, 40]]);
         });
-    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH), paneBuilding).commonItem(
+    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneBuilding).commonItem(
         function () {
             return new hexM.SquareOpenTower(30, 30, [[180, 180, 180], 2, [40, 40, 40]], 15);
         },
         function () {
             return new hexM.SquareOpenTower(30, 30, [[180, 180, 180], 2, [40, 40, 40]], 0);
         });
-    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH), paneBuilding).commonItem(
+    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneBuilding).commonItem(
         function () {
             return new hexM.Bridge(40, 14, [[200, 200, 200], 2, [40, 40, 40]], 0);
         },
         function () {
             return new hexM.Bridge(40, 14, [[200, 200, 200], 2, [40, 40, 40]], 0);
         });
-    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH), paneBuilding).composite();
+    new HexSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneBuilding).composite();
 
-    var hexHouse = new hexM.Hex(0, 0, hexM.HEX_WIDTH);
+    var hexHouse = new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]);
     new HexSupport(hexHouse, paneBuilding).action(
         function () {
             palette.action = function (hex, x, y, piece, center) {
