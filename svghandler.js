@@ -28,6 +28,69 @@ exports.SVG = function(runtime) {
         });
     }
 
+    if (!Array.prototype.contains) {
+        Object.defineProperty(Array.prototype, "contains", {
+            enumerable: false,
+            value: function(val) {
+                return this.indexOf(val)>=0;
+            }
+        });
+    }
+
+    if (!Array.prototype.empty) {
+        Object.defineProperty(Array.prototype, "empty", {
+            enumerable: false,
+            value: function() {
+                return this.length === 0;
+            }
+        });
+    }
+
+    if (!Array.prototype.duplicate) {
+        Object.defineProperty(Array.prototype, "duplicate", {
+            enumerable: false,
+            value: function() {
+                return this.slice(0);
+            }
+        });
+    }
+
+    if (!Object.prototype.empty) {
+        Object.defineProperty(Object.prototype, "empty", {
+            enumerable: false,
+            value: function() {
+                for (let field in this) {
+                    return false;
+                }
+                return true;
+            }
+        });
+    }
+
+    if (!Object.prototype.duplicate) {
+        Object.defineProperty(Object.prototype, "duplicate", {
+            enumerable: false,
+            value: function() {
+                let dup = {};
+                for (let field in this) {
+                    dup[field] = this[field];
+                }
+                return dup;
+            }
+        });
+    }
+
+    if (!Object.prototype.forEach) {
+        Object.defineProperty(Object.prototype, "forEach", {
+            enumerable: false,
+            value: function(lambda) {
+                for (let field in this) {
+                    lambda(field, this[field]);
+                }
+            }
+        });
+    }
+
     var svgr = runtime;
 
     function print(points) {
@@ -331,7 +394,6 @@ exports.SVG = function(runtime) {
             svgr.attr(this.component, "style", style);
             svgr.value(this.component, this.messageText || '');
             svgr.attr(this.component, "placeholder", this.placeHolderText || '');
-            console.log(style);
         }
     }
 
@@ -723,9 +785,6 @@ exports.SVG = function(runtime) {
 
         constructor(layerCount) {
             super();
-            this.children = [];
-            this._active = true;
-            this.component = svgr.create("g");
             for (var i = 0; i < layerCount; i++) {
                 this.children[i] = this._dummy();
                 svgr.add(this.component, this.children[i].component);

@@ -1,6 +1,7 @@
 /**
  * Created by HDA3014 on 06/02/2016.
  */
+var Memento = require("./memento").Memento;
 
 exports.Gui = function(svg, param) {
 
@@ -64,7 +65,7 @@ exports.Gui = function(svg, param) {
                 }
             });
             svg.addGlobalEvent("keydown", event=> {
-                if (this.processKeys(event.keyCode)) {
+                if (this.processKeys(event.keyCode, event.ctrlKey, event.altKey)) {
                     event.preventDefault();
                 }
             });
@@ -87,7 +88,15 @@ exports.Gui = function(svg, param) {
             return null;
         }
 
-        processKeys(key) {
+        processKeys(key, ctrl, alt) {
+            if (ctrl && key == 90) {
+                Memento.rollback();
+                return true;
+            }
+            else if (ctrl && key == 89) {
+                Memento.replay();
+                return true;
+            }
             return this.currentFocus && this.currentFocus.processKeys && this.currentFocus.processKeys(key);
         }
 
@@ -108,6 +117,7 @@ exports.Gui = function(svg, param) {
 
         dimension(width, height) {
             this.component.dimension(width, height);
+            this.drawing.dimension(width, height);
             this.component.glass.dimension(width, height);
             this.component.glass.position(width / 2, height / 2);
             return this;
@@ -142,11 +152,13 @@ exports.Gui = function(svg, param) {
             this.component = new svg.Translation();
             this.component.focus = this;
             this.border = new svg.Rect(width, height).color([], 4, [0, 0, 0]);
+            this.background = new svg.Rect(width, height).color([100, 100, 100]);
             this.view = new svg.Drawing(width, height).position(-width / 2, -height / 2);
             this.scale = new svg.Scaling(1);
             this.translate = new svg.Translation();
             this.rotate = new svg.Rotation(0);
             this.component
+                .add(this.background)
                 .add(this.view.add(this.translate.add(this.rotate.add(this.scale))))
                 .add(this.border);
             this.hHandle = new Handle([[255, 204, 0], 3, [220, 100, 0]], hHandleCallback).horizontal(-width / 2, width / 2, height / 2);
@@ -166,9 +178,18 @@ exports.Gui = function(svg, param) {
                 else if (event.deltaY<0) {
                     this.moveContent(this.content.x, this.content.y-WHEEL_STEP);
                 }
-                console.log("Wheel !! "+event.deltaX+" "+event.deltaY);
             };
             this.translate.onMouseWheel(this.wheelHandler);
+        }
+
+        dimension(width, height) {
+            this.border.dimension(width, height);
+            this.background.dimension(width, height);
+            this.view.dimension(width, height).position(-width / 2, -height / 2);
+            this.hHandle.horizontal(-width / 2, width / 2, height / 2);
+            this.vHandle.vertical(width / 2, -height / 2, height / 2);
+            this.updateHandles();
+            return this;
         }
 
         position(x, y) {
@@ -179,7 +200,7 @@ exports.Gui = function(svg, param) {
         set(component) {
             if (this.content) {
                 this.content.onResize(null);
-                this.component.remove(this.content);
+                this.scale.remove(this.content);
             }
             this.content = component;
             this.content.onResize(()=>{
@@ -197,6 +218,11 @@ exports.Gui = function(svg, param) {
             this.vHandle.dimension(this.view.height, this.content.height * this.scale.factor)
                 .position((this.view.height / 2 - this.content.y * this.scale.factor) /
                     (this.content.height * this.scale.factor) * this.view.height);
+        }
+
+        backgroundColor(color) {
+            this.background.color(color);
+            return this;
         }
 
         remove(component) {
@@ -765,6 +791,13 @@ exports.Gui = function(svg, param) {
             this.channel = svg.onChannel();
         }
 
+        dimension(width, height) {
+            this.width = width;
+            this.height = height;
+            this.resizePanes();
+            return this;
+        }
+
         position(x, y) {
             this.component.move(x, y);
             return this;
@@ -944,6 +977,21 @@ exports.Gui = function(svg, param) {
             this.items = [];
         }
 
+        disableKeyEvents() {
+            this.saveKeydown = svg.runtime.getGlobalEventHandler("keydown");
+            this.saveKeypressed = svg.runtime.getGlobalEventHandler("keypressed");
+            this.saveKeyup = svg.runtime.getGlobalEventHandler("keyup");
+            this.saveKeydown && svg.runtime.removeGlobalEvent("keydown");
+            this.saveKeypressed && svg.runtime.removeGlobalEvent("keypressed");
+            this.saveKeyup && svg.runtime.removeGlobalEvent("keyup");
+        }
+
+        restoreKeyEvents() {
+            this.saveKeydown && svg.runtime.addGlobalEvent("keydown", this.saveKeydown);
+            this.saveKeypressed && svg.runtime.addGlobalEvent("keypressed", this.saveKeypressed);
+            this.saveKeyup && svg.runtime.addGlobalEvent("keyup", this.saveKeyup);
+        }
+
         show(canvas, x=canvas.width/2, y=canvas.height/2) {
             this.canvas = canvas;
             this.component.move(x, y);
@@ -954,6 +1002,7 @@ exports.Gui = function(svg, param) {
                this.cancel();
             });
             this.canvas.add(this.component);
+            this.disableKeyEvents();
             return this;
         }
 
@@ -963,10 +1012,12 @@ exports.Gui = function(svg, param) {
             }
             this.canvas.remove(this.component);
             this.canvas.remove(this.mask);
+            this.restoreKeyEvents();
             return this;
         }
 
         cancel() {
+            this.ifCancel && this.ifCancel.call(this);
             this.close();
         }
 
@@ -1002,8 +1053,8 @@ exports.Gui = function(svg, param) {
 
         whenCancel(ifCancel) {
             let glass = new svg.Circle(40).color(svg.BLACK).opacity(0.005);
-            ifCancel=ifCancel||this.close;
-            svg.addEvent(glass, "click", ()=>{ifCancel.call(this);});
+            this.ifCancel=ifCancel||this.close;
+            svg.addEvent(glass, "click", ()=>this.cancel());
             this.cancelIcon = new svg.Translation().add(new svg.Rotation(45)
                 .add(new svg.Circle(40).color(svg.RED, 3, svg.DARK_RED))
                 .add(new svg.Polygon(0, 0).color(svg.WHITE, 2, svg.GREY)

@@ -176,7 +176,7 @@ exports.FileManager = function(svg, gui) {
                 .onSuccess((response)=>{
                     if (response.ack==='ok') {
                         this.manager.fileName = requestData.file;
-                        this.manager.setContent(response.data);
+                        this.manager.setContent(JSON.parse(response.data).content);
                         console.log("Load succeded");
                         this.close();
                     }
@@ -280,12 +280,18 @@ exports.FileManager = function(svg, gui) {
             return this;
         }
 
+        handlers(getHandler, setHandler) {
+            this.getHandler = getHandler;
+            this.setHandler = setHandler;
+            return this;
+        }
+
         getContent() {
-            return "Content of : "+this.fileName;
+            return this.getHandler ? this.getHandler() : null;
         }
 
         setContent(content) {
-            console.log("Received : "+content);
+            this.setHandler && this.setHandler(content);
         }
     }
 

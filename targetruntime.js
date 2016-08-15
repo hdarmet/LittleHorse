@@ -114,14 +114,31 @@ exports.targetRuntime = function() {
                 component.parentNode && this.event(component.parentNode, eventName, event);
             }
         },
+        globalEvent(eventName, event) {
+            if (window.listeners && window.listeners[eventName]) {
+                window.listeners[eventName](event);
+            }
+        },
+        getEventHandler(component, eventName) {
+            return component.listeners ? component.listeners[eventName] : null;
+        },
+        getGlobalEventHandler(eventName) {
+            return window.listeners ? window.listeners[eventName] : null;
+        },
+        preventDefault(event) {
+            event.preventDefault();
+        },
         screenSize: function(){
+        /*
             return {
                 width: document.body.clientWidth,
                 height: document.documentElement.clientHeight
             }
-        },
-        preventDefault(event) {
-            event.preventDefault();
+            */
+            return {
+                width: window.innerWidth,
+                height: window.innerHeight
+            }
         },
         now() {
             return new Date().getTime();

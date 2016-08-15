@@ -208,6 +208,17 @@ exports.mockRuntime = function() {
         event(component, eventName, event) {
             component.event(eventName,event);
         },
+        globalEvent(eventName, event) {
+            if (this.listeners && this.listeners[eventName]) {
+                this.listeners[eventName](event);
+            }
+        },
+        getEventHandler(component, eventName) {
+            return component.listeners ? component.listeners[eventName] : null;
+        },
+        getGlobalEventHandler(eventName) {
+            return this.listeners ? this.listeners[eventName] : null;
+        },
         screenSize(sWidth, sHeight){
             screenWidth = sWidth || screenWidth;
             screenHeight = sHeight || screenHeight;
@@ -513,6 +524,15 @@ exports.registerRuntime =  function(targetRuntime, register) {
         },
         event(component, eventName, event) {
             target.event(component.target, eventName, event);
+        },
+        globalEvent(eventName, event) {
+            target.globalEvent(eventName, event);
+        },
+        getEventHandler(component, eventName) {
+            return target.getEventHandler(component.target, eventName, event);
+        },
+        getGlobalEventHandler(eventName) {
+            return target.getGlobalEventHandler(eventName, event);
         },
         screenSize: function(){
             return target.screenSize();
