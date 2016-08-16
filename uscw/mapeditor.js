@@ -26,6 +26,7 @@ exports.mapEditor = function(svg) {
             this.component = new svg.Translation();
             this.component.add(hex.component.move(0, 0));
             this.component.add(hex.itemSupport.move(0, 0).active(false));
+            this.component.add(hex.unitSupport.move(0, 0).active(false));
             this.component.add(new svg.Hexagon(hex.width, "V").color([], 2, [10, 100, 10]));
             if (this.register()) {
                 this.select();
@@ -186,64 +187,8 @@ exports.mapEditor = function(svg) {
             });
         }
 
-        installDnD(item, doRotate, doDrop, doMove, doClick) {
-            item.addEvent('mousedown', event=> {
-                let delta = item.hex.component.localPoint(event.x, event.y);
-                let local = item.glass.localPoint(event.x, event.y);
-                if (item.anchor(local.x, local.y)) {
-                    var angle = Math.round(Math.atan2(delta.x - item.x, -delta.y + item.y) / Math.PI * 180);
-                }
-                let {x:initX, y:initY, angle:initAngle} = item;
-                let click = true;
-                item.addEvent('mousemove', moveEvent=> {
-                    let depl = item.hex.component.localPoint(moveEvent.x, moveEvent.y);
-                    if (angle) {
-                        var newAngle = Math.round(Math.atan2(depl.x - item.x, -depl.y + item.y) / Math.PI * 180);
-                        item.rotate(initAngle + newAngle - angle);
-                    }
-                    else {
-                        item.move(initX + depl.x - delta.x, initY + depl.y - delta.y);
-                    }
-                    click = false;
-                });
-                item.addEvent('mouseup', endEvent=> {
-                    if (click && endEvent.x === event.x && endEvent.y === event.y) {
-                        doClick(item)
-                    }
-                    else {
-                        let depl = item.hex.component.localPoint(endEvent.x, endEvent.y);
-                        if (angle) {
-                            let newAngle = Math.round(Math.atan2(depl.x - item.x, -depl.y + item.y) / Math.PI * 180);
-                            doRotate(item, initAngle + newAngle - angle);
-                        }
-                        else {
-                            let finalX = Math.round(initX + depl.x - delta.x);
-                            let finalY = Math.round(initY + depl.y - delta.y);
-                            let global = item.hex.component.globalPoint(finalX, finalY);
-                            let onMap = item.hex.map.component.localPoint(global);
-                            let newHex = item.hex.map.getHexFromPoint(onMap);
-                            if (newHex === item.hex) {
-                                doMove(item, finalX, finalY);
-                            }
-                            else {
-                                item.hex.removeItem(item);
-                                if (newHex) {
-                                    var local = newHex.component.localPoint(global);
-                                    doMove(item, Math.round(local.x), Math.round(local.y));
-                                    doDrop(newHex, item);
-                                }
-                            }
-                        }
-                        Memento.begin();
-                    }
-                    item.removeEvent('mousemove');
-                    item.removeEvent('mouseup');
-                });
-            });
-        }
-
         enableDnD(item) {
-            this.installDnD(item,
+            installDnD(item,
                 (item, angle)=> {
                     item.rotate(Math.round(angle / 15) * 15);
                 },
@@ -252,6 +197,9 @@ exports.mapEditor = function(svg) {
                 },
                 (item, x, y)=> {
                     item.move(x, y);
+                },
+                (item)=> {
+                    item.hex.map.select(item);
                 },
                 (item)=> {
                     item.hex.removeItem(item);
@@ -272,7 +220,7 @@ exports.mapEditor = function(svg) {
 
         enableCompositeDnD(composite) {
             let hexComposite = this.hex.getItem(hexM.Composite);
-            this.installDnD(composite,
+            installDnD(composite,
                 (comp, angle)=> {
                     comp.rotate(Math.round(angle / 60) * 60);
                     comp.conform();
@@ -294,8 +242,11 @@ exports.mapEditor = function(svg) {
                         hexComposite.highlight(true);
                     }
                     else {
-                        comp.hex.removeItem(comp);
+                        comp.hex.map.select(comp);
                     }
+                },
+                (comp)=> {
+                    comp.hex.removeItem(comp);
                 }
             );
 
@@ -353,6 +304,107 @@ exports.mapEditor = function(svg) {
                     });
                 });
         }
+    }
+
+    class UnitSupport extends HexSupport {
+
+        constructor(hex, pane) {
+            super(hex, pane)
+        }
+
+        unit(unitForTool, unitForMap) {
+            this.hex.putUnit(unitForTool());
+            this.action(()=> {
+                this.pane.palette.action = (hex, x, y, piece, center)=> {
+                    let unit = unitForMap();
+                    hex.putUnit(unit);
+                    this.enableDnD(unit);
+                };
+            });
+        }
+
+        enableDnD(unit) {
+            installDnD(unit,
+                (unit, angle)=> {
+                    unit.rotate(Math.round(angle / 30) * 30);
+                },
+                (hex, unit)=> {
+                    hex.putUnit(unit);
+                },
+                (unit, x, y)=> {
+                    unit.move(0, 0);
+                },
+                (unit)=> {
+                    unit.hex.map.select(unit);
+                },
+                (unit)=> {
+                    unit.hex.removeUnit(unit);
+                }
+            );
+        }
+
+        disableDnD(unit) {
+            unit.removeEvent('mousedown');
+        }
+    }
+
+    function installDnD(item, doRotate, doDrop, doMove, doClick, doRemove) {
+        item.addEvent('mousedown', event=> {
+            let delta = item.hex.component.localPoint(event.x, event.y);
+            let local = item.glass.localPoint(event.x, event.y);
+            if (item.anchor(local.x, local.y)) {
+                var angle = Math.round(Math.atan2(delta.x - item.x, -delta.y + item.y) / Math.PI * 180);
+            }
+            let {x:initX, y:initY, angle:initAngle} = item;
+            let click = true;
+            let itemParent = item.component.parent;
+            item.addEvent('mousemove', moveEvent=> {
+                let depl = item.hex.component.localPoint(moveEvent.x, moveEvent.y);
+                if (angle) {
+                    var newAngle = Math.round(Math.atan2(depl.x - item.x, -depl.y + item.y) / Math.PI * 180);
+                    item.rotate(initAngle + newAngle - angle);
+                }
+                else {
+                    frame.drag(item.component, itemParent, initX + depl.x - delta.x, initY + depl.y - delta.y);
+//                    item.move(initX + depl.x - delta.x, initY + depl.y - delta.y);
+                }
+                click = false;
+            });
+            item.addEvent('mouseup', endEvent=> {
+                if (click && endEvent.x === event.x && endEvent.y === event.y) {
+                    doClick(item)
+                }
+                else {
+                    let depl = item.hex.component.localPoint(endEvent.x, endEvent.y);
+                    if (angle) {
+                        let newAngle = Math.round(Math.atan2(depl.x - item.x, -depl.y + item.y) / Math.PI * 180);
+                        doRotate(item, initAngle + newAngle - angle);
+                    }
+                    else {
+                        let finalX = Math.round(initX + depl.x - delta.x);
+                        let finalY = Math.round(initY + depl.y - delta.y);
+                        let global = item.hex.component.globalPoint(finalX, finalY);
+                        let onMap = item.hex.map.component.localPoint(global);
+                        let newHex = item.hex.map.getHexFromPoint(onMap);
+                        frame.drop(item.component, itemParent, finalX, finalY);
+                        if (newHex === item.hex) {
+                            doMove(item, finalX, finalY);
+                        }
+                        else {
+                            doRemove(item);
+                            if (newHex) {
+                                var local = newHex.component.localPoint(global);
+                                doMove(item, Math.round(local.x), Math.round(local.y));
+                                doDrop(newHex, item);
+                            }
+                        }
+                    }
+                }
+                Memento.begin();
+                item.removeEvent('mousemove');
+                item.removeEvent('mouseup');
+            });
+        });
     }
 
     function createSurfaceHexes(surfaces) {
@@ -420,11 +472,13 @@ exports.mapEditor = function(svg) {
     }
 
     function saveMap() {
+        unselectAllCompositeTools();
         return new hexM.MapBuilder().spec(map);
     }
 
     function loadMap(desc) {
         Memento.disable();
+        unselectAllCompositeTools();
         map = new hexM.MapBuilder().map(desc).addGlasses(actionOnMap);
         frame.set(map.component);
         map.hexes.forEach(hex=>{
@@ -557,9 +611,10 @@ exports.mapEditor = function(svg) {
     }
 
     var baseSurfaces = [
-        new hexM.Surface("i", [[120, 220, 120], 4, [60, 140, 60]]),
-        new hexM.Surface("j", [[180, 80, 80], 4, [140, 60, 60]]),
-        new hexM.Surface("k", [[80, 80, 180], 4, [60, 60, 140]])
+        new hexM.Surface("ground0", [[120, 220, 120], 4, [60, 140, 60]]),
+        new hexM.Surface("desert0", [[255, 255, 150], 4, [230, 230, 140]]),
+        new hexM.Surface("sea0", [[130, 200, 250], 4, [100, 150, 200]]),
+        new hexM.Surface("space0", [[0, 0, 0], 4, [40, 40, 40]])
     ];
 
     function actionOnMap(hex, x, y, piece, center) {
@@ -567,9 +622,21 @@ exports.mapEditor = function(svg) {
         Memento.begin();
     }
 
-    let MAP_COLOR = [180, 240, 180];
-    var map = new hexM.Map(0, 10, 10, hexM.HEX_WIDTH, ["a", "b", "c", "d"], baseSurfaces[0], MAP_COLOR)
-        .addGlasses(actionOnMap);
+    function deleteSelected() {
+        if (map.selected) {
+            Memento.register(map);
+            if (map.selected instanceof hexM.Item) {
+                map.selected.hex.removeItem(map.selected);
+            }
+            else if (map.selected instanceof hexM.Unit) {
+                map.selected.hex.removeUnit(map.selected);
+            }
+            map.selected = null;
+            Memento.begin();
+        }
+    }
+
+    let ordered = [];
 
     var paneSaveLoad = new fileManager.FilePane([[255, 230, 150], 4, [10, 10, 10]], "Save/load", 120, "/uscw/edit")
         .newPopin(NewPopin);
@@ -577,6 +644,66 @@ exports.mapEditor = function(svg) {
     var paneTerrain = new gui.Pane([svg.BEIGE, 4, [10, 10, 10]], "Terrain", 120);
     var panePath = new gui.Pane([[215, 230, 150], 4, [10, 10, 10]], "Path", 120);
     var paneBuilding = new gui.Pane([[195, 230, 150], 4, [10, 10, 10]], "Building", 120);
+    var paneUnit = new gui.Pane([[185, 230, 150], 4, [10, 10, 10]], "Unit", 120);
+
+    let MAP_COLOR = [180, 240, 180];
+
+    var frame = new gui.Frame(600, 1000).backgroundColor(MAP_COLOR);
+    var drawing = new gui.Canvas(1000, 1000)
+        .add(frame.component)
+        .key(46, deleteSelected)
+        .key(8, deleteSelected);
+    var palette = new gui.Palette(400, 1000)
+        .addPane(paneSaveLoad)
+        .addPane(paneTerrain)
+        .addPane(panePath)
+        .addPane(paneBuilding)
+        .addPane(paneUnit);
+
+    resizeAll();
+
+    addSurfaceSupport("ground1", "ground0", [110, 210, 110], 0.9);
+    addSurfaceSupport("ground2", "ground0", [100, 200, 100], 0.9);
+    addSurfaceSupport("ground3", "ground0", [90, 190, 90], 0.9);
+    addSurfaceSupport("ground4", "ground0", [80, 180, 80], 0.9);
+    addSurfaceSupport("ground5", "ground0", [70, 170, 70], 0.9);
+    addSurfaceSupport("ground6", "ground0", [60, 160, 60], 0.9);
+    addSurfaceSupport("desert1", "desert0", [245, 245, 140], 0.8);
+    addSurfaceSupport("desert2", "desert0", [235, 235, 130], 0.8);
+    addSurfaceSupport("desert3", "desert0", [225, 225, 120], 0.8);
+    addSurfaceSupport("desert4", "desert0", [215, 215, 110], 0.8);
+    addSurfaceSupport("desert5", "desert0", [205, 205, 100], 0.8);
+    addSurfaceSupport("desert6", "desert0", [195, 195, 90], 0.8);
+    addLineSupport("path", "ground0", 0.2, [220, 180, 130], 0.8);
+    addLineSupport("path", "ground0", 0.15, [220, 180, 130], 0.8);
+    addLineSupport("path", "ground0", 0.1, [220, 180, 130], 0.8);
+    addLineSupport("road", "ground0", 0.2, [180, 180, 180], 0.7);
+    addLineSupport("road", "ground0", 0.3, [180, 180, 180], 0.7);
+    addLineSupport("road", "ground0", 0.4, [180, 180, 180], 0.7);
+    addBorderSupport("river", "ground0", 0.8, [120, 120, 230], 0.7);
+    addBorderSupport("river", "ground0", 0.7, [120, 120, 230], 0.7);
+    addBorderSupport("river", "ground0", 0.6, [120, 120, 230], 0.7);
+    addItemSupport("ground0", new hexM.House(30, 20, [[180, 80, 80], 2, [140, 60, 60]]));
+    addItemSupport("ground0", new hexM.House(40, 20, [[180, 80, 80], 2, [140, 60, 60]]));
+    addItemSupport("ground0", new hexM.House(20, 20, [[180, 80, 80], 2, [140, 60, 60]]));
+    addItemSupport("ground0", new hexM.SquareOpenTower(30, 30, [[180, 180, 180], 2, [40, 40, 40]]));
+    addItemSupport("ground0", new hexM.RoundOpenTower(15, [[180, 180, 180], 2, [40, 40, 40]]));
+    addItemSupport("ground0", new hexM.Bridge(40, 14, [[200, 200, 200], 2, [40, 40, 40]]));
+    addCompositeSupport("ground0");
+    addCompositeSupport("ground0");
+    addCompositeSupport("ground0");
+    addUnitSupport("ground0", new hexM.Unit(64, 64, 0, infantry, [[240, 240, 240], 3, [40, 40, 40]]));
+
+    function infantry(width, height, colors) {
+        return new svg.Translation()
+            .add(new svg.Rect(width, height).color(colors[0], 2, colors[2]))
+            .add(new svg.Line(-width/2, -height/2, width/2, height/2).color(colors[0], 2, colors[2]))
+            .add(new svg.Line(-width/2, height/2, width/2, -height/2).color(colors[0], 2, colors[2]));
+    }
+
+    var map = new hexM.Map(0, 10, 10, hexM.HEX_WIDTH, ordered, baseSurfaces[0], MAP_COLOR)
+        .addGlasses(actionOnMap);
+    frame.set(map.component);
 
     function resizeAll() {
         const PALETTE_WIDTH = 400;
@@ -597,54 +724,67 @@ exports.mapEditor = function(svg) {
             .position(canvasWidth-MARGIN-PALETTE_WIDTH/2, MARGIN+frameHeight/2)
     }
 
-    var frame = new gui.Frame(600, 1000)
-        .set(map.component).backgroundColor(MAP_COLOR);
-    var drawing = new gui.Canvas(1000, 1000)
-        .add(frame.component);
-    var palette = new gui.Palette(400, 1000)
-        .addPane(paneSaveLoad)
-        .addPane(paneTerrain)
-        .addPane(panePath)
-        .addPane(paneBuilding);
-    resizeAll();
-
     svg.runtime.addGlobalEvent("resize", event=>resizeAll());
 
-    new SurfaceSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneTerrain).surface("a", [[80, 180, 80], 4, [60, 140, 60]]);
-    new SurfaceSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneTerrain).surface("b", [[80, 80, 180], 4, [60, 60, 140]]);
-    new LineSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), panePath).line("c", 0.2, [[180, 180, 180], 4, [120, 120, 120]]);
-    new LineSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), panePath).line("c", 0.3, [[180, 180, 180], 4, [120, 120, 120]]);
-    new BorderSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), panePath).border("d", 0.6, [[120, 120, 230], 4, [90, 90, 150]]);
-    new ItemSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneBuilding).commonItem(
-        function () {
-            return new hexM.House(30, 20, [[180, 80, 80], 2, [140, 60, 60]], 30);
-        },
-        function () {
-            return new hexM.House(30, 20, [[180, 80, 80], 2, [140, 60, 60]], 0);
-        });
-    new ItemSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneBuilding).commonItem(
-        function () {
-            return new hexM.RoundOpenTower(15, [[180, 180, 180], 2, [40, 40, 40]]);
-        },
-        function () {
-            return new hexM.RoundOpenTower(15, [[180, 180, 180], 2, [40, 40, 40]]);
-        });
-    new ItemSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneBuilding).commonItem(
-        function () {
-            return new hexM.SquareOpenTower(30, 30, [[180, 180, 180], 2, [40, 40, 40]], 15);
-        },
-        function () {
-            return new hexM.SquareOpenTower(30, 30, [[180, 180, 180], 2, [40, 40, 40]], 0);
-        });
-    new ItemSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneBuilding).commonItem(
-        function () {
-            return new hexM.Bridge(40, 14, [[200, 200, 200], 2, [40, 40, 40]], 0);
-        },
-        function () {
-            return new hexM.Bridge(40, 14, [[200, 200, 200], 2, [40, 40, 40]], 0);
-        });
-    new CompositeSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneBuilding).composite();
-    new CompositeSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]), paneBuilding).composite();
+    function getColor(color, factor) {
+        return [Math.round(color[0]*factor), Math.round(color[1]*factor), Math.round(color[2]*factor)]
+    }
+
+    function addSurfaceSupport(type, baseType, color, factor) {
+        if (!ordered.contains(type)) {
+            ordered.push(type);
+        }
+        new SurfaceSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, getBaseSurface(baseType)), paneTerrain)
+            .surface(type, [color, 4, getColor(color, factor)]);
+    }
+
+    function addLineSupport(type, baseType, width, color, factor) {
+        if (!ordered.contains(type)) {
+            ordered.push(type);
+        }
+        new LineSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, getBaseSurface(baseType)), panePath)
+            .line(type, width, [color, 4, getColor(color, factor)]);
+    }
+
+    function addBorderSupport(type, baseType, width, color, factor) {
+        if (!ordered.contains(type)) {
+            ordered.push(type);
+        }
+        new BorderSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, getBaseSurface(baseType)), panePath)
+            .border(type, width, [color, 4, getColor(color, factor)]);
+    }
+
+    function addItemSupport(baseType, item) {
+        new ItemSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, getBaseSurface(baseType)), paneBuilding).commonItem(
+            function () {
+                let newItem = item.duplicate();
+                item.rotate(30);
+                return item;
+            },
+            function () {
+                return item.duplicate();
+            });
+    }
+
+    function addUnitSupport(baseType, unit) {
+        new UnitSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, getBaseSurface(baseType)), paneUnit).unit(
+            function () {
+                let newUnit = unit.duplicate();
+                return unit;
+            },
+            function () {
+                return unit.duplicate();
+            });
+    }
+
+    function addCompositeSupport(baseType) {
+        new CompositeSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, getBaseSurface(baseType)), paneBuilding)
+            .composite();
+    }
+
+    function getBaseSurface(type) {
+        return baseSurfaces.find(surface=>surface.type===type);
+    }
 
     var hexHouse = new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, baseSurfaces[0]);
     new HexSupport(hexHouse, paneBuilding).action(
@@ -656,28 +796,39 @@ exports.mapEditor = function(svg) {
     drawing.add(palette.component);
 
     Memento.finalize(()=>{
-        let inCompositeMode = false;
-        map.forEachHex(hex=>{
-            if (hex.getItem(hexM.Composite)) {
-                inCompositeMode = true;
-            }
-        });
-        if (inCompositeMode) {
-            for (let tool in palette.hexTools) {
-                if (palette.hexTools[tool] instanceof CompositeSupport) {
-                    palette.hexTools[tool].select();
-                    break;
-                }
-            }
+        if (isCompositesPresentOnMap()) {
+            selectFirstCompositeTool();
         }
         else {
-            for (let tool in palette.hexTools) {
-                if (palette.hexTools[tool] instanceof CompositeSupport) {
-                    palette.hexTools[tool].unselect();
-                }
-            }
+            unselectAllCompositeTools();
         }
     });
+
+    function isCompositesPresentOnMap () {
+        map.forEachHex(hex=>{
+            if (hex.getItem(hexM.Composite)) {
+                return true;
+            }
+        });
+        return false;
+    }
+
+    function selectFirstCompositeTool() {
+        for (let tool in palette.hexTools) {
+            if (palette.hexTools[tool] instanceof CompositeSupport) {
+                palette.hexTools[tool].select();
+                break;
+            }
+        }
+    }
+
+    function unselectAllCompositeTools() {
+        for (let tool in palette.hexTools) {
+            if (palette.hexTools[tool] instanceof CompositeSupport) {
+                palette.hexTools[tool].unselect();
+            }
+        }
+    }
 
     Memento.begin();
     return drawing;

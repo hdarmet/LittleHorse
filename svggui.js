@@ -69,6 +69,7 @@ exports.Gui = function(svg, param) {
                     event.preventDefault();
                 }
             });
+            this.keys=[];
         }
 
         mark(label) {
@@ -88,13 +89,25 @@ exports.Gui = function(svg, param) {
             return null;
         }
 
+        key(key, handler) {
+            this.keys[key] = {
+                handler: handler
+            };
+            return this;
+        }
+
         processKeys(key, ctrl, alt) {
+            console.log("Key : "+key);
             if (ctrl && key == 90) {
                 Memento.rollback();
                 return true;
             }
             else if (ctrl && key == 89) {
                 Memento.replay();
+                return true;
+            }
+            else if (this.keys[key]) {
+                this.keys[key].handler();
                 return true;
             }
             return this.currentFocus && this.currentFocus.processKeys && this.currentFocus.processKeys(key);
@@ -211,13 +224,31 @@ exports.Gui = function(svg, param) {
             return this;
         }
 
+        drag(item, parent, x, y) {
+            let point = this.scale.localPoint(parent.globalPoint(x, y));
+            if (item.parent!==this.scale) {
+                item.parent.remove(item);
+                this.scale.add(item);
+            }
+            item.move(point.x, point.y);
+        }
+
+        drop(item, parent, x, y) {
+            this.scale.remove(item);
+            let point = parent.localPoint(x, y);
+            parent.add(item);
+            item.move(x, y);
+        }
+
         updateHandles() {
-            this.hHandle.dimension(this.view.width, this.content.width * this.scale.factor)
-                .position((this.view.width / 2 - this.content.x * this.scale.factor) /
-                    (this.content.width * this.scale.factor) * this.view.width);
-            this.vHandle.dimension(this.view.height, this.content.height * this.scale.factor)
-                .position((this.view.height / 2 - this.content.y * this.scale.factor) /
-                    (this.content.height * this.scale.factor) * this.view.height);
+            if (this.content) {
+                this.hHandle.dimension(this.view.width, this.content.width * this.scale.factor)
+                    .position((this.view.width / 2 - this.content.x * this.scale.factor) /
+                        (this.content.width * this.scale.factor) * this.view.width);
+                this.vHandle.dimension(this.view.height, this.content.height * this.scale.factor)
+                    .position((this.view.height / 2 - this.content.y * this.scale.factor) /
+                        (this.content.height * this.scale.factor) * this.view.height);
+            }
         }
 
         backgroundColor(color) {

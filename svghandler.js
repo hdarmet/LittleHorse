@@ -237,11 +237,19 @@ exports.SVG = function(runtime) {
         localPoint(...args) {
             return getPoint(args);
         }
+
+        duplicate() {
+            let clone = new Screen(this.width, this.height);
+            this.children.forEach(child=>clone.add(child.duplicate()));
+            return clone;
+        }
     }
 
     class Block extends DomElement{
-        constructor(){
+        constructor(width, height){
             super();
+            this.move(0, 0);
+            this.dimension(width, height);
             this.component = svgr.createDOM("div");
             this.children = [];
             this._draw();
@@ -286,6 +294,12 @@ exports.SVG = function(runtime) {
             svgr.attr(this.component, "width", this.width);
             svgr.attr(this.component, "height", this.height);
             svgr.attr(this.component, "position", "absolute");
+        }
+
+        duplicate() {
+            let clone = new Block(this.width, this.height).move(this.x, this.y);
+            this.children.forEach(child=>clone.add(child.duplicate()));
+            return clone;
         }
     }
 
@@ -395,6 +409,15 @@ exports.SVG = function(runtime) {
             svgr.value(this.component, this.messageText || '');
             svgr.attr(this.component, "placeholder", this.placeHolderText || '');
         }
+
+        duplicate(item) {
+            return item.anchor(this.anchorText)
+                .font(this.fontName, this.fontSize)
+                .color(this.fillColor, this.strokeWidth, this.strokeColor)
+                .message(this.messageText)
+                .placeHolder(this.placeHolderText);
+        }
+
     }
 
     TextItem.CENTER = "center";
@@ -421,6 +444,12 @@ exports.SVG = function(runtime) {
             style += "position: absolute;";
             super._draw(style);
         }
+
+        duplicate() {
+            return super.duplicate(new TextArea(this.x, this.y, this.width, this.height))
+                .scroll(this.mode);
+        }
+
     }
 
     TextArea.SCROLL = "auto";
@@ -445,6 +474,10 @@ exports.SVG = function(runtime) {
             super._draw(style);
         }
 
+        duplicate() {
+            return super.duplicate(new TextField(this.x, this.y, this.width, this.height))
+                .scroll(this.mode);
+        }
     }
 
     TextField.PASSWORD = "password";
@@ -594,6 +627,11 @@ exports.SVG = function(runtime) {
             return svgr.boundingRect(this.component);
         }
 
+        duplicate() {
+            let clone = new Drawing(this.width, this.height).move(this.x, this.y).active(this._active);
+            this.children.forEach(child=>clone.add(child.duplicate()));
+            return clone;
+        }
     }
 
     class Handler extends SvgElement {
@@ -779,6 +817,12 @@ exports.SVG = function(runtime) {
             }
             return null;
         }
+
+        duplicate(clone) {
+            clone.active(this._active);
+            this.children.forEach(child=>clone.add(child.duplicate()));
+            return clone;
+        }
     }
 
     class Ordered extends Handler {
@@ -834,6 +878,11 @@ exports.SVG = function(runtime) {
             point = this.parent ? this.parent.localPoint(point) : null;
             return point;
         }
+
+        duplicate() {
+            let clone = super.duplicate(new Ordered(this.children.length));
+            return clone;
+        }
     }
 
     class Translation extends Handler {
@@ -876,6 +925,11 @@ exports.SVG = function(runtime) {
             }
             return point;
         }
+
+        duplicate() {
+            let clone = super.duplicate(new Translation(this.x, this.y));
+            return clone;
+        }
     }
 
     class Rotation extends Handler {
@@ -915,6 +969,11 @@ exports.SVG = function(runtime) {
                 point = rotate(point.x, point.y, -this.angle);
             }
             return point;
+        }
+
+        duplicate() {
+            let clone = super.duplicate(new Rotation(this.angle));
+            return clone;
         }
     }
 
@@ -962,6 +1021,11 @@ exports.SVG = function(runtime) {
                 };
             }
             return point;
+        }
+
+        duplicate() {
+            let clone = super.duplicate(new Scaling(this.factor));
+            return clone;
         }
     }
 
@@ -1172,6 +1236,13 @@ exports.SVG = function(runtime) {
             return svgr.boundingRect(this.component);
         }
 
+        duplicate(clone) {
+            return clone
+                .active(this._active)
+                .opacity(this._opacity).fillOpacity(this._fillopacity)
+                .color(this.fillColor, this.strokeWidth, this.strokeColor);
+        }
+
     }
 
     class Rect extends Shape {
@@ -1233,6 +1304,13 @@ exports.SVG = function(runtime) {
             return local.x >= -this.width / 2 && local.x <= this.width / 2
                 && local.y >= -this.height / 2 && local.y <= this.height / 2;
         }
+
+        duplicate() {
+            let clone = super.duplicate(new Rect(this.width, this.height)
+                .position(this.x, this.y)
+                .corners(this.rx, this.ry));
+            return clone;
+        }
     }
 
     class Circle extends Shape {
@@ -1281,6 +1359,12 @@ exports.SVG = function(runtime) {
             var local = this.localPoint(x, y);
             var dist = local.x * local.x + local.y * local.y;
             return dist <= this.r * this.r;
+        }
+
+        duplicate() {
+            let clone = super.duplicate(new Circle(this.radius)
+                .position(this.x, this.y));
+            return clone;
         }
     }
 
@@ -1333,6 +1417,12 @@ exports.SVG = function(runtime) {
             var dx = local.x / this.rx;
             var dy = local.y / this.ry;
             return dx * dx + dy * dy <= 1;
+        }
+
+        duplicate() {
+            let clone = super.duplicate(new Circle(this.rx, this.ry)
+                .position(this.x, this.y));
+            return clone;
         }
     }
 
@@ -1415,6 +1505,12 @@ exports.SVG = function(runtime) {
         inside(x, y) {
             var local = this.localPoint(x, y);
             return insidePolygon(local.x + this.x, local.y + this.y, this.points);
+        }
+
+        duplicate() {
+            let clone = super.duplicate(new Triangle(this.width, this.height, this.dir)
+                .position(this.x, this.y));
+            return clone;
         }
     }
 
@@ -1531,6 +1627,12 @@ exports.SVG = function(runtime) {
             var local = this.localPoint(x, y);
             return insidePolygon(local.x + this.x, local.y + this.y, this.points);
         }
+
+        duplicate() {
+            let clone = super.duplicate(new CurvedShield(this.width, this.height, this.headRatio, this.dir)
+                .position(this.x, this.y));
+            return clone;
+        }
     }
 
     class Polygon extends Shape {
@@ -1607,6 +1709,13 @@ exports.SVG = function(runtime) {
             var local = this.localPoint(x, y);
             return insidePolygon(local.x, local.y, this.points);
         }
+
+        duplicate() {
+            let clone = super.duplicate(new Polygon(this.x, this.y));
+            clone.points = this.points.duplicate();
+            clone._draw();
+            return clone;
+        }
     }
 
     class Arrow extends Shape {
@@ -1660,6 +1769,12 @@ exports.SVG = function(runtime) {
         inside(x, y) {
             var local = this.localPoint(x, y);
             return insidePolygon(local.x + this.x, local.y + this.y, this.points);
+        }
+
+        duplicate() {
+            let clone = super.duplicate(new Arrow(this.baseWidth, this.headWidth, this.headHeight, this.headRatio)
+                .position(this.bx, this.by, this.hx, this.hy));
+            return clone;
         }
     }
 
@@ -1742,6 +1857,13 @@ exports.SVG = function(runtime) {
             var local = this.localPoint(x, y);
             return insidePolygon(local.x + this.x, local.y + this.y, this.points);
         }
+
+        duplicate() {
+            let clone = super.duplicate(new Hexagon(this.baseWidth, this.dir)
+                .position(this.x, this.y));
+            return clone;
+        }
+
     }
     Hexagon.height = width=> Sqrt2 * width;
 
@@ -1904,6 +2026,13 @@ exports.SVG = function(runtime) {
             var local = this.localPoint(x, y);
             return insidePolygon(local.x + this.x, local.y + this.y, this.points);
         }
+
+        duplicate() {
+            let clone = super.duplicate(new Chevron(this.width, this.height, this.thickness, this.dir)
+                .position(this.x, this.y));
+            return clone;
+        }
+
     }
 
     class Cross extends Shape {
@@ -1976,6 +2105,13 @@ exports.SVG = function(runtime) {
             var local = this.localPoint(x, y);
             return insidePolygon(local.x + this.x, local.y + this.y, this.points);
         }
+
+        duplicate() {
+            let clone = super.duplicate(new Cross(this.width, this.height, this.thickness)
+                .position(this.x, this.y));
+            return clone;
+        }
+
     }
 
     class Text extends Shape {
@@ -2105,6 +2241,16 @@ exports.SVG = function(runtime) {
             }
             return null;
         }
+
+        duplicate() {
+            let clone = super.duplicate(new Text(this.message)
+                .dimension(this.width, this.height)
+                .font(this.fontName, this.fontSize, this.lineSpacing)
+                .anchor(this.anchorText)
+                .position(this.x, this.y));
+            return clone;
+        }
+
     }
 
     class Line extends Shape {
@@ -2209,6 +2355,11 @@ exports.SVG = function(runtime) {
             }
             return null;
         }
+
+        duplicate() {
+            let clone = super.duplicate(new Line(this.x1, this.y1, this.x2, this.y2));
+            return clone;
+        }
     }
 
     class Path extends Shape {
@@ -2280,6 +2431,14 @@ exports.SVG = function(runtime) {
             let local = this.localPoint(x, y);
             return insidePolygon(local.x, local.y, this.points);
         }
+
+        duplicate() {
+            let clone = super.duplicate(new Path());
+            clone.drawing = this.drawing;
+            clone.points = this.points.duplicate();
+            clone._draw();
+            return clone;
+        }
     }
 
     class Image extends Shape {
@@ -2347,6 +2506,13 @@ exports.SVG = function(runtime) {
                 return this.inside(x, y) ? this : null;
             }
             return null;
+        }
+
+        duplicate() {
+            let clone = super.duplicate(new Image(this.src)
+                .dimension(this.width, this.height)
+                .position(this.x, this.y));
+            return clone;
         }
     }
 
