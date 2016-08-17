@@ -57,7 +57,12 @@ exports.targetRuntime = function() {
             parent.appendChild(child);
         },
         remove(parent, child) {
-            parent.removeChild(child);
+            try {
+                parent.removeChild(child);
+            }
+            catch (err) {
+                console.log("big !!");
+            }
         },
         first(component) {
             return component.firstChild;

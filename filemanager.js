@@ -310,7 +310,8 @@ exports.FileManager = function(svg, gui) {
             let icon = disk()
                 .add(new svg.Arrow(15, 25, 25).position(-50, 0, -5, 0).color(svg.GREEN, 2, svg.DARK_GREEN))
                 .add(glass);
-            super(icon, ()=>{
+            super(icon);
+            this.setCallback(()=>{
                 this.action();
             });
             svg.addEvent(glass, "click", this.callback);
@@ -362,7 +363,8 @@ exports.FileManager = function(svg, gui) {
                         .add(3, -10).add(3, -3).add(10, -3).add(10, 3).add(3, 3).add(3, 10)
                     ))
                 .add(glass);
-            super(icon, ()=>{
+            super(icon);
+            this.setCallback(()=>{
                 this.action();
             });
             svg.addEvent(glass, "click", this.callback);
@@ -384,7 +386,8 @@ exports.FileManager = function(svg, gui) {
             let icon = disk()
                 .add(new svg.Arrow(15, 25, 25).position(-5, 0, -50, 0).color(svg.LIGHT_BLUE, 2, svg.BLUE))
                 .add(glass);
-            super(icon, ()=>{
+            super(icon);
+            this.setCallback(()=>{
                 this.action();
             });
             svg.addEvent(glass, "click", this.callback);
@@ -410,7 +413,8 @@ exports.FileManager = function(svg, gui) {
                         .add(3, -15).add(3, -3).add(15, -3).add(15, 3).add(3, 3).add(3, 15)
                     ))
                 .add(glass);
-            super(icon, ()=>{
+            super(icon);
+            this.setCallback(()=>{
                 this.action();
             });
             svg.addEvent(glass, "click", this.callback);
@@ -437,7 +441,8 @@ exports.FileManager = function(svg, gui) {
                         .add(3, -15).add(3, -3).add(15, -3).add(15, 3).add(3, 3).add(3, 15)
                     )))
                 .add(glass);
-            super(icon, ()=>{
+            super(icon);
+            this.setCallback(()=>{
                 this.action();
             });
             svg.addEvent(glass, "click", this.callback);

@@ -989,10 +989,14 @@ exports.Gui = function(svg, param) {
 
     class Tool {
 
-        constructor(component, callback) {
+        constructor(component) {
             this.component = new svg.Translation().add(component);
             component.tool = this;
+        }
+
+        setCallback(callback) {
             this.callback = callback;
+            return this;
         }
 
     }
@@ -1395,7 +1399,7 @@ exports.Gui = function(svg, param) {
         }
 
         _draw() {
-            this.text.position(- this.width / 2 + this.fontSize / 4, this.fontSize / 4);
+            this.text.position(- this.width / 2 /*+ this.fontSize / 4*/, this.fontSize / 3);
             let position = this.component.globalPoint(-this.width/2, -this.height/2);
             if (position) {
                 this.control.position(position.x, position.y);

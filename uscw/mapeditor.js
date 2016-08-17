@@ -18,43 +18,34 @@ exports.mapEditor = function(svg) {
 
     var hexM = Hex(svg);
 
-    class HexSupport {
+    class Support {
 
-        constructor(hex, pane) {
-            this.hex = hex;
+        constructor(pane, ...args) {
             this.pane = pane;
-            this.component = new svg.Translation();
-            this.component.add(hex.component.move(0, 0));
-            this.component.add(hex.itemSupport.move(0, 0).active(false));
-            this.component.add(hex.unitSupport.move(0, 0).active(false));
-            this.component.add(new svg.Hexagon(hex.width, "V").color([], 2, [10, 100, 10]));
+            this.component = this.buildIcon(...args);
+            this.selectedBorder = this.buildSelectedBorder(...args);
+            this.tool = new gui.Tool(this.component);
+            this.pane.addTool(this.tool);
             if (this.register()) {
                 this.select();
             }
-            hex.addGlass(()=> {
+            this.glass(()=> {
                 this.tool.callback(this.select());
-            });
+            },...args);
         }
 
         action(callback) {
-            if (!this.tool) {
-                this.tool = new gui.Tool(this.component, callback);
-                this.tool.hex = this.hex;
-                this.pane.addTool(this.tool);
-            }
-            else {
-                this.tool.callback = callback;
-            }
+            this.tool.setCallback(callback);
             this.tool.callback(true);
             return this;
         }
 
         register() {
-            if (!this.pane.palette.hexTools) {
-                this.pane.palette.hexTools = [];
+            if (!this.pane.palette.tools) {
+                this.pane.palette.tools = [];
             }
-            this.pane.palette.hexTools.push(this);
-            return this.pane.palette.hexTools.length === 1;
+            this.pane.palette.tools.push(this);
+            return this.pane.palette.tools.length === 1;
         }
 
         whenSelect(selectCallback) {
@@ -69,11 +60,11 @@ exports.mapEditor = function(svg) {
 
         select() {
             if (!this.selected) {
-                this.pane.palette.hexTools.forEach(function (hexSupport) {
-                    hexSupport.unselect();
+                this.pane.palette.tools.forEach(function (support) {
+                    support.unselect();
                 });
-                this.selected = new svg.Hexagon(this.hex.width, "V").color([], 4, [220, 0, 0]);
-                this.component.add(this.selected);
+                this.selected = true;
+                this.component.add(this.selectedBorder);
                 this.selectCallback && this.selectCallback();
                 return true;
             }
@@ -82,13 +73,39 @@ exports.mapEditor = function(svg) {
 
         unselect() {
             if (this.selected) {
-                this.component.remove(this.selected);
-                delete this.selected;
+                this.component.remove(this.selectedBorder);
+                this.selected = false;
                 this.unselectCallback && this.unselectCallback();
                 return true;
             }
             return false;
         }
+    }
+
+    class HexSupport extends Support{
+
+        constructor(hex, pane) {
+            super(pane, hex);
+            this.hex = hex;
+            this.tool.hex = this.hex;
+        }
+
+        buildIcon(hex) {
+            return new svg.Translation()
+                .add(hex.component.move(0, 0))
+                .add(hex.itemSupport.move(0, 0).active(false))
+                .add(hex.unitSupport.move(0, 0).active(false))
+                .add(new svg.Hexagon(hex.width, "V").color([], 2, [10, 100, 10]));
+        }
+
+        buildSelectedBorder(hex) {
+            return new svg.Hexagon(hex.width, "V").color([], 4, [220, 0, 0]);
+        }
+
+        glass(callback, hex) {
+            hex.addGlass(callback);
+        }
+
     }
 
     class SurfaceSupport extends HexSupport {
@@ -212,7 +229,7 @@ exports.mapEditor = function(svg) {
         }
     }
 
-    class CompositeSupport extends ItemSupport {
+    class CompositeSupport extends HexSupport {
 
         constructor(hex, pane) {
             super(hex, pane)
@@ -306,14 +323,27 @@ exports.mapEditor = function(svg) {
         }
     }
 
-    class UnitSupport extends HexSupport {
+    class UnitSupport extends Support {
 
-        constructor(hex, pane) {
-            super(hex, pane)
+        constructor(unit, pane) {
+            super(pane, unit)
         }
 
-        unit(unitForTool, unitForMap) {
-            this.hex.putUnit(unitForTool());
+        buildIcon(unit) {
+            return new svg.Translation()
+                .add(unit.component.move(0, 0))
+                .add(new svg.Rect(unit.width, unit.height).color([], 2, [10, 100, 10]));
+        }
+
+        buildSelectedBorder(unit) {
+            return new svg.Rect(unit.width, unit.height).color([], 4, [220, 0, 0]);
+        }
+
+        glass(callback, unit) {
+            svg.addEvent(unit.glass, "click", callback);
+        }
+
+        unit(unitForMap) {
             this.action(()=> {
                 this.pane.palette.action = (hex, x, y, piece, center)=> {
                     let unit = unitForMap();
@@ -335,7 +365,20 @@ exports.mapEditor = function(svg) {
                     unit.move(0, 0);
                 },
                 (unit)=> {
-                    unit.hex.map.select(unit);
+                    if (unit.hex.map.selected===unit) {
+                        new EditUnitPopin(unit).show(drawing);
+                    }
+                    else {
+                        unit.hex.map.select(unit);
+                        if (unit.nextUnit) {
+                            let nextUnit = unit.nextUnit;
+                            let hex = unit.hex;
+                            hex.removeUnit(nextUnit);
+                            hex.removeUnit(unit);
+                            hex.putUnit(nextUnit);
+                            hex.putUnit(unit);
+                        }
+                    }
                 },
                 (unit)=> {
                     unit.hex.removeUnit(unit);
@@ -350,32 +393,33 @@ exports.mapEditor = function(svg) {
 
     function installDnD(item, doRotate, doDrop, doMove, doClick, doRemove) {
         item.addEvent('mousedown', event=> {
-            let delta = item.hex.component.localPoint(event.x, event.y);
+            let itemParent = item.component.parent;
+            let delta = itemParent.localPoint(event.x, event.y);
             let local = item.glass.localPoint(event.x, event.y);
             if (item.anchor(local.x, local.y)) {
                 var angle = Math.round(Math.atan2(delta.x - item.x, -delta.y + item.y) / Math.PI * 180);
             }
             let {x:initX, y:initY, angle:initAngle} = item;
             let click = true;
-            let itemParent = item.component.parent;
             item.addEvent('mousemove', moveEvent=> {
-                let depl = item.hex.component.localPoint(moveEvent.x, moveEvent.y);
+                let depl = itemParent.localPoint(moveEvent.x, moveEvent.y);
                 if (angle) {
                     var newAngle = Math.round(Math.atan2(depl.x - item.x, -depl.y + item.y) / Math.PI * 180);
                     item.rotate(initAngle + newAngle - angle);
                 }
                 else {
                     frame.drag(item.component, itemParent, initX + depl.x - delta.x, initY + depl.y - delta.y);
-//                    item.move(initX + depl.x - delta.x, initY + depl.y - delta.y);
                 }
                 click = false;
             });
             item.addEvent('mouseup', endEvent=> {
+                item.removeEvent('mousemove');
+                item.removeEvent('mouseup');
                 if (click && endEvent.x === event.x && endEvent.y === event.y) {
                     doClick(item)
                 }
                 else {
-                    let depl = item.hex.component.localPoint(endEvent.x, endEvent.y);
+                    let depl = itemParent.localPoint(endEvent.x, endEvent.y);
                     if (angle) {
                         let newAngle = Math.round(Math.atan2(depl.x - item.x, -depl.y + item.y) / Math.PI * 180);
                         doRotate(item, initAngle + newAngle - angle);
@@ -383,7 +427,7 @@ exports.mapEditor = function(svg) {
                     else {
                         let finalX = Math.round(initX + depl.x - delta.x);
                         let finalY = Math.round(initY + depl.y - delta.y);
-                        let global = item.hex.component.globalPoint(finalX, finalY);
+                        let global = itemParent.globalPoint(finalX, finalY);
                         let onMap = item.hex.map.component.localPoint(global);
                         let newHex = item.hex.map.getHexFromPoint(onMap);
                         frame.drop(item.component, itemParent, finalX, finalY);
@@ -401,8 +445,6 @@ exports.mapEditor = function(svg) {
                     }
                 }
                 Memento.begin();
-                item.removeEvent('mousemove');
-                item.removeEvent('mouseup');
             });
         });
     }
@@ -416,6 +458,50 @@ exports.mapEditor = function(svg) {
             hexes.push(hex);
         }
         return hexes;
+    }
+
+    class EditUnitPopin extends gui.Popin {
+
+        constructor(unit) {
+            super(1000, 700);
+            this.whenOk(function () {
+                Memento.begin();
+                unit.infos(
+                    this.upLeft.textMessage,
+                    this.upRight.textMessage,
+                    this.upCenter.textMessage,
+                    this.topCenter.textMessage,
+                    this.left.textMessage,
+                    this.right.textMessage,
+                    this.bottomLeft.textMessage,
+                    this.bottomCenter.textMessage,
+                    this.bottomRight.textMessage);
+                this.close();
+            }).whenCancel(function () {
+            });
+
+            let background = new svg.Rect(500, 500).color(unit.colors[0], 6, unit.colors[2]);
+            let symbol = unit.symbol(250, 126, [unit.colors[0], 4, unit.colors[2]]);
+            this.add({component:new svg.Translation().add(background).add(symbol)});
+
+            this.upLeft = new gui.TextField(-160, -150, 160, 150, unit.upLeft).font("arial", 120);
+            this.upRight = new gui.TextField(160, -150, 160, 150, unit.upRight).font("arial", 120);
+            this.upCenter = new gui.TextField(0, -110, 160, 70, unit.upCenter).font("arial", 50);
+            this.topCenter = new gui.TextField(0, -190, 160, 70, unit.topCenter).font("arial", 40);
+            this.left = new gui.TextField(-185, 0, 110, 70, unit.left).font("arial", 40);
+            this.right = new gui.TextField(185, 0, 110, 70, unit.right).font("arial", 40);
+            this.bottomLeft = new gui.TextField(-160, 150, 160, 150, unit.bottomLeft).font("arial", 120);
+            this.bottomCenter = new gui.TextField(0, 160, 140, 130, unit.bottomCenter).font("arial", 100);
+            this.bottomRight = new gui.TextField(160, 150, 160, 150, unit.bottomRight).font("arial", 120);
+            this.add(this.upLeft).add(this.upRight).add(this.upCenter).add(this.topCenter)
+                .add(this.left).add(this.right)
+                .add(this.bottomLeft).add(this.bottomRight).add(this.bottomCenter);
+        }
+
+        addSymbol(symbol) {
+            return this;
+        }
+
     }
 
     class NewPopin extends gui.Popin {
@@ -692,14 +778,12 @@ exports.mapEditor = function(svg) {
     addCompositeSupport("ground0");
     addCompositeSupport("ground0");
     addCompositeSupport("ground0");
-    addUnitSupport("ground0", new hexM.Unit(64, 64, 0, infantry, [[240, 240, 240], 3, [40, 40, 40]]));
-
-    function infantry(width, height, colors) {
-        return new svg.Translation()
-            .add(new svg.Rect(width, height).color(colors[0], 2, colors[2]))
-            .add(new svg.Line(-width/2, -height/2, width/2, height/2).color(colors[0], 2, colors[2]))
-            .add(new svg.Line(-width/2, height/2, width/2, -height/2).color(colors[0], 2, colors[2]));
-    }
+    addUnitSupport("white", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.ALMOST_WHITE, 3, svg.ALMOST_BLACK]));
+    addUnitSupport("grey", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.LIGHT_GREY, 3, svg.ALMOST_BLACK]));
+    addUnitSupport("black", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.ALMOST_BLACK, 3, svg.ALMOST_WHITE]));
+    addUnitSupport("red", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.ALMOST_RED, 3, svg.ALMOST_WHITE]));
+    addUnitSupport("dark_blue", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.DARK_BLUE, 3, svg.ALMOST_WHITE]));
+    addUnitSupport("light_blue", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.LIGHT_BLUE, 3, svg.ALMOST_BLACK]));
 
     var map = new hexM.Map(0, 10, 10, hexM.HEX_WIDTH, ordered, baseSurfaces[0], MAP_COLOR)
         .addGlasses(actionOnMap);
@@ -767,11 +851,7 @@ exports.mapEditor = function(svg) {
     }
 
     function addUnitSupport(baseType, unit) {
-        new UnitSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, getBaseSurface(baseType)), paneUnit).unit(
-            function () {
-                let newUnit = unit.duplicate();
-                return unit;
-            },
+        new UnitSupport(unit, paneUnit).unit(
             function () {
                 return unit.duplicate();
             });

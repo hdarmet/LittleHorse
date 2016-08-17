@@ -2749,6 +2749,7 @@ exports.SVG = function(runtime) {
         LIGHT_GREEN : [120, 200, 120],
 
         RED : [250, 0, 0],
+        ALMOST_RED : [240, 10, 10],
         DARK_RED : [100, 0, 0],
         LIGHT_RED : [200, 100, 100],
 

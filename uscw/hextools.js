@@ -990,10 +990,14 @@ exports.Hex = function(svg) {
             if (!this.units.contains(unit)) {
                 Memento.register(this);
                 Memento.register(unit);
-                this.units.add(unit);
-                this.unitSupport.add(unit.component);
-                unit.move(0, 0);
-                unit.hex = this;
+                if (this.units[0]) {
+                    this.units[0].putUnit(unit);
+                }
+                else {
+                    this.unitSupport.add(unit.component);
+                    unit.setHex(this);
+                    unit.move(0, 0);
+                }
             }
             return this;
         }
@@ -1002,9 +1006,13 @@ exports.Hex = function(svg) {
             if (this.units.contains(unit)) {
                 Memento.register(this);
                 Memento.register(unit);
-                this.units.remove(unit);
-                this.unitSupport.remove(unit.component);
-                unit.hex = null;
+                if (this.units[0]===unit) {
+                    this.unitSupport.remove(unit.component);
+                    unit.setHex(null);
+                }
+                else {
+                    this.units[0].removeUnit(unit);
+                }
             }
             return this;
         }
@@ -1934,20 +1942,75 @@ exports.Hex = function(svg) {
 
         constructor(width, height, angle, symbol, colors) {
             this.base = new svg.Translation();
+            this.unitBaseSupport = new svg.Rotation(-angle);
+            this.unitSupport = new svg.Translation(width/10, -height/10);
             this.width = width;
             this.height = height;
             this.symbol = symbol;
             this.colors = colors;
+
+            this.upLeft = "";
+            this.upRight = "";
+            this.upCenter = "";
+            this.topCenter = "";
+            this.left = "";
+            this.right = "";
+            this.bottomLeft = "";
+            this.bottomCenter = "";
+            this.bottomRight = "";
+
+            this.upLeftField = new svg.Text().position(-width/3, -height/5).font("arial", width/4).color(colors[2]);
+            this.upRightField = new svg.Text().position(width/3, -height/5).font("arial", width/4).color(colors[2]);
+            this.upCenterField = new svg.Text().position(0, -height*2/12).font("arial", width/8).color(colors[2]);
+            this.topCenterField = new svg.Text().position(0, -height*4/12).font("arial", width/12).color(colors[2]);
+            this.leftField = new svg.Text().position(-width*3/8, 0).font("arial", width/12).color(colors[2]);
+            this.rightField = new svg.Text().position(width*3/8, 0).font("arial", width/12).color(colors[2]);
+            this.bottomLeftField = new svg.Text().position(-width/3, height*2/5).font("arial", width/4).color(colors[2]);
+            this.bottomCenterField = new svg.Text().position(0, height*2/5).font("arial", width/5).color(colors[2]);
+            this.bottomRightField = new svg.Text().position(width/3, height*2/5).font("arial", width/4).color(colors[2]);
+
             this.rotation = new svg.Rotation(angle);
             this.component = new svg.Translation().add(this.rotation.add(this.base));
             this.glass = new svg.Rect(width, height).opacity(0.001).color(svg.BLACK, 3, svg.RED);
-            this.content = new svg.Translation().add(symbol(width/2, height/4, colors));
-            this.rotation
+            this.content = new svg.Translation().add(symbol(width/2, height/4, [colors[0], colors[1]/2, colors[2]]));
+            this.content.add(this.upLeftField).add(this.upRightField).add(this.upCenterField).add(this.topCenterField)
+                .add(this.leftField).add(this.rightField)
+                .add(this.bottomLeftField).add(this.bottomCenterField).add(this.bottomRightField);
+            this.base
                 .add(new svg.Rect(width, height).color(colors[0], colors[1], colors[2]))
                 .add(this.content)
-                .add(this.glass);
+                .add(this.glass)
+                .add(this.unitBaseSupport.add(this.unitSupport));
             this.events = {};
+            this.nextUnit = null;
             this.selected = false;
+        }
+
+        infos(upLeft, upRight, upCenter, topCenter, left, right, bottomLeft, bottomCenter, bottomRight) {
+            Memento.register(this);
+            this._infos(upLeft, upRight, upCenter, topCenter, left, right, bottomLeft, bottomCenter, bottomRight);
+        }
+
+        _infos(upLeft, upRight, upCenter, topCenter, left, right, bottomLeft, bottomCenter, bottomRight) {
+            this.upLeft = upLeft;
+            this.upLeftField.message(this.upLeft);
+            this.upRight = upRight;
+            this.upRightField.message(this.upRight);
+            this.upCenter = upCenter;
+            this.upCenterField.message(this.upCenter);
+            this.topCenter = topCenter;
+            this.topCenterField.message(this.topCenter);
+            this.left = left;
+            this.leftField.message(this.left);
+            this.right = right;
+            this.rightField.message(this.right);
+            this.bottomLeft = bottomLeft;
+            this.bottomLeftField.message(this.bottomLeft);
+            this.bottomCenter = bottomCenter;
+            this.bottomCenterField.message(this.bottomCenter);
+            this.bottomRight = bottomRight;
+            this.bottomRightField.message(this.bottomRight);
+            return this;
         }
 
         memorize() {
@@ -1957,6 +2020,16 @@ exports.Hex = function(svg) {
             memento.component = Memento.registerSVGTranslation(this.component);
             memento.events = Memento.registerObject(this.events);
             memento.selected = this.selected;
+            memento.upLeft = this.upLeft;
+            memento.upRight = this.upRight;
+            memento.upCenter = this.upCenter;
+            memento.topCenter = this.topCenter;
+            memento.left = this.left;
+            memento.right = this.right;
+            memento.bottomLeft = this.bottomLeft;
+            memento.bottomCenter = this.bottomCenter;
+            memento.bottomRight = this.bottomRight;
+            memento.nextUnit = this.nextUnit;
             return memento;
         }
 
@@ -1971,13 +2044,69 @@ exports.Hex = function(svg) {
             for (let eventName in this.events) {
                 svg.addEvent(this.glass, eventName, this.events[eventName]);
             }
+            this._infos(
+                memento.upLeft, memento.upRight, memento.upCenter, memento.topCenter,
+                memento.left, memento.right,
+                memento.bottomLeft, memento.bottomCenter, memento.bottomRight);
+            this.nextUnit = memento.nextUnit;
             this.selected = memento.selected;
             this.selected ? this.glass.opacity(1).fillOpacity(0.001) : this.glass.opacity(0.001).fillOpacity(1);
+        }
+
+        putUnit(unit) {
+            if (this.nextUnit) {
+                this.nextUnit.putUnit(unit);
+            }
+            else {
+                Memento.register(this);
+                Memento.register(unit);
+                //unit.move(unit.width/10, unit.height/10);
+                this.nextUnit = unit;
+                this.unitSupport.add(unit.component);
+                unit.previousUnit = this;
+                unit.setHex(this.hex);
+                unit.rotate(this.angle);
+            }
+        }
+
+        removeUnit(unit) {
+            if (this.nextUnit) {
+                if (this.nextUnit !== unit) {
+                    this.nextUnit.removeUnit(unit);
+                }
+                else {
+                    Memento.register(this);
+                    Memento.register(unit);
+                    unit.move(0, 0);
+                    this.nextUnit = null;
+                    this.unitSupport.remove(unit.component);
+                    unit.previousUnit = null;
+                    unit.setHex(null);
+                }
+            }
+        }
+
+        setHex(hex) {
+            Memento.register(this);
+            if (this.hex) {
+                Memento.register(this.hex);
+                this.hex.units.remove(this);
+            }
+            this.hex = hex;
+            if (this.hex) {
+                Memento.register(this.hex);
+                this.hex.units.add(this);
+            }
+            this.nextUnit && this.nextUnit.setHex(hex);
         }
 
         rotate(angle) {
             Memento.register(this);
             this.rotation.rotate(angle);
+            this.unitBaseSupport.rotate(-angle);
+            if (this.nextUnit) {
+                this.nextUnit.rotate(angle);
+            }
             return this;
         }
 
@@ -2219,6 +2348,19 @@ exports.Hex = function(svg) {
 
     }
 
+    function infantry(width, height, colors) {
+        return new svg.Translation()
+            .add(new svg.Rect(width, height).color(colors[0], colors[1], colors[2]))
+            .add(new svg.Line(-width/2, -height/2, width/2, height/2).color(colors[0], colors[1], colors[2]))
+            .add(new svg.Line(-width/2, height/2, width/2, -height/2).color(colors[0], colors[1], colors[2]));
+    }
+
+    function cavalry(width, height, colors) {
+        return new svg.Translation()
+            .add(new svg.Rect(width, height).color(colors[0], colors[1], colors[2]))
+            .add(new svg.Line(-width/2, height/2, width/2, -height/2).color(colors[0], colors[1], colors[2]));
+    }
+
     return {
         isEmpty : isEmpty,
         inverseDirection : inverseDirection,
@@ -2237,6 +2379,9 @@ exports.Hex = function(svg) {
         Tree : Tree,
         Bridge : Bridge,
         Unit : Unit,
+
+        infantry : infantry,
+        cavalry : cavalry,
 
         HEX_WIDTH : HEX_WIDTH,
         ALL_DIRECTIONS : ALL_DIRECTIONS
