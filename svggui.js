@@ -966,7 +966,7 @@ exports.Gui = function(svg, param) {
             this.width = width;
             this.height = height;
             this.title.resize(this.width, TITLE_HEIGHT).position(0, -this.height / 2 + TITLE_HEIGHT / 2);
-            this.panel.resize(this.width, this.height - TITLE_HEIGHT).position(0, TITLE_HEIGHT / 2);
+            this.panel.resize(this.width, Math.round(this.height - TITLE_HEIGHT)).position(0, TITLE_HEIGHT / 2);
             this._resizeContent();
             return this;
         }

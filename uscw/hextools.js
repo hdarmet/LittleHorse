@@ -57,7 +57,8 @@ exports.Hex = function(svg) {
 
     class Map {
 
-        constructor(rowOffset, colCount, rowCount, hexWidth, ordered, baseSurface, backgroundColor) {
+        constructor(rowOffset, colCount, rowCount, hexWidth, ordered, baseSurface,
+                    backgroundColor) {
             this.minColCount = Map.MIN_COLS;
             this.maxColCount = Map.MAX_COLS;
             this.minRowCount = Map.MIN_ROWS;
@@ -66,12 +67,23 @@ exports.Hex = function(svg) {
             this.hexWidth = hexWidth;
             this.rowCount = 0;
             this.colCount = colCount;
+            this.turnCount = 0;
+            this.turnWidth = hexWidth*4;
+            this.turnHeight = hexWidth*2;
+            this.turnColors = [backgroundColor, 4, [backgroundColor[0]/2, backgroundColor[1]/2, backgroundColor[2]/2]];
+            this.playerHeight = hexWidth*2;
+            this.teamWidth = hexWidth;
+            this.playerColors = [backgroundColor, 4, [backgroundColor[0]/2, backgroundColor[1]/2, backgroundColor[2]/2]];
             this.ordered = ordered;
             this.rows = [];
             this.hexes = [];
+            this.turns = [];
+            this.players = [];
             this.hexSupport = new svg.Translation();
             this.itemSupport = new svg.Translation();
             this.unitSupport = new svg.Translation();
+            this.turnSupport = new svg.Translation();
+            this.playerSupport = new svg.Translation();
             this.component = new svg.Translation();
             this.baseSurface = baseSurface;
             this.background = new svg.Rect(0, 0).color(backgroundColor);
@@ -79,11 +91,65 @@ exports.Hex = function(svg) {
             this.component.height = (rowCount * 3 + 1) / 2 * this.hexWidth + MARGIN * 2;
             this.component
                 .add(this.background)
-                .add(this.hexSupport).add(this.itemSupport).add(this.unitSupport);
+                .add(this.hexSupport).add(this.itemSupport).add(this.unitSupport)
+                .add(this.turnSupport).add(this.playerSupport);
             this.component.onResize = (handler)=>{
                 this.background.onResize(handler);
             };
             this.createHexes(rowCount);
+        }
+
+        player(playerHeight, teamWidth, playerColors) {
+            this.playerHeight = playerHeight;
+            this.playerColors = playerColors;
+            this.teamWidth = teamWidth;
+            return this;
+        }
+
+        turn(turnWidth, turnHeight, turnColors) {
+            this.turnWidth = turnWidth;
+            this.turnHeight = turnHeight;
+            this.turnColors = turnColors;
+            return this;
+        }
+
+        turnNumber(turnCount) {
+            Memento.register(this);
+            this._turnNumber(turnCount);
+            this._updateSize();
+            return this;
+        }
+
+        _turnNumber(turnCount) {
+            this.turnCount = turnCount;
+            if (turnCount<this.turns.length) {
+                for (let t=turnCount; t<this.turns.length; t++) {
+                    this.turnSupport.remove(this.turns[t]);
+                }
+                this.turns.length = turnCount;
+            }
+            else {
+                for (let t=this.turns.length; t<turnCount; t++) {
+                    let turn = new Turn(t, "Turn " + (t+1), this.turnWidth, this.turnHeight, this.turnColors);
+                    this.turnSupport.add(turn.component);
+                    this.turns.push(turn);
+                }
+            }
+        }
+
+        createPlayer(playerName) {
+            let player = new Player(playerName, this.playerHeight, this.teamWidth, this.playerColors);
+            this.addPlayer(player);
+            return this;
+        }
+
+        addPlayer(player) {
+            Memento.register(this);
+            player.map = this;
+            this.players.add(player);
+            this.playerSupport.add(player.component);
+            this._updateSize();
+            return this;
         }
 
         bounds(minColCount, maxColCount, minRowCount, maxRowCount) {
@@ -95,11 +161,35 @@ exports.Hex = function(svg) {
         }
 
         _updateSize() {
-            this.component.width = (this.colCount * 2 + 1) * svg.Hexagon.height(this.hexWidth) + MARGIN * 2;
-            this.component.height = (this.rows.length * 3 + 1) / 2 * this.hexWidth + MARGIN * 2;
+            let mapHeight = (this.rows.length * 3 + 1) / 2 * this.hexWidth;
+            let mapWidth = (this.colCount * 2 + 1) * svg.Hexagon.height(this.hexWidth);
+            if (mapHeight < this.turnHeight) {
+                mapHeight = this.turnHeight;
+            }
+            let turnRowCount = Math.floor(mapHeight/this.turnHeight);
+            let turnColCount = Math.floor((this.turnCount-1)/turnRowCount)+1;
+            let turnsWidth = turnColCount * this.turnWidth + MARGIN;
+            this.component.width = mapWidth + turnsWidth + MARGIN * 2;
+            this.component.height = mapHeight + this.playerHeight + MARGIN * 3;
             this.background
                 .dimension(this.component.width, this.component.height)
                 .position(this.component.width / 2, this.component.height / 2);
+            this.turnSupport.move(mapWidth + MARGIN * 2, MARGIN);
+            for (let t=0; t<this.turns.length; t++) {
+                this.turns[t].component.move(
+                    Math.floor(t/turnRowCount)*this.turnWidth + this.turnWidth/2,
+                    (t%turnRowCount)*this.turnHeight + this.turnHeight/2
+                )
+            }
+            this.playerSupport.move(MARGIN, mapHeight + MARGIN * 2);
+            let margin = 0;
+            for (let t=0; t<this.players.length; t++) {
+                this.players[t].component.move(
+                    margin+this.players[t].width/2,
+                    this.playerHeight/2
+                );
+                margin+=this.players[t].width+MARGIN;
+            }
         }
 
         setBaseSurface(baseSurface) {
@@ -316,6 +406,8 @@ exports.Hex = function(svg) {
             memento.hexSupport = Memento.registerSVGTranslation(this.hexSupport);
             memento.itemSupport = Memento.registerSVGTranslation(this.itemSupport);
             memento.unitSupport = Memento.registerSVGTranslation(this.unitSupport);
+            memento.turnSupport = Memento.registerSVGTranslation(this.turnSupport);
+            memento.playerSupport = Memento.registerSVGTranslation(this.playerSupport);
             memento.component = Memento.registerSVGTranslation(this.component);
             memento.rowOffset = this.rowOffset;
             memento.colCount = this.colCount;
@@ -329,6 +421,9 @@ exports.Hex = function(svg) {
             memento.selected = this.selected;
             memento.ordered = Memento.registerArray(this.ordered);
             memento.rows = Memento.registerArrayOfArrays(this.rows);
+            memento.turns = Memento.registerArray(this.turns);
+            memento.players = Memento.registerArray(this.players);
+            memento.turnCount = this.turnCount;
             return memento;
         }
 
@@ -337,6 +432,8 @@ exports.Hex = function(svg) {
             Memento.revertSVGTranslation(memento.hexSupport, this.hexSupport);
             Memento.revertSVGTranslation(memento.itemSupport, this.itemSupport);
             Memento.revertSVGTranslation(memento.unitSupport, this.unitSupport);
+            Memento.revertSVGTranslation(memento.turnSupport, this.turnSupport);
+            Memento.revertSVGTranslation(memento.playerSupport, this.playerSupport);
             Memento.revertSVGTranslation(memento.component, this.component);
             this.rowOffset = memento.rowOffset;
             this.colCount = memento.colCount;
@@ -350,6 +447,9 @@ exports.Hex = function(svg) {
             this.selected = memento.selected;
             Memento.revertArray(memento.ordered, this.ordered);
             Memento.revertArrayOfArrays(memento.rows, this.rows);
+            Memento.revertArray(memento.turns, this.turns);
+            Memento.revertArray(memento.players, this.players);
+            this.turnCount = memento.turnCount;
             this._updateSize();
         }
 
@@ -579,6 +679,15 @@ exports.Hex = function(svg) {
             }
         }
 
+        findTeam(type) {
+            for (let player of this.players) {
+                let team = player.findTeam(type);
+                if (team) {
+                    return team;
+                }
+            }
+            return null;
+        }
     }
 
     Map.MIN_COLS = 2;
@@ -1940,14 +2049,15 @@ exports.Hex = function(svg) {
 
     class Unit {
 
-        constructor(width, height, angle, symbol, colors) {
+        constructor(type, width, height, angle, symbol, colors) {
+            this.type = type;
             this.base = new svg.Translation();
             this.unitBaseSupport = new svg.Rotation(-angle);
             this.unitSupport = new svg.Translation(width/10, -height/10);
             this.width = width;
             this.height = height;
-            this.symbol = symbol;
             this.colors = colors;
+            this._turn = 1;
 
             this.upLeft = "";
             this.upRight = "";
@@ -1972,8 +2082,8 @@ exports.Hex = function(svg) {
             this.rotation = new svg.Rotation(angle);
             this.component = new svg.Translation().add(this.rotation.add(this.base));
             this.glass = new svg.Rect(width, height).opacity(0.001).color(svg.BLACK, 3, svg.RED);
-            this.content = new svg.Translation().add(symbol(width/2, height/4, [colors[0], colors[1]/2, colors[2]]));
-            this.content.add(this.upLeftField).add(this.upRightField).add(this.upCenterField).add(this.topCenterField)
+            this.content = new svg.Translation()
+                .add(this.upLeftField).add(this.upRightField).add(this.upCenterField).add(this.topCenterField)
                 .add(this.leftField).add(this.rightField)
                 .add(this.bottomLeftField).add(this.bottomCenterField).add(this.bottomRightField);
             this.base
@@ -1984,6 +2094,21 @@ exports.Hex = function(svg) {
             this.events = {};
             this.nextUnit = null;
             this.selected = false;
+            this._setSymbol(symbol);
+        }
+
+        setSymbol(symbol) {
+            Memento.register(this);
+            this._setSymbol(symbol);
+        }
+
+        _setSymbol(symbol) {
+            if (this.symbolIcon) {
+                this.content.remove(this.symbolIcon);
+            }
+            this.symbol = symbol;
+            this.symbolIcon = symbol(this.width/2, this.height/4, [this.colors[0], this.colors[1]/2, this.colors[2]])
+            this.content.add(this.symbolIcon);
         }
 
         infos(upLeft, upRight, upCenter, topCenter, left, right, bottomLeft, bottomCenter, bottomRight) {
@@ -2020,6 +2145,7 @@ exports.Hex = function(svg) {
             memento.component = Memento.registerSVGTranslation(this.component);
             memento.events = Memento.registerObject(this.events);
             memento.selected = this.selected;
+            memento.symbol = this.symbol;
             memento.upLeft = this.upLeft;
             memento.upRight = this.upRight;
             memento.upCenter = this.upCenter;
@@ -2030,10 +2156,12 @@ exports.Hex = function(svg) {
             memento.bottomCenter = this.bottomCenter;
             memento.bottomRight = this.bottomRight;
             memento.nextUnit = this.nextUnit;
+            memento._turn = this._turn;
             return memento;
         }
 
         revert(memento) {
+            this._setSymbol(memento.symbol);
             Memento.revertSVGTranslation(memento.base, this.base);
             Memento.revertSVGRotation(memento.rotation, this.rotation);
             Memento.revertSVGTranslation(memento.component, this.component);
@@ -2051,6 +2179,16 @@ exports.Hex = function(svg) {
             this.nextUnit = memento.nextUnit;
             this.selected = memento.selected;
             this.selected ? this.glass.opacity(1).fillOpacity(0.001) : this.glass.opacity(0.001).fillOpacity(1);
+            this._turn = memento._turn;
+        }
+
+        get turn() {
+            return this._turn;
+        }
+
+        set turn(value) {
+            Memento.register(this);
+            this._turn = value;
         }
 
         putUnit(unit) {
@@ -2060,7 +2198,6 @@ exports.Hex = function(svg) {
             else {
                 Memento.register(this);
                 Memento.register(unit);
-                //unit.move(unit.width/10, unit.height/10);
                 this.nextUnit = unit;
                 this.unitSupport.add(unit.component);
                 unit.previousUnit = this;
@@ -2171,7 +2308,181 @@ exports.Hex = function(svg) {
         }
 
         duplicate() {
-            return new Unit(this.width, this.height, 0, this.symbol, this.colors.duplicate());
+            return new Unit(this.type, this.width, this.height, 0, this.symbol, this.colors.duplicate());
+        }
+    }
+
+    class Turn {
+
+        constructor(number, title, width, height, colors) {
+            this.number = number;
+            this.title = title;
+            this.colors = colors;
+            this.component = new svg.Translation();
+            this.background = new svg.Rect(width, height).corners(width/10, height/10)
+                .color(colors[0], colors[1], colors[2]);
+            this.base = new svg.Translation();
+            this.glass = new svg.Rect(width, height).corners(width/10, height/10).color([0, 0, 0]).opacity(0.001);
+            this.titleLabel = new svg.Text(title).font("arial", height/8).position(0, -height/3).color(colors[2]);
+            this.component
+                .add(this.base
+                    .add(this.background)
+                    .add(this.titleLabel))
+                .add(this.glass);
+        }
+
+        label(title) {
+            Memento.register(this);
+            this.title = title;
+            this.titleLabel.message(this.title);
+            return this;
+        }
+
+        memorize() {
+            let memento = {
+                title : this.title
+            };
+            return memento;
+        }
+
+        revert(memento) {
+            this.title = memento.title;
+            this.titleLabel.message(this.title);
+        }
+
+    }
+
+    class Player {
+
+        constructor(title, height, teamWidth, colors) {
+            this.title = title;
+            this.colors = colors;
+            this.teamWidth = teamWidth;
+            this.height = height*1.2;
+            this.width = height;
+            this.teams = [];
+            this.component = new svg.Translation();
+            this.teamSupport = new svg.Translation();
+            this.background = new svg.Rect(this.width, this.height).corners(this.width/10, this.height/10)
+                .color(colors[0], colors[1], colors[2]);
+            this.base = new svg.Translation();
+            this.titleLabel = new svg.Text(title).font("arial", height/6).color(colors[2]);
+            this._updateSize();
+            this.component
+                .add(this.base
+                    .add(this.background)
+                    .add(this.titleLabel)
+                    .add(this.teamSupport))
+        }
+
+        label(title) {
+            Memento.register(this);
+            this.title = title;
+            this.titleLabel.message(this.title);
+            return this;
+        }
+
+        findTeam(type) {
+            return this.teams.find(team=>team.unit.type===type);
+        }
+
+        createTeam(unit) {
+            let team = new Team(unit, this.teamWidth, this.height/2, this.colors[2]);
+            this.addTeam(team);
+            return team;
+        }
+
+        addTeam(team) {
+            Memento.register(this);
+            this.teams.push(team);
+            team.player = this;
+            this.teamSupport.add(team.component);
+            this._updateSize();
+            this.map._updateSize();
+        }
+
+        removeTeam(team) {
+            Memento.register(this);
+            if (this.teams.contains(team)) {
+                this.teams.remove(team);
+                this.teamSupport.remove(team.component);
+                team.player = null;
+            }
+            this._updateSize();
+            this.map._updateSize();
+        }
+
+        _updateSize() {
+            this.width=this.height/2+(this.teamWidth+this.height/2)*this.teams.length;
+            if (!this.teams.length) {
+                this.width+=this.height/2;
+            }
+            this.background.dimension(this.width, this.height);
+            this.titleLabel.position(0, -this.height/3);
+            let position = -this.width/2 + this.height/2;
+            for (let t=0; t<this.teams.length; t++) {
+                let team = this.teams[t];
+                team.component.move(position+this.teamWidth/2, 0);
+                position+=this.teamWidth+this.height/2;
+            }
+        }
+
+        memorize() {
+            let memento = {
+                title : this.title,
+                teams : this.teams.duplicate(),
+                width : this.width,
+                teamSupport : Memento.registerSVGTranslation(this.teamSupport)
+            };
+            return memento;
+        }
+
+        revert(memento) {
+            this.title = memento.title;
+            this.titleLabel.message(this.title);
+            this.width = memento.width;
+            Memento.revertArray(memento.teams, this.teams);
+            Memento.revertSVGTranslation(memento.teamSupport, this.teamSupport);
+            this._updateSize();
+            this.map._updateSize();
+        }
+
+    }
+
+    class Team {
+
+        constructor(unit, width, height, color) {
+            this.unit = unit;
+            unit.team = this;
+            this.title = unit.type;
+            this.width = width;
+            this.height = height;
+            this.component = new svg.Translation();
+            this.titleLabel = new svg.Text(this.title).font("arial", height/4).position(0, +unit.height/2+height/4).color(color);
+            this.component
+                .add(this.unit.component)
+                .add(this.titleLabel);
+        }
+
+        label(title) {
+            Memento.register(this);
+            this.title = title;
+            this.titleLabel.message(this.title);
+            return this;
+        }
+
+        memorize() {
+            let memento = {
+                title : this.title,
+                player : this.player
+            };
+            return memento;
+        }
+
+        revert(memento) {
+            this.title = memento.title;
+            this.titleLabel.message(this.title);
+            this.player = memento.player;
         }
     }
 
@@ -2201,11 +2512,46 @@ exports.Hex = function(svg) {
                     desc.hexes.push(hexDesc);
                 }
             });
+            desc.turnWidth = map.turnWidth;
+            desc.turnHeight = map.turnHeight;
+            desc.turnColors = map.turnColors.duplicate();
+            desc.turns = [];
+            map.turns.forEach(turn=>{
+                desc.turns.push({
+                    label: turn.title
+                });
+            });
+            desc.playerHeight = map.playerHeight;
+            desc.teamWidth = map.teamWidth;
+            desc.playerColors = map.playerColors.duplicate();
+            desc.players = [];
+            map.players.forEach(player=>{
+                desc.players.push(this.playerSpec(desc, player));
+            });
             return desc;
         }
 
+        playerSpec(desc, player) {
+            let playerDesc = {
+                label : player.title,
+                teams : []
+            };
+            player.teams.forEach(team=>{
+                playerDesc.teams.push({
+                    unit : {
+                        type: team.unit.type,
+                        width : team.unit.width,
+                        height : team.unit.height,
+                        colors : team.unit.colors.duplicate()
+                    },
+                    label : team.title
+                });
+            });
+            return playerDesc;
+        }
+
         hexSpec(desc, hex) {
-            if (hex.surfaces.empty() && hex.lines.empty() && hex.borders.empty() && hex.items.empty()) {
+            if (hex.surfaces.empty() && hex.lines.empty() && hex.borders.empty() && hex.items.empty() && hex.units.empty()) {
                 return null;
             }
             let hexDesc = {};
@@ -2238,29 +2584,34 @@ exports.Hex = function(svg) {
                     hexDesc.items.push(this.itemSpec(item));
                 });
             }
+            if (!hex.units.empty()) {
+                hexDesc.units = [];
+                hex.units.forEach(unit=>{
+                    hexDesc.units.push(this.unitSpec(unit));
+                });
+            }
             return hexDesc;
         }
 
-        map(desc) {
-            let baseSurface = this.retrieveSurface(desc, desc.baseSurface);
-            let map = new Map(desc.rowOffset, desc.colCount, desc.rowCount, desc.hexWidth, desc.ordered, baseSurface, desc.background);
-            map.bounds(desc.minColCount, desc.maxColCount, desc.minRowCount, desc.maxRowCount);
-            desc.hexes.forEach(hexDesc=>{
-                let hex = map.getHex(hexDesc.x, hexDesc.y);
-                hexDesc.surfaces && hexDesc.surfaces.forEach(type=>{
-                    hex.setSurface(this.retrieveSurface(desc, type));
-                });
-                hexDesc.borders && hexDesc.borders.forEach(descBorder=>{
-                    hex.setBorder(this.retrieveBorder(desc, descBorder.type, descBorder.sides));
-                });
-                hexDesc.lines && hexDesc.lines.forEach(descLine=>{
-                    hex.setLine(this.retrieveLine(desc, descLine.type, descLine.entries));
-                });
-                hexDesc.items && hexDesc.items.forEach(itemDesc=>{
-                    hex.putItem(this.item(itemDesc), itemDesc.x, itemDesc.y);
-                });
-            });
-            return map;
+
+        unitSpec(unit) {
+            return {
+                symbol : symbols.keyOf(unit.symbol),
+                width : unit.width,
+                height : unit.height,
+                angle : unit.angle,
+                colors : unit.colors.duplicate(),
+                upLeft : unit.upLeft,
+                upRight : unit.upRight,
+                upCenter : unit.upCenter,
+                topCenter : unit.topCenter,
+                left : unit.left,
+                right : unit.right,
+                bottomLeft : unit.bottomLeft,
+                bottomCenter : unit.bottomCenter,
+                bottomRight : unit.bottomRight,
+                turn : unit._turn
+            };
         }
 
         itemSpec(item) {
@@ -2295,6 +2646,66 @@ exports.Hex = function(svg) {
             }
         }
 
+        map(desc) {
+
+            let loadHexes = ()=> {
+                map.bounds(desc.minColCount, desc.maxColCount, desc.minRowCount, desc.maxRowCount);
+                desc.hexes.forEach(hexDesc=> {
+                    let hex = map.getHex(hexDesc.x, hexDesc.y);
+                    hexDesc.surfaces && hexDesc.surfaces.forEach(type=> {
+                        hex.setSurface(this.retrieveSurface(desc, type));
+                    });
+                    hexDesc.borders && hexDesc.borders.forEach(descBorder=> {
+                        hex.setBorder(this.retrieveBorder(desc, descBorder.type, descBorder.sides));
+                    });
+                    hexDesc.lines && hexDesc.lines.forEach(descLine=> {
+                        hex.setLine(this.retrieveLine(desc, descLine.type, descLine.entries));
+                    });
+                    hexDesc.items && hexDesc.items.forEach(itemDesc=> {
+                        hex.putItem(this.item(itemDesc), itemDesc.x, itemDesc.y);
+                    });
+                    hexDesc.units && hexDesc.units.forEach(unitDesc=> {
+                        hex.putUnit(this.unit(unitDesc));
+                    });
+                });
+            }
+
+            let loadTurns = ()=> {
+                map.turnWidth = desc.turnWidth;
+                map.turnHeight = desc.turnHeight;
+                map.turnColors = desc.turnColors.duplicate();
+                map._turnNumber(desc.turns.length);
+                for (let t = 0; t < desc.turns.length; t++) {
+                    map.turns[t].label(desc.turns[t].label);
+                }
+            }
+
+            let loadPlayers = ()=> {
+                map.player(desc.playerHeight, desc.teamWidth, desc.playerColors);
+                for (let p = 0; p < desc.players.length; p++) {
+                    let playerDesc = desc.players[p];
+                    let player = new Player(playerDesc.label, map.playerHeight, map.teamWidth, map.playerColors);
+                    map.addPlayer(player);
+                    for (let t = 0; t < playerDesc.teams.length; t++) {
+                        let teamDesc = playerDesc.teams[t];
+                        let unit = new Unit(teamDesc.unit.type, teamDesc.unit.width, teamDesc.unit.height, 0,
+                            symbols["infantry"], teamDesc.unit.colors);
+                        let team = new Team(unit, map.teamWidth, map.playerHeight / 2, map.playerColors[2]);
+                        team.label(teamDesc.label);
+                        player.addTeam(team);
+                    }
+                }
+            }
+
+            let baseSurface = this.retrieveSurface(desc, desc.baseSurface);
+            let map = new Map(desc.rowOffset, desc.colCount, desc.rowCount, desc.hexWidth, desc.ordered, baseSurface, desc.background);
+            loadHexes();
+            loadTurns();
+            loadPlayers();
+            map._updateSize();
+            return map;
+        }
+
         item(itemDesc) {
             if (itemDesc.type==="House") {
                 return new House(itemDesc.width, itemDesc.height, itemDesc.colors.duplicate(), itemDesc.angle);
@@ -2311,6 +2722,16 @@ exports.Hex = function(svg) {
             if (itemDesc.type==="Tree") {
                 return new Tree(itemDesc.points.duplicate(), itemDesc.colors.duplicate(), itemDesc.angle);
             }
+        }
+
+        unit(unitDesc) {
+            let unit = new Unit(unitDesc.type, unitDesc.width, unitDesc.height, unitDesc.angle,
+                symbols[unitDesc.symbol], unitDesc.colors);
+            unit._infos(unitDesc.upLeft, unitDesc.upRight, unitDesc.upCenter, unitDesc.topCenter,
+                unitDesc.left, unitDesc.right,
+                unitDesc.bottomLeft, unitDesc.bottomCenter, unitDesc.bottomRight);
+            unit._turn = unitDesc.turn;
+            return unit;
         }
 
         registerSurface(registry, surface) {
@@ -2348,18 +2769,27 @@ exports.Hex = function(svg) {
 
     }
 
-    function infantry(width, height, colors) {
-        return new svg.Translation()
-            .add(new svg.Rect(width, height).color(colors[0], colors[1], colors[2]))
-            .add(new svg.Line(-width/2, -height/2, width/2, height/2).color(colors[0], colors[1], colors[2]))
-            .add(new svg.Line(-width/2, height/2, width/2, -height/2).color(colors[0], colors[1], colors[2]));
-    }
+    let symbols = {
+        infantry(width, height, colors)
+        {
+            return new svg.Translation()
+                .add(new svg.Rect(width, height).color(colors[0], colors[1], colors[2]))
+                .add(new svg.Line(-width / 2, -height / 2, width / 2, height / 2).color(colors[0], colors[1], colors[2]))
+                .add(new svg.Line(-width / 2, height / 2, width / 2, -height / 2).color(colors[0], colors[1], colors[2]));
+        },
 
-    function cavalry(width, height, colors) {
-        return new svg.Translation()
-            .add(new svg.Rect(width, height).color(colors[0], colors[1], colors[2]))
-            .add(new svg.Line(-width/2, height/2, width/2, -height/2).color(colors[0], colors[1], colors[2]));
-    }
+        cavalry(width, height, colors) {
+            return new svg.Translation()
+                .add(new svg.Rect(width, height).color(colors[0], colors[1], colors[2]))
+                .add(new svg.Line(-width / 2, height / 2, width / 2, -height / 2).color(colors[0], colors[1], colors[2]));
+        },
+
+        artillery(width, height, colors) {
+            return new svg.Translation()
+                .add(new svg.Rect(width, height).color(colors[0], colors[1], colors[2]))
+                .add(new svg.Circle(width / 12).color(colors[2], colors[1], colors[2]));
+        }
+    };
 
     return {
         isEmpty : isEmpty,
@@ -2380,8 +2810,7 @@ exports.Hex = function(svg) {
         Bridge : Bridge,
         Unit : Unit,
 
-        infantry : infantry,
-        cavalry : cavalry,
+        symbols : symbols,
 
         HEX_WIDTH : HEX_WIDTH,
         ALL_DIRECTIONS : ALL_DIRECTIONS

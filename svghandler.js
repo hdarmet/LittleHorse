@@ -37,6 +37,15 @@ exports.SVG = function(runtime) {
         });
     }
 
+    if (!Array.prototype.clear) {
+        Object.defineProperty(Array.prototype, "clear", {
+            enumerable: false,
+            value: function() {
+                return this.length=0;
+            }
+        });
+    }
+
     if (!Array.prototype.empty) {
         Object.defineProperty(Array.prototype, "empty", {
             enumerable: false,
@@ -87,6 +96,20 @@ exports.SVG = function(runtime) {
                 for (let field in this) {
                     lambda(field, this[field]);
                 }
+            }
+        });
+    }
+
+    if (!Object.prototype.keyOf) {
+        Object.defineProperty(Object.prototype, "keyOf", {
+            enumerable: false,
+            value: function(value) {
+                for (let field in this) {
+                    if (this[field]===value) {
+                        return field;
+                    }
+                }
+                return null;
             }
         });
     }
@@ -1276,8 +1299,7 @@ exports.SVG = function(runtime) {
         corners(radiusX, radiusY) {
             this.rx = radiusX;
             this.ry = radiusY;
-            svgr.attr(this.component, "rx", this.rx);
-            svgr.attr(this.component, "ry", this.ry);
+            this._draw();
             return this;
         }
 
@@ -1286,6 +1308,10 @@ exports.SVG = function(runtime) {
             svgr.attr(this.component, "y", (this.y - this.height / 2));
             svgr.attr(this.component, "width", this.width);
             svgr.attr(this.component, "height", this.height);
+            if (this.rx) {
+                svgr.attr(this.component, "rx", this.rx);
+                svgr.attr(this.component, "ry", this.ry);
+            }
         }
 
         globalPoint(...args) {
@@ -2743,6 +2769,7 @@ exports.SVG = function(runtime) {
         BLUE : [0, 0, 200],
         DARK_BLUE : [0, 0, 100],
         LIGHT_BLUE : [50, 150, 200],
+        HORIZON : [150, 200, 250],
 
         GREEN : [0, 200, 0],
         DARK_GREEN : [0, 100, 0],

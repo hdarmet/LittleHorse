@@ -28,11 +28,15 @@ exports.targetRuntime = function() {
             }
         },
         attr(component, name, value) {
-            if (value!==undefined) {
-                component.setAttribute(name, value);
-            }
-            else {
-                return component.getAttribute(name);
+            try {
+                if (value !== undefined) {
+                    component.setAttribute(name, value);
+                }
+                else {
+                    return component.getAttribute(name);
+                }
+            } catch (err) {
+                console.log("Bug !!");
             }
         },
         attrXlink(component, name, value) {
@@ -54,21 +58,30 @@ exports.targetRuntime = function() {
             return document.getElementById(key);
         },
         add(parent, child) {
-            parent.appendChild(child);
+            try {
+                parent.appendChild(child);
+            } catch (err) {
+                console.log("bug !!");
+            }
         },
         remove(parent, child) {
             try {
                 parent.removeChild(child);
             }
             catch (err) {
-                console.log("big !!");
+                console.log("bug !!");
             }
         },
         first(component) {
             return component.firstChild;
         },
         replace(parent, who, byWhom) {
-            parent.replaceChild(byWhom, who);
+            try {
+                parent.replaceChild(byWhom, who);
+            }
+            catch (err) {
+                console.log("bug !!");
+            }
         },
         focus(component) {
             component.focus();

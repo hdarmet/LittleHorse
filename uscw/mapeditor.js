@@ -366,7 +366,11 @@ exports.mapEditor = function(svg) {
                 },
                 (unit)=> {
                     if (unit.hex.map.selected===unit) {
-                        new EditUnitPopin(unit).show(drawing);
+                        new EditUnitPopin(unit)
+                            .addSymbol(hexM.symbols.infantry)
+                            .addSymbol(hexM.symbols.cavalry)
+                            .addSymbol(hexM.symbols.artillery)
+                            .show(drawing);
                     }
                     else {
                         unit.hex.map.select(unit);
@@ -464,6 +468,7 @@ exports.mapEditor = function(svg) {
 
         constructor(unit) {
             super(1000, 700);
+            this.add(new gui.Label(-120, -280, "Edit Unit").font("arial", 60));
             this.whenOk(function () {
                 Memento.begin();
                 unit.infos(
@@ -476,14 +481,19 @@ exports.mapEditor = function(svg) {
                     this.bottomLeft.textMessage,
                     this.bottomCenter.textMessage,
                     this.bottomRight.textMessage);
+                unit.setSymbol(this.symbol);
+                unit.turn = this.turnSelector.value();
                 this.close();
             }).whenCancel(function () {
             });
 
-            let background = new svg.Rect(500, 500).color(unit.colors[0], 6, unit.colors[2]);
-            let symbol = unit.symbol(250, 126, [unit.colors[0], 4, unit.colors[2]]);
-            this.add({component:new svg.Translation().add(background).add(symbol)});
+            this.symbols = [];
 
+            this.background = new svg.Rect(500, 500).color(unit.colors[0], 6, unit.colors[2]);
+            this.colors = [unit.colors[0], 4, unit.colors[2]];
+            this.frame = {component:new svg.Translation().add(this.background)};
+            this.add(this.frame);
+            this.setSymbol(unit.symbol);
             this.upLeft = new gui.TextField(-160, -150, 160, 150, unit.upLeft).font("arial", 120);
             this.upRight = new gui.TextField(160, -150, 160, 150, unit.upRight).font("arial", 120);
             this.upCenter = new gui.TextField(0, -110, 160, 70, unit.upCenter).font("arial", 50);
@@ -496,10 +506,85 @@ exports.mapEditor = function(svg) {
             this.add(this.upLeft).add(this.upRight).add(this.upCenter).add(this.topCenter)
                 .add(this.left).add(this.right)
                 .add(this.bottomLeft).add(this.bottomRight).add(this.bottomCenter);
+            this.turnSelectorLabel = new gui.Label(280, -220, "Turn of entry").font("arial", 30);
+            this.turnSelector = new gui.NumberField(370, -150, 230, 80, unit.turn).font("arial", 60).bounds(1, 300);
+            this.add(this.turnSelectorLabel).add(this.turnSelector);
+        }
+
+        setSymbol(aSymbol) {
+            if (this.symbolIcon) {
+                this.frame.component.remove(this.symbolIcon);
+            }
+            this.symbol = aSymbol;
+            this.symbolIcon = this.symbol(250, 126, this.colors);
+            this.frame.component.add(this.symbolIcon);
         }
 
         addSymbol(symbol) {
+            const ROW_SIZE = 3;
+            let unit = new hexM.Unit("symbol", 60, 60, 0, symbol, [svg.ALMOST_WHITE, 3, svg.ALMOST_BLACK]);
+            unit.glass.onClick(event=>{
+                this.setSymbol(symbol);
+            });
+            let col = (this.symbols.length)%ROW_SIZE;
+            let row = Math.floor(this.symbols.length/ROW_SIZE);
+            this.add(unit.move(-450+col*75, -220+row*75));
+            this.symbols.push(unit);
             return this;
+        }
+
+    }
+
+    class EditTurnPopin extends gui.Popin {
+
+        constructor(turn) {
+            super(600, 400);
+            this.add(new gui.Label(-120, -130, "Edit Turn").font("arial", 60));
+            this.whenOk(function () {
+                Memento.begin();
+                turn.label(this.turnTitle.textMessage);
+                this.close();
+            }).whenCancel(function () {
+            });
+            this.turnTitleLabel = new gui.Label(-180, -60, "Label").font("arial", 30);
+            this.turnTitle = new gui.TextField(0, 0, 350, 80, turn.title).font("arial", 40);
+            this.add(this.turnTitleLabel).add(this.turnTitle);
+        }
+
+    }
+
+    class EditTeamPopin extends gui.Popin {
+
+        constructor(team) {
+            super(600, 400);
+            this.add(new gui.Label(-120, -130, "Edit Team").font("arial", 60));
+            this.whenOk(function () {
+                Memento.begin();
+                team.label(this.teamTitle.textMessage);
+                this.close();
+            }).whenCancel(function () {
+            });
+            this.teamTitleLabel = new gui.Label(-180, -60, "Label").font("arial", 30);
+            this.teamTitle = new gui.TextField(0, 0, 350, 80, team.title).font("arial", 40);
+            this.add(this.teamTitleLabel).add(this.teamTitle);
+        }
+
+    }
+
+    class EditPlayerPopin extends gui.Popin {
+
+        constructor(player) {
+            super(600, 400);
+            this.add(new gui.Label(-120, -130, "Edit Player").font("arial", 60));
+            this.whenOk(function () {
+                Memento.begin();
+                player.label(this.playerTitle.textMessage);
+                this.close();
+            }).whenCancel(function () {
+            });
+            this.playerTitleLabel = new gui.Label(-180, -60, "Label").font("arial", 30);
+            this.playerTitle = new gui.TextField(0, 0, 350, 80, player.title).font("arial", 40);
+            this.add(this.playerTitleLabel).add(this.playerTitle);
         }
 
     }
@@ -508,20 +593,24 @@ exports.mapEditor = function(svg) {
 
         constructor() {
             super(1000, 700);
+            this.add(new gui.Label(-120, -280, "Edit Map").font("arial", 60));
             this.whenOk(function() {
+                updateTurnNumber(this.turnSelector.value());
                 this.close();
             }).whenCancel(function() {
                 Memento.rollback();
             });
-            this.hexSelector = new gui.Selector(-200, -200, 200, 100,
+            this.hexSelectorLabel = new gui.Label(-290, -220, "Basic Terrain").font("arial", 30);
+            this.hexSelector = new gui.Selector(-200, -160, 200, 100,
                 createSurfaceHexes(baseSurfaces).map(hex=>hex.component),
                 (component, index)=> {
                     let surface = baseSurfaces[index];
                     map.setBaseSurface(surface);
                 });
-            this.add(this.hexSelector);
-            this.turnSelector = new gui.NumberField(200, -200, 300, 100, 4).font("arial", 60).bounds(1, 300);
-            this.add(this.turnSelector);
+            this.add(this.hexSelectorLabel).add(this.hexSelector);
+            this.turnSelectorLabel = new gui.Label(140, -220, "# of turns").font("arial", 30);
+            this.turnSelector = new gui.NumberField(200, -160, 230, 80, map.turnCount).font("arial", 60).bounds(1, 300);
+            this.add(this.turnSelectorLabel).add(this.turnSelector);
             this.mapResizer = new MapResizer(map.colCount, map.rowCount, action=>{
                 console.log("Action received : "+action);
                 if (action==="S+") {
@@ -551,10 +640,48 @@ exports.mapEditor = function(svg) {
             })
             .bounds(map.minColCount, map.maxColCount, map.minRowCount, map.maxRowCount)
             .position(0, 50);
-            this.add(this.mapResizer);
+            this.mapResizerLabel = new gui.Label(-60, 80, "Map Size").font("arial", 30);
+            this.add(this.mapResizer).add(this.mapResizerLabel);
             Memento.begin();
         }
 
+    }
+
+    function updateTurnNumber(count) {
+        let firstTurn = map.turnCount;
+        map.turnNumber(count);
+        actionOnTurns(firstTurn);
+    }
+
+    function preparePlayers() {
+        for (let player of map.players) {
+            player.component.onClick(event=>{
+                new EditPlayerPopin(player).show(drawing);
+            });
+            for (team of player.teams) {
+                prepareTeam(team);
+            }
+        }
+    }
+
+    function prepareTeam(team) {
+        team.component.onClick(event=> {
+            new EditTeamPopin(team).show(drawing);
+        });
+        team.unit.glass.onClick(event=> {
+            let index = (map.players.indexOf(team.player) + 1) % map.players.length;
+            team.player.removeTeam(team);
+            map.players[index].addTeam(team);
+            Memento.begin();
+        });
+    }
+
+    function actionOnTurns(from) {
+        for (let t=from; t<map.turns.length; t++) {
+            map.turns[t].glass.onClick(event=>{
+                new EditTurnPopin(map.turns[t]).show(drawing);
+            });
+        }
     }
 
     function saveMap() {
@@ -571,7 +698,12 @@ exports.mapEditor = function(svg) {
             hex.items.forEach(item=>{
                 ItemSupport.prototype.enableDnD(item);
             });
+            hex.units.forEach(unit=>{
+                UnitSupport.prototype.enableDnD(unit);
+            });
         });
+        actionOnTurns(0);
+        preparePlayers();
         Memento.enable();
         Memento.clear();
     }
@@ -715,7 +847,9 @@ exports.mapEditor = function(svg) {
                 map.selected.hex.removeItem(map.selected);
             }
             else if (map.selected instanceof hexM.Unit) {
-                map.selected.hex.removeUnit(map.selected);
+                let unit = map.selected;
+                map.selected.hex.removeUnit(unit);
+                manageUnitRemoval(unit);
             }
             map.selected = null;
             Memento.begin();
@@ -778,15 +912,20 @@ exports.mapEditor = function(svg) {
     addCompositeSupport("ground0");
     addCompositeSupport("ground0");
     addCompositeSupport("ground0");
-    addUnitSupport("white", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.ALMOST_WHITE, 3, svg.ALMOST_BLACK]));
-    addUnitSupport("grey", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.LIGHT_GREY, 3, svg.ALMOST_BLACK]));
-    addUnitSupport("black", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.ALMOST_BLACK, 3, svg.ALMOST_WHITE]));
-    addUnitSupport("red", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.ALMOST_RED, 3, svg.ALMOST_WHITE]));
-    addUnitSupport("dark_blue", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.DARK_BLUE, 3, svg.ALMOST_WHITE]));
-    addUnitSupport("light_blue", new hexM.Unit(64, 64, 0, hexM.infantry, [svg.LIGHT_BLUE, 3, svg.ALMOST_BLACK]));
+    addUnitSupport(new hexM.Unit("white", 64, 64, 0, hexM.symbols.infantry, [svg.ALMOST_WHITE, 3, svg.ALMOST_BLACK]));
+    addUnitSupport(new hexM.Unit("grey", 64, 64, 0, hexM.symbols.infantry, [svg.LIGHT_GREY, 3, svg.ALMOST_BLACK]));
+    addUnitSupport(new hexM.Unit("black", 64, 64, 0, hexM.symbols.infantry, [svg.ALMOST_BLACK, 3, svg.ALMOST_WHITE]));
+    addUnitSupport(new hexM.Unit("red", 64, 64, 0, hexM.symbols.infantry, [svg.ALMOST_RED, 3, svg.ALMOST_WHITE]));
+    addUnitSupport(new hexM.Unit("dark_blue", 64, 64, 0, hexM.symbols.infantry, [svg.DARK_BLUE, 3, svg.ALMOST_WHITE]));
+    addUnitSupport(new hexM.Unit("light_blue", 64, 64, 0, hexM.symbols.infantry, [svg.LIGHT_BLUE, 3, svg.ALMOST_BLACK]));
 
     var map = new hexM.Map(0, 10, 10, hexM.HEX_WIDTH, ordered, baseSurfaces[0], MAP_COLOR)
+        .turn(120, 120, [svg.HORIZON, 3, svg.BLUE])
         .addGlasses(actionOnMap);
+    map.createPlayer("Blue").createPlayer("Red");
+    updateTurnNumber(10);
+    preparePlayers();
+
     frame.set(map.component);
 
     function resizeAll() {
@@ -850,16 +989,44 @@ exports.mapEditor = function(svg) {
             });
     }
 
-    function addUnitSupport(baseType, unit) {
+    function addUnitSupport(unit) {
         new UnitSupport(unit, paneUnit).unit(
             function () {
-                return unit.duplicate();
+                let newUnit = unit.duplicate();
+                manageUnitAddition(newUnit);
+                return newUnit;
             });
     }
 
     function addCompositeSupport(baseType) {
         new CompositeSupport(new hexM.Hex(0, 0, hexM.HEX_WIDTH, null, getBaseSurface(baseType)), paneBuilding)
             .composite();
+    }
+
+    function existUnitType(type) {
+        return map.hexes.find(hex=>
+            hex.units.find(unit=>
+                unit.type===type)
+        )
+    }
+
+    function manageUnitAddition(unit) {
+        if (!existUnitType(unit.type)) {
+            if (!map.findTeam(unit.type)) {
+                let teamUnit = unit.duplicate();
+                let team = map.players[0].createTeam(teamUnit);
+                prepareTeam(team);
+            }
+        }
+    }
+
+    function manageUnitRemoval(unit) {
+        if (!existUnitType(unit.type)) {
+            let team = map.findTeam(unit.type);
+            if (team) {
+                team.player.removeTeam(team);
+            }
+        }
     }
 
     function getBaseSurface(type) {
