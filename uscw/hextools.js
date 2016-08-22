@@ -79,8 +79,10 @@ exports.Hex = function(svg) {
             this.hexes = [];
             this.turns = [];
             this.players = [];
+            this.selected = [];
             this.hexSupport = new svg.Translation();
             this.itemSupport = new svg.Translation();
+            this.zoneSupport = new svg.Translation();
             this.unitSupport = new svg.Translation();
             this.turnSupport = new svg.Translation();
             this.playerSupport = new svg.Translation();
@@ -91,7 +93,7 @@ exports.Hex = function(svg) {
             this.component.height = (rowCount * 3 + 1) / 2 * this.hexWidth + MARGIN * 2;
             this.component
                 .add(this.background)
-                .add(this.hexSupport).add(this.itemSupport).add(this.unitSupport)
+                .add(this.hexSupport).add(this.itemSupport).add(this.zoneSupport).add(this.unitSupport)
                 .add(this.turnSupport).add(this.playerSupport);
             this.component.onResize = (handler)=>{
                 this.background.onResize(handler);
@@ -213,6 +215,7 @@ exports.Hex = function(svg) {
             this.hexes.push(hex);
             this.hexSupport.add(hex.component);
             this.itemSupport.add(hex.itemSupport);
+            this.zoneSupport.add(hex.zoneComponent);
             this.unitSupport.add(hex.unitSupport);
             return hex;
         }
@@ -221,11 +224,11 @@ exports.Hex = function(svg) {
             this.hexes.remove(hex);
             this.hexSupport.remove(hex.component);
             this.itemSupport.remove(hex.itemSupport);
+            this.zoneSupport.remove(hex.zoneComponent);
             this.unitSupport.remove(hex.unitSupport);
         }
 
         createBottomRow() {
-            console.log("Create bottom row");
             Memento.register(this);
             if (this.rows.length < this.maxRowCount) {
                 this.rowCount++;
@@ -243,7 +246,7 @@ exports.Hex = function(svg) {
                 this.linkRow(this.rows.length - 1);
                 if (this.rows.length > 1) {
                     this.linkRow(this.rows.length - 2);
-                    this.refreshSurfacesInRow(this.rows.length - 2);
+                    this.refreshSurfacesAndZonesInRow(this.rows.length - 2);
                 }
                 this.refreshLinesInRow(this.rows.length - 1);
                 this.refreshBordersInRow(this.rows.length - 1);
@@ -252,7 +255,6 @@ exports.Hex = function(svg) {
         }
 
         removeBottomRow() {
-            console.log("Delete bottom row");
             Memento.register(this);
             if (this.rows.length > this.minRowCount) {
                 this.rowCount--;
@@ -264,13 +266,12 @@ exports.Hex = function(svg) {
                 }
                 this.rows.remove(row);
                 this.linkRow(this.rows.length - 1);
-                this.refreshSurfacesInRow(this.rows.length - 1);
+                this.refreshSurfacesAndZonesInRow(this.rows.length - 1);
                 this._updateSize();
             }
         }
 
         createTopRow() {
-            console.log("Create top row");
             Memento.register(this);
             if (this.rows.length < this.maxRowCount) {
                 this.rowCount++;
@@ -289,7 +290,7 @@ exports.Hex = function(svg) {
                 this.linkRow(0);
                 if (this.rows.length > 1) {
                     this.linkRow(1);
-                    this.refreshSurfacesInRow(1);
+                    this.refreshSurfacesAndZonesInRow(1);
                 }
                 this.refreshLinesInRow(0);
                 this.refreshBordersInRow(0);
@@ -298,7 +299,6 @@ exports.Hex = function(svg) {
         }
 
         removeTopRow() {
-            console.log("Delete top row");
             Memento.register(this);
             if (this.rows.length > this.minRowCount) {
                 this.rowCount--;
@@ -312,13 +312,12 @@ exports.Hex = function(svg) {
                 this.rowOffset = this.rowOffset ? 0 : 1;
                 this.hexes.forEach(hex=>hex.position(hex.x, hex.y - 1));
                 this.linkRow(0);
-                this.refreshSurfacesInRow(0);
+                this.refreshSurfacesAndZonesInRow(0);
                 this._updateSize();
             }
         }
 
         createRightColumn() {
-            console.log("Create right column");
             Memento.register(this);
             if (this.colCount < this.maxColCount) {
                 this.colCount++;
@@ -332,7 +331,7 @@ exports.Hex = function(svg) {
                 this.linkColumn(this.colCount - 1);
                 if (this.colCount > 1) {
                     this.linkColumn(this.colCount - 2);
-                    this.refreshSurfacesInColumn(this.colCount - 2);
+                    this.refreshSurfacesAndZonesInColumn(this.colCount - 2);
                 }
                 this.refreshLinesInColumn(this.colCount - 1);
                 this.refreshBordersInColumn(this.colCount - 1);
@@ -341,7 +340,6 @@ exports.Hex = function(svg) {
         }
 
         removeRightColumn() {
-            console.log("Remove right column");
             Memento.register(this);
             if (this.colCount > this.minColCount) {
                 for (let r = 0; r < this.rows.length; r++) {
@@ -358,7 +356,6 @@ exports.Hex = function(svg) {
         }
 
         createLeftColumn() {
-            console.log("Create left column");
             Memento.register(this);
             if (this.colCount < this.maxColCount) {
                 this.colCount++;
@@ -372,7 +369,7 @@ exports.Hex = function(svg) {
                 this.linkColumn(0);
                 if (this.colCount > 1) {
                     this.linkColumn(1);
-                    this.refreshSurfacesInColumn(1);
+                    this.refreshSurfacesAndZonesInColumn(1);
                 }
                 this.refreshLinesInColumn(0);
                 this.refreshBordersInColumn(0);
@@ -381,7 +378,6 @@ exports.Hex = function(svg) {
         }
 
         removeLeftColumn() {
-            console.log("Remove left column");
             Memento.register(this);
             if (this.colCount > this.minColCount) {
                 let offset = this.rowOffset;
@@ -418,7 +414,7 @@ exports.Hex = function(svg) {
             memento.minRowCount = this.minRowCount;
             memento.maxRowCount = this.maxRowCount;
             memento.hexWidth = this.hexWidth;
-            memento.selected = this.selected;
+            memento.selected = Memento.registerArray(this.selected);
             memento.ordered = Memento.registerArray(this.ordered);
             memento.rows = Memento.registerArrayOfArrays(this.rows);
             memento.turns = Memento.registerArray(this.turns);
@@ -444,7 +440,7 @@ exports.Hex = function(svg) {
             this.minRowCount = memento.minRowCount;
             this.maxRowCount = memento.maxRowCount;
             this.hexWidth = memento.hexWidth;
-            this.selected = memento.selected;
+            Memento.revertArray(memento.selected, this.selected);
             Memento.revertArray(memento.ordered, this.ordered);
             Memento.revertArrayOfArrays(memento.rows, this.rows);
             Memento.revertArray(memento.turns, this.turns);
@@ -574,9 +570,10 @@ exports.Hex = function(svg) {
             });
         }
 
-        refreshSurfacesInRow(row) {
+        refreshSurfacesAndZonesInRow(row) {
             this.forEachHexInRow(row, (col, hex)=>{
                 hex.refreshSurfaces();
+                hex.refreshZones();
             });
         }
 
@@ -598,9 +595,10 @@ exports.Hex = function(svg) {
             });
         }
 
-        refreshSurfacesInColumn(col) {
+        refreshSurfacesAndZonesInColumn(col) {
             this.forEachHexInColumn(col, (row, hex)=>{
                 hex.refreshSurfaces();
+                hex.refreshZones();
             });
         }
 
@@ -669,13 +667,30 @@ exports.Hex = function(svg) {
             return this;
         }
 
-        select(something) {
-            if (this.selected) {
-                this.selected.unselect();
+        forEachUnit(callback) {
+            this.hexes.forEach(hex=>{
+                hex.units.forEach(unit=>callback(unit));
+            });
+        }
+
+        select(something, reset=true) {
+            if (reset && !this.selected.empty()) {
+                Memento.register(this);
+                this.selected.forEach(what=>what.unselect());
+                this.selected.clear();
             }
-            this.selected = something;
-            if (this.selected) {
-                this.selected.select();
+            if (something && !this.selected.contains(something)) {
+                Memento.register(this);
+                this.selected.push(something);
+                something.select();
+            }
+        }
+
+        unselect(something) {
+            if (something && this.selected.contains(something)) {
+                Memento.register(this);
+                this.selected.remove(something);
+                something.unselect();
             }
         }
 
@@ -711,8 +726,12 @@ exports.Hex = function(svg) {
                 .add(this.hexSupport.active(false))
                 .add(new svg.Hexagon(this.width, "V").color([], 2, [100, 100, 100]).opacity(0.3).active(false));
             this.itemSupport = new svg.Translation();
+            this.zoneSupport = new svg.Ordered(0);
+            this.zoneComponent = new svg.Translation().add(this.zoneSupport);
+            this.zoneOrdered = null;
             this.unitSupport = new svg.Translation();
             this.surfaces = {};
+            this.zones = null;
             this.lines = {};
             this.borders = {};
             this.items = [];
@@ -730,6 +749,12 @@ exports.Hex = function(svg) {
             memento.ordered = Memento.registerObject(this.ordered);
             memento.hexSupport = Memento.registerSVGOrdered(this.hexSupport);
             memento.itemSupport = Memento.registerSVGTranslation(this.itemSupport);
+            memento.zoneComponent = Memento.registerSVGTranslation(this.zoneComponent);
+            memento.zoneSupport = Memento.registerSVGOrdered(this.zoneSupport);
+            if (this.zones) {
+                memento.zoneOrdered = Memento.registerObject(this.zoneOrdered);
+                memento.zones = Memento.registerObject(this.zones);
+            }
             memento.unitSupport = Memento.registerSVGTranslation(this.unitSupport);
             memento.surfaces = Memento.registerObject(this.surfaces);
             memento.lines = Memento.registerObject(this.lines);
@@ -754,6 +779,12 @@ exports.Hex = function(svg) {
             Memento.revertSVGTranslation(memento.component, this.component);
             Memento.revertObject(memento.ordered, this.ordered);
             Memento.revertSVGOrdered(memento.hexSupport, this.hexSupport);
+            Memento.revertSVGTranslation(memento.zoneComponent, this.zoneComponent);
+            Memento.revertSVGOrdered(memento.zoneSupport, this.zoneSupport);
+            if (memento.zones) {
+                Memento.revertObject(memento.zoneOrdered, this.zoneOrdered);
+                Memento.revertObject(memento.zones, this.zones);
+            }
             Memento.revertSVGTranslation(memento.itemSupport, this.itemSupport);
             Memento.revertSVGTranslation(memento.unitSupport, this.unitSupport);
             Memento.revertObject(memento.surfaces, this.surfaces);
@@ -761,6 +792,8 @@ exports.Hex = function(svg) {
             Memento.revertObject(memento.borders, this.borders);
             Memento.revertArray(memento.items, this.items);
             this.items.forEach(item=>item.hex=this);
+            Memento.revertArray(memento.units, this.units);
+            this.units.forEach(unit=>unit.hex=this);
             memento.ne ? this.ne = memento.ne : delete this.ne;
             memento.e ? this.e = memento.e : delete this.e;
             memento.se ? this.se = memento.se : delete this.se;
@@ -778,8 +811,8 @@ exports.Hex = function(svg) {
             let py = (y + 1) * this.width * 3 / 2 - this.width / 2 + MARGIN;
             this.component.move(px, py);
             this.itemSupport.move(px, py);
+            this.zoneComponent.move(px, py);
             this.unitSupport.move(px, py);
-            console.log("Move hex["+this.x+","+this.y+"] to ("+px+","+py+")");
             return this;
         }
 
@@ -787,6 +820,14 @@ exports.Hex = function(svg) {
             Memento.register(this);
             this.ordered = makeOrdered(ordered);
             this.hexSupport.order(ordered.length);
+            return this;
+        }
+
+        setZoneOrder(ordered) {
+            Memento.register(this);
+            this.zones = {};
+            this.zoneOrdered = makeOrdered(ordered);
+            this.zoneSupport.order(ordered.length);
             return this;
         }
 
@@ -848,6 +889,61 @@ exports.Hex = function(svg) {
         _drawSurface(surface) {
             Memento.register(surface);
             surface.draw();
+        }
+
+        setZone(zone) {
+            if (this.zones && !this.zones[zone.type]) {
+                Memento.register(this);
+                this.zones[zone.type] = zone.setHex(this);
+                this.zoneSupport.set(this.zoneOrdered[zone.type], zone.component);
+                zone.draw();
+                this.nw && this.nw.drawZone(zone.type);
+                this.ne && this.ne.drawZone(zone.type);
+                this.e && this.e.drawZone(zone.type);
+                this.se && this.se.drawZone(zone.type);
+                this.sw && this.sw.drawZone(zone.type);
+                this.w && this.w.drawZone(zone.type);
+            }
+            return this;
+        }
+
+        refreshZones() {
+            if (this.zones) {
+                for (let type in this.zones) {
+                    this.drawZone(type);
+                }
+            }
+            return this;
+        }
+
+        removeZone(type) {
+            if (this.zones && this.zones[type]) {
+                Memento.register(this);
+                delete this.zones[type];
+                this.zoneSupport.unset(this.zoneOrdered[type]);
+                this.nw && this.nw.drawZone(type);
+                this.ne && this.ne.drawZone(type);
+                this.e && this.e.drawZone(type);
+                this.se && this.se.drawZone(type);
+                this.sw && this.sw.drawZone(type);
+                this.w && this.w.drawZone(type);
+            }
+            return this;
+        }
+
+        getZone(type) {
+            return this.zones ? this.zones[type] : null;
+        }
+
+        drawZone(type) {
+            if (this.zones && this.zones[type]) {
+                this._drawZone(this.zones[type]);
+            }
+        }
+
+        _drawZone(zone) {
+            Memento.register(zone);
+            zone.draw();
         }
 
         setLine(line) {
@@ -1178,7 +1274,79 @@ exports.Hex = function(svg) {
         };
     }
 
-    class Surface {
+    function area(hex, predicate) {
+        let path = null;
+        let back = null;
+
+        _process("ne", "e", "se", 0);
+        _process("e", "se", "sw", 60);
+        _process("se", "sw", "w", 120);
+        _process("sw", "w", "nw", 180);
+        _process("w", "nw", "ne", 240);
+        _process("nw", "ne", "e", 300);
+
+        return {path:path, back:back};
+
+        function _process(leftDir, direction, rightDirection, angle) {
+            let _same = direction => {
+                return !hex[direction] || predicate(hex[direction]);
+            };
+            let point;
+            let control1;
+            let control2;
+            if (_same(direction)) {
+                if (_same(leftDir)) {
+                    point = rotate(hex.height(), -hex.width / 2, angle);
+                }
+                else {
+                    point = rotate(hex.height(), -hex.width / 2 * SECOND_REDUCTION_FACTOR, angle);
+                }
+                if (!back) {
+                    back = new svg.Path(point.x, point.y);
+                    path = new svg.Path(point.x, point.y);
+                }
+                if (_same(rightDirection)) {
+                    point = rotate(hex.height(), hex.width / 2, angle);
+                }
+                else {
+                    point = rotate(hex.height(), hex.width / 2 * SECOND_REDUCTION_FACTOR, angle);
+                }
+                back.line(point.x, point.y);
+                path.move(point.x, point.y);
+            }
+            else {
+                let rx = hex.height() * (0.5 + SECOND_REDUCTION_FACTOR / 2);
+                let ry = hex.width / 2 * (1.5 - SECOND_REDUCTION_FACTOR / 2);
+                let dx = hex.height() * REDUCTION_FACTOR;
+                let dy = hex.width / 2 * REDUCTION_FACTOR;
+                if (_same(leftDir)) {
+                    point = rotate(rx, -ry, angle);
+                    control1 = rotate(rx - dy / 3, -ry + dx / 3, angle);
+                }
+                else {
+                    point = rotate(dx, -dy, angle);
+                    control1 = rotate(dx + dy / 3, -dy + dx / 3, angle);
+                }
+                if (!back) {
+                    back = new svg.Path(point.x, point.y);
+                    path = new svg.Path(point.x, point.y);
+                }
+                if (_same(rightDirection)) {
+                    point = rotate(rx, ry, angle);
+                    control2 = rotate(rx - dy / 3, ry - dx / 3, angle);
+                }
+                else {
+                    point = rotate(dx, dy, angle);
+                    control2 = rotate(dx + dy / 3, dy - dx / 3, angle);
+                }
+                back.cubic(control1.x, control1.y, control2.x, control2.y, point.x, point.y);
+                path.cubic(control1.x, control1.y, control2.x, control2.y, point.x, point.y);
+            }
+
+        }
+    }
+
+    class Area {
 
         constructor(type, colors) {
             this.type = type;
@@ -1213,64 +1381,6 @@ exports.Hex = function(svg) {
             return this;
         }
 
-        _process(leftDir, direction, rightDirection, angle) {
-            let _same = direction => {
-                return !this.hex[direction] || this.hex[direction].surfaces[this.type];
-            };
-            let point;
-            let control1;
-            let control2;
-            if (_same(direction)) {
-                if (_same(leftDir)) {
-                    point = rotate(this.hex.height(), -this.hex.width / 2, angle);
-                }
-                else {
-                    point = rotate(this.hex.height(), -this.hex.width / 2 * SECOND_REDUCTION_FACTOR, angle);
-                }
-                if (!this.back) {
-                    this.back = new svg.Path(point.x, point.y);
-                    this.path = new svg.Path(point.x, point.y);
-                }
-                if (_same(rightDirection)) {
-                    point = rotate(this.hex.height(), this.hex.width / 2, angle);
-                }
-                else {
-                    point = rotate(this.hex.height(), this.hex.width / 2 * SECOND_REDUCTION_FACTOR, angle);
-                }
-                this.back.line(point.x, point.y);
-                this.path.move(point.x, point.y);
-            }
-            else {
-                let rx = this.hex.height() * (0.5 + SECOND_REDUCTION_FACTOR / 2);
-                let ry = this.hex.width / 2 * (1.5 - SECOND_REDUCTION_FACTOR / 2);
-                let dx = this.hex.height() * REDUCTION_FACTOR;
-                let dy = this.hex.width / 2 * REDUCTION_FACTOR;
-                if (_same(leftDir)) {
-                    point = rotate(rx, -ry, angle);
-                    control1 = rotate(rx - dy / 3, -ry + dx / 3, angle);
-                }
-                else {
-                    point = rotate(dx, -dy, angle);
-                    control1 = rotate(dx + dy / 3, -dy + dx / 3, angle);
-                }
-                if (!this.back) {
-                    this.back = new svg.Path(point.x, point.y);
-                    this.path = new svg.Path(point.x, point.y);
-                }
-                if (_same(rightDirection)) {
-                    point = rotate(rx, ry, angle);
-                    control2 = rotate(rx - dy / 3, ry - dx / 3, angle);
-                }
-                else {
-                    point = rotate(dx, dy, angle);
-                    control2 = rotate(dx + dy / 3, dy - dx / 3, angle);
-                }
-                this.back.cubic(control1.x, control1.y, control2.x, control2.y, point.x, point.y);
-                this.path.cubic(control1.x, control1.y, control2.x, control2.y, point.x, point.y);
-            }
-
-        }
-
         draw() {
             let x = 0;
             let y = 0;
@@ -1280,16 +1390,46 @@ exports.Hex = function(svg) {
                 this.component.remove(this.path);
                 delete this.path;
             }
-            this._process("ne", "e", "se", 0);
-            this._process("e", "se", "sw", 60);
-            this._process("se", "sw", "w", 120);
-            this._process("sw", "w", "nw", 180);
-            this._process("w", "nw", "ne", 240);
-            this._process("nw", "ne", "e", 300);
+            ({path:this.path, back:this.back} = area(this.hex, hex=>this.predicate(hex)));
+            this.colorize(this.back, this.path, this.colors);
             if (this.path) {
-                this.component.add(this.back.color(this.colors[0]));
-                this.component.add(this.path.color([], this.colors[1], this.colors[2]));
+                this.component.add(this.back);
+                this.component.add(this.path);
             }
+        }
+    }
+
+    class Surface extends Area {
+
+        constructor(type, colors) {
+            super(type, colors);
+        }
+
+        predicate(hex) {
+            return hex.surfaces[this.type];
+        }
+
+        colorize(back, path, colors) {
+            back.color(colors[0]);
+            path.color([], colors[1], colors[2]);
+        }
+    }
+
+    const ZONE_OPACITY = 0.15;
+
+    class Zone extends Area {
+
+        constructor(type, colors) {
+            super(type, colors);
+        }
+
+        predicate(hex) {
+            return hex.zones[this.type];
+        }
+
+        colorize(back, path, colors) {
+            back.color(colors[0]).opacity(ZONE_OPACITY);
+            path.color([], colors[1], colors[2]).opacity(ZONE_OPACITY);
         }
     }
 
@@ -1687,6 +1827,7 @@ exports.Hex = function(svg) {
         memorize() {
             let memento = super.memorize();
             memento.width = this.width;
+            memento.flag = this.flag;
             memento.children = Memento.registerArray(this.children);
             memento._opacity = this.glass._opacity;
             return memento;
@@ -1695,18 +1836,31 @@ exports.Hex = function(svg) {
         revert(memento) {
             super.revert(memento);
             this.width = memento.width;
+            this.flag = memento.flag;
             Memento.revertArray(memento.children, this.children);
             this.glass.opacity(memento._opacity);
         }
 
         highlight(flag) {
+            this.flag = flag;
             this.glass.opacity(flag ? 0.2 : 0.001);
             return this;
         }
 
         isHighlighted() {
-            var result = this.glass._opacity === 0.2;
-            return result;
+            return this.flag;
+        }
+
+        select() {
+            Memento.register(this);
+            this.selected = true;
+            this.glass.opacity(1).fillOpacity(this.isHighlighted() ? 0.2 : 0.001);
+        }
+
+        unselect() {
+            Memento.register(this);
+            this.selected = false;
+            this.glass.opacity(this.isHighlighted() ? 0.2 : 0.001).fillOpacity(1);
         }
 
         add(item) {
@@ -2596,6 +2750,7 @@ exports.Hex = function(svg) {
 
         unitSpec(unit) {
             return {
+                type : unit.type,
                 symbol : symbols.keyOf(unit.symbol),
                 width : unit.width,
                 height : unit.height,
@@ -2668,7 +2823,7 @@ exports.Hex = function(svg) {
                         hex.putUnit(this.unit(unitDesc));
                     });
                 });
-            }
+            };
 
             let loadTurns = ()=> {
                 map.turnWidth = desc.turnWidth;
@@ -2678,7 +2833,7 @@ exports.Hex = function(svg) {
                 for (let t = 0; t < desc.turns.length; t++) {
                     map.turns[t].label(desc.turns[t].label);
                 }
-            }
+            };
 
             let loadPlayers = ()=> {
                 map.player(desc.playerHeight, desc.teamWidth, desc.playerColors);
@@ -2695,7 +2850,7 @@ exports.Hex = function(svg) {
                         player.addTeam(team);
                     }
                 }
-            }
+            };
 
             let baseSurface = this.retrieveSurface(desc, desc.baseSurface);
             let map = new Map(desc.rowOffset, desc.colCount, desc.rowCount, desc.hexWidth, desc.ordered, baseSurface, desc.background);
@@ -2791,14 +2946,104 @@ exports.Hex = function(svg) {
         }
     };
 
+    function installDnD(what, glass, doSelect, doRotate, doDrop, doMove, doClick, doRemove) {
+        what.addEvent('mousedown', event=> {
+            let whatParent = what.component.parent;
+            let delta = whatParent.localPoint(event.x, event.y);
+            let local = what.glass.localPoint(event.x, event.y);
+            if (what.anchor(local.x, local.y)) {
+                var angle = Math.round(Math.atan2(delta.x - what.x, -delta.y + what.y) / Math.PI * 180);
+            }
+            let {x:initX, y:initY, angle:initAngle} = what;
+            if (doSelect(what, angle!==undefined)) {
+                let click = true;
+                what.addEvent('mousemove', moveEvent=> {
+                    let depl = whatParent.localPoint(moveEvent.x, moveEvent.y);
+                    if (angle) {
+                        var newAngle = Math.round(Math.atan2(depl.x - what.x, -depl.y + what.y) / Math.PI * 180);
+                        what.rotate(initAngle + newAngle - angle);
+                    }
+                    else {
+                        glass.drag(what.component, whatParent, initX + depl.x - delta.x, initY + depl.y - delta.y);
+                    }
+                    click = false;
+                });
+                what.addEvent('mouseup', endEvent=> {
+                    what.removeEvent('mousemove');
+                    what.removeEvent('mouseup');
+                    if (click && endEvent.x === event.x && endEvent.y === event.y) {
+                        if (!doClick(what)) {
+                            Memento.rollback(true);
+                        }
+                    }
+                    else {
+                        let depl = whatParent.localPoint(endEvent.x, endEvent.y);
+                        if (angle) {
+                            let newAngle = Math.round(Math.atan2(depl.x - what.x, -depl.y + what.y) / Math.PI * 180);
+                            if (!doRotate(what, initAngle + newAngle - angle)) {
+                                Memento.rollback(true);
+                            }
+                        }
+                        else {
+                            let finalX = Math.round(initX + depl.x - delta.x);
+                            let finalY = Math.round(initY + depl.y - delta.y);
+                            let global = whatParent.globalPoint(finalX, finalY);
+                            let onMap = what.hex.map.component.localPoint(global);
+                            let newHex = what.hex.map.getHexFromPoint(onMap);
+                            glass.drop(what.component, whatParent, finalX, finalY);
+                            if (newHex === what.hex) {
+                                if (!doMove(what, finalX, finalY)) {
+                                    Memento.rollback(true);
+                                }
+                            }
+                            else {
+                                if (!newHex) {
+                                    Memento.rollback(true);
+                                }
+                                else {
+                                    if (!doRemove(what)) {
+                                        Memento.rollback(true);
+                                    }
+                                    else {
+                                        if (newHex) {
+                                            var local = newHex.component.localPoint(global);
+                                            if (!doDrop(newHex, what, Math.round(local.x), Math.round(local.y))) {
+                                                Memento.rollback(true);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Memento.begin();
+                });
+            }
+        });
+    }
+
+    function installClickable(what, doClick) {
+        what.addEvent('mousedown', event=> {
+            what.addEvent('mouseup', endEvent=> {
+                what.removeEvent('mouseup');
+                if (endEvent.x === event.x && endEvent.y === event.y) {
+                    if (!doClick(what)) {
+                        Memento.rollback(true);
+                    }
+                }
+                Memento.begin();
+            });
+        });
+    }
+
     return {
         isEmpty : isEmpty,
         inverseDirection : inverseDirection,
 
         Map : Map,
-        MapBuilder : MapBuilder,
         Hex : Hex,
         Surface : Surface,
+        Zone : Zone,
         Line : Line,
         Border : Border,
         Item : Item,
@@ -2810,7 +3055,11 @@ exports.Hex = function(svg) {
         Bridge : Bridge,
         Unit : Unit,
 
+        MapBuilder : MapBuilder,
+
         symbols : symbols,
+        installDnD : installDnD,
+        installClickable : installClickable,
 
         HEX_WIDTH : HEX_WIDTH,
         ALL_DIRECTIONS : ALL_DIRECTIONS

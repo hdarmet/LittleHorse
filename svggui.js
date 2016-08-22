@@ -31,10 +31,12 @@ exports.Gui = function(svg, param) {
             this.currentFocus = null;
             let drag = null;
             this.component.glass.onMouseDown(event=> {
-                let target = this.component.background.getTarget(event.pageX, event.pageY);
-                drag = target;
-                if (target) {
-                    svg.event(target, 'mousedown', event);
+                if (!drag) {
+                    let target = this.component.background.getTarget(event.pageX, event.pageY);
+                    drag = target;
+                    if (target) {
+                        svg.event(target, 'mousedown', event);
+                    }
                 }
             });
             this.component.glass.onMouseMove(event=> {
@@ -45,12 +47,12 @@ exports.Gui = function(svg, param) {
             });
             this.component.glass.onMouseUp(event=> {
                 let target = drag || this.component.background.getTarget(event.pageX, event.pageY);
+                drag = null;
                 if (target) {
                     this.currentFocus = this.getFocus(target);
                     svg.event(target, 'mouseup', event);
                     svg.event(target, 'click', event);
                 }
-                drag = null;
             });
             this.component.glass.onMouseOut(event=> {
                 if (drag) {
@@ -97,7 +99,7 @@ exports.Gui = function(svg, param) {
         }
 
         processKeys(key, ctrl, alt) {
-            console.log("Key : "+key);
+//            console.log("Key : "+key);
             if (ctrl && key == 90) {
                 Memento.rollback();
                 return true;
@@ -201,6 +203,10 @@ exports.Gui = function(svg, param) {
             this.view.dimension(width, height).position(-width / 2, -height / 2);
             this.hHandle.horizontal(-width / 2, width / 2, height / 2);
             this.vHandle.vertical(width / 2, -height / 2, height / 2);
+            if (this.content) {
+                let location = this.controlLocation(this.content.x, this.content.y);
+                this.content.move(location.x, location.y);
+            }
             this.updateHandles();
             return this;
         }
@@ -265,17 +271,17 @@ exports.Gui = function(svg, param) {
         }
 
         controlLocation(x, y) {
-            if (x > 0) {
-                x = 0;
-            }
             if (x < -this.content.width + this.view.width / this.scale.factor) {
                 x = -this.content.width + this.view.width / this.scale.factor;
             }
-            if (y > 0) {
-                y = 0;
+            if (x > 0) {
+                x = 0;
             }
             if (y < -this.content.height + this.view.height / this.scale.factor) {
                 y = -this.content.height + this.view.height / this.scale.factor;
+            }
+            if (y > 0) {
+                y = 0;
             }
             return {x: x, y: y};
         }
@@ -299,13 +305,17 @@ exports.Gui = function(svg, param) {
 
         zoomContent(factor) {
             let oldFactor = this.scale.factor;
+            let minFactor = 1;
             let minFactorWidth = this.view.width / this.content.width;
-            let minFactorHeight = this.view.height / this.content.height;
-            if (factor < minFactorWidth) {
-                factor = minFactorWidth;
+            if (minFactor > minFactorWidth) {
+                minFactor = minFactorWidth;
             }
-            if (factor < minFactorHeight) {
-                factor = minFactorHeight;
+            let minFactorHeight = this.view.height / this.content.height;
+            if (minFactor > minFactorHeight) {
+                minFactor = minFactorHeight;
+            }
+            if (factor < minFactor) {
+                factor = minFactor;
             }
             this.scale.scale(factor);
             let location = this.controlLocation(
@@ -441,8 +451,8 @@ exports.Gui = function(svg, param) {
             let getPosition= point=> {
                 let position = point;
                 let length;
-                this.x && (length = (this.y2 - this.y1));
-                this.y && (length = (this.x2 - this.x1));
+                this.x!==undefined && (length = (this.y2 - this.y1));
+                this.y!==undefined && (length = (this.x2 - this.x1));
                 this.handleSize = length / this.total * this.size;
                 if (position < this.handleSize / 2) {
                     position = this.handleSize / 2;
@@ -459,7 +469,7 @@ exports.Gui = function(svg, param) {
         }
 
         _draw() {
-            let buildHorizontalHandle= ()=> {
+            let buildVerticalHandle= ()=> {
                 if (this.handleSize < HANDLE_THICKNESS * 2) {
                     this.handle.reset()
                         .move(-HANDLE_THICKNESS / 2, 0)
@@ -485,7 +495,7 @@ exports.Gui = function(svg, param) {
                 }
             };
 
-            let buildVerticalHandle = ()=> {
+            let buildHorizontalHandle = ()=> {
                 if (this.handleSize < HANDLE_THICKNESS * 2) {
                     this.handle.reset()
                         .move(0, -HANDLE_THICKNESS / 2)
@@ -520,13 +530,13 @@ exports.Gui = function(svg, param) {
                 }
                 else {
                     let position = this.point;
-                    if (this.x) {
+                    if (this.x !== undefined) {
                         this.component.move(this.x, this.y1 + position);
-                        buildHorizontalHandle.call(this);
+                        buildVerticalHandle.call(this);
                     }
                     else {
                         this.component.move(this.x1 + position, this.y);
-                        buildVerticalHandle.call(this);
+                        buildHorizontalHandle.call(this);
                     }
                 }
             }
@@ -574,12 +584,12 @@ exports.Gui = function(svg, param) {
         }
 
         resize(width, height) {
-            this.width = width;
-            this.height = height;
+            width !== undefined && (this.width = width);
+            height !== undefined && (this.height = height);
             this.border.dimension(width, height);
             this.view.dimension(width, height).position(-width / 2, -height / 2);
             this._handleVisibility();
-            this.back.dimension(width, height).position(width / 2, height / 2);
+            this.back.dimension(this.width, this.height).position(this.width / 2, this.height / 2);
             return this;
         }
 
@@ -764,7 +774,7 @@ exports.Gui = function(svg, param) {
             this.rows.add(baseRow);
         }
 
-        fill(items) {
+        fill(items=[]) {
             for (let i=0; i<items.length; i++) {
                 this.add(items[i]);
             }
@@ -922,7 +932,7 @@ exports.Gui = function(svg, param) {
             this.opened = false;
             this.component = new svg.Translation();
             this.title = new Button(this.width, TITLE_HEIGHT, this.colors, text);
-            this.title.onClick(()=> {
+            this.titleAction(()=> {
                 if (this.opened) {
                     this.close();
                 }
@@ -935,6 +945,11 @@ exports.Gui = function(svg, param) {
             this.component.add(this.title.component);
             this.component.add(this.panel.component);
             this.tools = [];
+        }
+
+        titleAction(action) {
+            this.title.onClick(action);
+            return this;
         }
 
         addTool(tool) {
@@ -963,8 +978,8 @@ exports.Gui = function(svg, param) {
         }
 
         resize(width, height) {
-            this.width = width;
-            this.height = height;
+            width !== undefined && (this.width = width);
+            height !== undefined && (this.height = height);
             this.title.resize(this.width, TITLE_HEIGHT).position(0, -this.height / 2 + TITLE_HEIGHT / 2);
             this.panel.resize(this.width, Math.round(this.height - TITLE_HEIGHT)).position(0, TITLE_HEIGHT / 2);
             this._resizeContent();

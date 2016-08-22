@@ -1,6 +1,8 @@
 /**
  * Created by HDA3014 on 06/02/2016.
  */
+var Memento = require("./memento").Memento;
+
 console.log("File Manager loaded");
 exports.FileManager = function(svg, gui) {
 
@@ -131,12 +133,15 @@ exports.FileManager = function(svg, gui) {
 
     }
 
-    class LoadPopin extends gui.Popin {
+    class BaseLoadPopin extends gui.Popin {
 
-        constructor(manager) {
+        constructor(manager, title, listMethod, loadMethod, process) {
             super(1000, 600);
+            this.listMethod = listMethod;
+            this.loadMethod = loadMethod;
+            this.process = process;
             this.manager = manager;
-            this.title = new gui.Label(0, 0, "Load:").anchor('middle').font("arial", 40);
+            this.title = new gui.Label(0, 0, title).anchor('middle').font("arial", 40);
             this.fileListLabel = new gui.Label(0, 0, "Files:");
             this.fileList = new FileGrid();
             this.add(this.title.position(0, -250));
@@ -155,7 +160,7 @@ exports.FileManager = function(svg, gui) {
 
         requestForList(url) {
             let requestData = {
-                method:"list"
+                method:this.listMethod
             };
             svg.request(url, requestData)
                 .onSuccess((response)=>{
@@ -169,14 +174,14 @@ exports.FileManager = function(svg, gui) {
 
         requestForLoad(url) {
             let requestData = {
-                method:"load",
+                method:this.loadMethod,
                 file:this.manager.fileName
             };
             svg.request(url, requestData)
                 .onSuccess((response)=>{
                     if (response.ack==='ok') {
                         this.manager.fileName = requestData.file;
-                        this.manager.setContent(JSON.parse(response.data).content);
+                        this.process(JSON.parse(response.data).content);
                         console.log("Load succeded");
                         this.close();
                     }
@@ -193,6 +198,16 @@ exports.FileManager = function(svg, gui) {
                         this.close();
                     }, gui.canvas(this.component))
                 });
+        }
+
+    }
+
+    class LoadPopin extends BaseLoadPopin {
+
+        constructor(manager) {
+            super(manager, "Load:", "list", "load", function(text) {
+                this.manager.setContent(text);
+            });
         }
 
     }
@@ -270,13 +285,22 @@ exports.FileManager = function(svg, gui) {
                 .addTool(new SaveAs(this))
                 .addTool(new Load(this))
                 .addTool(new New(this))
-                .addTool(new Remove(this));
+                .addTool(new Edit(this))
+                .addTool(new Remove(this))
+                .addTool(new Undo())
+                .addTool(new Redo());
             this.url = url;
             this.fileName = "";
         }
 
         newPopin(popinClass) {
-            this.popinClass = popinClass;
+            this.newPopinClass = popinClass;
+            return this;
+        }
+
+        editPopin(icon, popinClass) {
+            this.editIcon.add(icon.duplicate());
+            this.editPopinClass = popinClass;
             return this;
         }
 
@@ -306,15 +330,13 @@ exports.FileManager = function(svg, gui) {
     class Save extends gui.Tool {
 
         constructor(manager) {
-            let glass = new svg.Rect(80, 80).color([0,0,0]).opacity(0.005);
             let icon = disk()
-                .add(new svg.Arrow(15, 25, 25).position(-50, 0, -5, 0).color(svg.GREEN, 2, svg.DARK_GREEN))
-                .add(glass);
+                .add(new svg.Arrow(15, 25, 25).position(-50, 0, -5, 0).color(svg.GREEN, 2, svg.DARK_GREEN));
             super(icon);
             this.setCallback(()=>{
                 this.action();
             });
-            svg.addEvent(glass, "click", this.callback);
+            icon.onClick(this.callback);
             this.icon = icon;
             this.manager = manager;
         }
@@ -354,20 +376,18 @@ exports.FileManager = function(svg, gui) {
     class SaveAs extends gui.Tool {
 
         constructor(manager) {
-            let glass = new svg.Rect(80, 80).color([0,0,0]).opacity(0.005);
             let icon = disk()
                 .add(new svg.Arrow(15, 25, 25).position(-50, 0, -5, 0).color(svg.GREEN, 2, svg.DARK_GREEN))
                 .add(new svg.Translation().move(-30, 0)
                     .add(new svg.Polygon(0, 0).color(svg.WHITE, 2, svg.GREY)
                         .add(-3, 10).add(-3, 3).add(-10, 3).add(-10, -3).add(-3, -3).add(-3, -10)
                         .add(3, -10).add(3, -3).add(10, -3).add(10, 3).add(3, 3).add(3, 10)
-                    ))
-                .add(glass);
+                    ));
             super(icon);
             this.setCallback(()=>{
                 this.action();
             });
-            svg.addEvent(glass, "click", this.callback);
+            icon.onClick(this.callback);
             this.icon = icon;
             this.manager = manager;
         }
@@ -382,15 +402,13 @@ exports.FileManager = function(svg, gui) {
     class Load extends gui.Tool {
 
         constructor(manager) {
-            let glass = new svg.Rect(80, 80).color([0,0,0]).opacity(0.005);
             let icon = disk()
-                .add(new svg.Arrow(15, 25, 25).position(-5, 0, -50, 0).color(svg.LIGHT_BLUE, 2, svg.BLUE))
-                .add(glass);
+                .add(new svg.Arrow(15, 25, 25).position(-5, 0, -50, 0).color(svg.LIGHT_BLUE, 2, svg.BLUE));
             super(icon);
             this.setCallback(()=>{
                 this.action();
             });
-            svg.addEvent(glass, "click", this.callback);
+            icon.onClick(this.callback);
             this.icon = icon;
             this.manager = manager;
         }
@@ -404,27 +422,46 @@ exports.FileManager = function(svg, gui) {
     class New extends gui.Tool {
 
         constructor(manager) {
-            let glass = new svg.Rect(80, 80).color([0,0,0]).opacity(0.005);
             let icon = disk()
                 .add(new svg.Translation().move(25, 25)
                     .add(new svg.Circle(20).color(svg.LIGHT_BLUE, 2, svg.BLUE))
                     .add(new svg.Polygon(0, 0).color(svg.WHITE, 2, svg.GREY)
                         .add(-3, 15).add(-3, 3).add(-15, 3).add(-15, -3).add(-3, -3).add(-3, -15)
                         .add(3, -15).add(3, -3).add(15, -3).add(15, 3).add(3, 3).add(3, 15)
-                    ))
-                .add(glass);
+                    ));
             super(icon);
             this.setCallback(()=>{
                 this.action();
             });
-            svg.addEvent(glass, "click", this.callback);
+            icon.onClick(this.callback);
             this.icon = icon;
             this.manager = manager;
         }
 
         action() {
             console.log("New...");
-            new this.manager.popinClass().show(gui.canvas(this.component));
+            new this.manager.newPopinClass().show(gui.canvas(this.component));
+        }
+
+    }
+
+    class Edit extends gui.Tool {
+
+        constructor(manager) {
+            let icon = new svg.Translation();
+            super(icon);
+            manager.editIcon = icon;
+            this.setCallback(()=>{
+                this.action();
+            });
+            icon.onClick(this.callback);
+            this.icon = icon;
+            this.manager = manager;
+        }
+
+        action() {
+            console.log("Edit...");
+            new this.manager.editPopinClass().show(gui.canvas(this.component));
         }
 
     }
@@ -432,20 +469,18 @@ exports.FileManager = function(svg, gui) {
     class Remove extends gui.Tool {
 
         constructor(manager) {
-            let glass = new svg.Rect(80, 80).color([0,0,0]).opacity(0.005);
             let icon = disk()
                 .add(new svg.Translation().move(25, 25).add(new svg.Rotation(45)
                     .add(new svg.Circle(20).color(svg.RED, 2, svg.DARK_RED))
                     .add(new svg.Polygon(0, 0).color(svg.WHITE, 2, svg.GREY)
                         .add(-3, 15).add(-3, 3).add(-15, 3).add(-15, -3).add(-3, -3).add(-3, -15)
                         .add(3, -15).add(3, -3).add(15, -3).add(15, 3).add(3, 3).add(3, 15)
-                    )))
-                .add(glass);
+                    )));
             super(icon);
             this.setCallback(()=>{
                 this.action();
             });
-            svg.addEvent(glass, "click", this.callback);
+            icon.onClick(this.callback);
             this.icon = icon;
             this.manager = manager;
         }
@@ -456,7 +491,46 @@ exports.FileManager = function(svg, gui) {
         }
     }
 
+    class Undo extends gui.Tool {
+
+        constructor() {
+            let icon = new svg.Translation()
+                .add(new svg.Arrow(25, 40, 40).position(40, 0, -40, 0).color(svg.LIGHT_BLUE, 3, svg.BLUE));
+            super(icon);
+            this.setCallback(()=> {
+                this.action();
+            });
+            icon.onClick(this.callback);
+            this.icon = icon;
+        }
+
+        action() {
+            console.log("Undo...");
+            Memento.rollback();
+        }
+    }
+
+    class Redo extends gui.Tool {
+
+        constructor() {
+            let icon = new svg.Translation()
+                .add(new svg.Arrow(25, 40, 40).position(-40, 0, 40, 0).color(svg.LIGHT_BLUE, 3, svg.BLUE));
+            super(icon);
+            this.setCallback(()=> {
+                this.action();
+            });
+            icon.onClick(this.callback);
+            this.icon = icon;
+        }
+
+        action() {
+            console.log("Redo...");
+            Memento.replay();
+        }
+    }
+
     return {
+        BaseLoadPopin:BaseLoadPopin,
         FilePane:FilePane
     }
 };

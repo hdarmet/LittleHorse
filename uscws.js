@@ -25,79 +25,129 @@ app.post('/log', function(req, res) {
     res.send({ack:'ok'});
 });
 
-app.post('/uscw/edit', function(req, res) {
-    if (req.body.method==='save') {
-        let fileName = "./uscw/save/" + req.body.file + ".json";
-        fs.stat(fileName, function(err, stat) {
-            if(err == null) {
-                res.send({ack:'ko', err:"file exists."});
-                console.log('File exists');
-            } else if(err.code == 'ENOENT') {
-                fs.writeFile(fileName, JSON.stringify(req.body.data) + "\n",
-                    (err)=>{
-                        if (err) {
-                            res.send({ack:'ko', err:err});
-                        }
-                        else {
-                            res.send({ack:'ok'});
-                        }
-                    });
-            } else {
-                console.log('Some other error: ', err.code);
+const GAMES_URL = "./uscw/games/";
+const PLAYS_URL = "./uscw/plays/";
+
+function save(url, req, res) {
+    let fileName = url + req.body.file + ".json";
+    fs.stat(fileName, function(err, stat) {
+        if(err == null) {
+            res.send({ack:'ko', err:"file exists."});
+            console.log('File exists');
+        } else if(err.code == 'ENOENT') {
+            fs.writeFile(fileName, JSON.stringify(req.body.data) + "\n",
+                (err)=>{
+                    if (err) {
+                        res.send({ack:'ko', err:err});
+                    }
+                    else {
+                        res.send({ack:'ok'});
+                    }
+                });
+        } else {
+            console.log('Some other error: ', err.code);
+            res.send({ack:'ko', err:err});
+        }
+    });
+}
+
+function replace(url, req, res) {
+    let fileName = url + req.body.file + ".json";
+    fs.writeFile(fileName, JSON.stringify(req.body.data) + "\n",
+        (err)=>{
+            if (err) {
                 res.send({ack:'ko', err:err});
             }
+            else {
+                res.send({ack:'ok'});
+            }
         });
+}
+
+function list(url, req, res) {
+    var files = fs.readdir(url,
+        (err, files)=> {
+            if (err) {
+                res.send({ack: 'ko', err: err});
+            }
+            else {
+                res.send({
+                    ack: 'ok', files: files.map(file=> {
+                        return {name: file.slice(0, -5)}
+                    })
+                });
+            }
+        });
+}
+
+function load(url, req, res) {
+    let fileName = url + req.body.file + ".json";
+    fs.readFile(fileName,
+        (err, data)=>{
+            if (err) {
+                res.send({ack:'ko', err:err});
+            }
+            else {
+                res.send({ack:'ok', data:data.toString()});
+            }
+        });
+}
+
+function remove(url, req, res) {
+    let fileName = url + req.body.file + ".json";
+    fs.unlink(fileName,
+        (err)=>{
+            if (err) {
+                res.send({ack:'ko', err:err});
+            }
+            else {
+                res.send({ack:'ok'});
+            }
+        });
+}
+
+app.post('/uscw/edit', function(req, res) {
+    if (req.body.method==='save') {
+        save(GAMES_URL, req, res);
     }
     else if (req.body.method==='replace') {
-        let fileName = "./uscw/save/" + req.body.file + ".json";
-        fs.writeFile(fileName, JSON.stringify(req.body.data) + "\n",
-            (err)=>{
-                if (err) {
-                    res.send({ack:'ko', err:err});
-                }
-                else {
-                    res.send({ack:'ok'});
-                }
-            });
+        replace(GAMES_URL, req, res);
     }
     else if (req.body.method==='list') {
-        var files = fs.readdir("./uscw/save/",
-            (err, files)=> {
-                if (err) {
-                    res.send({ack: 'ko', err: err});
-                }
-                else {
-                    res.send({
-                        ack: 'ok', files: files.map(file=> {
-                            return {name: file.slice(0, -5)}
-                        })
-                    });
-                }
-            });
+        list(GAMES_URL, req, res);
     }
     else if (req.body.method==='load') {
-        let fileName = "./uscw/save/" + req.body.file + ".json";
-        fs.readFile(fileName,
-            (err, data)=>{
-                if (err) {
-                    res.send({ack:'ko', err:err});
-                }
-                else {
-                    res.send({ack:'ok', data:data.toString()});
-                }
-            });
+        load(GAMES_URL, req, res);
     }
     else if (req.body.method==='remove') {
-        let fileName = "./uscw/save/" + req.body.file + ".json";
-        fs.unlink(fileName,
-            (err)=>{
-                if (err) {
-                    res.send({ack:'ko', err:err});
-                }
-                else {
-                    res.send({ack:'ok'});
-                }
-            });
+        remove(GAMES_URL, req, res);
+    }
+    else {
+        res.send({ack: 'ko', err: 'unknown method'});
+    }
+});
+
+app.post('/uscw/play', function(req, res) {
+    if (req.body.method==='save') {
+        save(PLAYS_URL, req, res);
+    }
+    else if (req.body.method==='replace') {
+        replace(PLAYS_URL, req, res);
+    }
+    else if (req.body.method==='list') {
+        list(PLAYS_URL, req, res);
+    }
+    else if (req.body.method==='load') {
+        load(PLAYS_URL, req, res);
+    }
+    else if (req.body.method==='remove') {
+        remove(PLAYS_URL, req, res);
+    }
+    else if (req.body.method==='listgames') {
+        list(GAMES_URL, req, res);
+    }
+    else if (req.body.method==='loadgame') {
+        load(GAMES_URL, req, res);
     }
     else {
         res.send({ack: 'ko', err: 'unknown method'});

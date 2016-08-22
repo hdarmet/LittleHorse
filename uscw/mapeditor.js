@@ -166,13 +166,11 @@ exports.mapEditor = function(svg) {
 
             this.action(()=> {
                 this.pane.palette.action = (hex, x, y, piece, center)=> {
-                    if (center) {
-                        if (hex.getBorderSide("c", type)) {
-                            hex.removeBorderSide("c", type, size, ()=>new hexM.Border(type, {}, colors));
-                        }
-                        else {
-                            hex.setBorderSide("c", type, size, ()=>new hexM.Border(type, {}, colors));
-                        }
+                    if (hex.getBorderSide("c", type)) {
+                        hex.removeBorderSide("c", type, size, ()=>new hexM.Border(type, {}, colors));
+                    }
+                    else if (center) {
+                        hex.setBorderSide("c", type, size, ()=>new hexM.Border(type, {}, colors));
                     }
                     else {
                         if (hex.getBorderSide(piece, type)) {
@@ -205,21 +203,29 @@ exports.mapEditor = function(svg) {
         }
 
         enableDnD(item) {
-            installDnD(item,
+            hexM.installDnD(item, frame,
+                (item, rotate)=> {
+                    return true;
+                },
                 (item, angle)=> {
                     item.rotate(Math.round(angle / 15) * 15);
+                    return true;
                 },
-                (hex, item)=> {
-                    hex.putItem(item);
+                (hex, item, x, y)=> {
+                    hex.putItem(item.move(x, y));
+                    return true;
                 },
                 (item, x, y)=> {
                     item.move(x, y);
+                    return true;
                 },
                 (item)=> {
                     item.hex.map.select(item);
+                    return true;
                 },
                 (item)=> {
                     item.hex.removeItem(item);
+                    return true;
                 }
             );
         }
@@ -237,20 +243,26 @@ exports.mapEditor = function(svg) {
 
         enableCompositeDnD(composite) {
             let hexComposite = this.hex.getItem(hexM.Composite);
-            installDnD(composite,
+            hexM.installDnD(composite, frame,
+                (comp, rotate)=> {
+                    return true;
+                },
                 (comp, angle)=> {
                     comp.rotate(Math.round(angle / 60) * 60);
                     comp.conform();
+                    return true;
                 },
-                (hex, comp)=> {
+                (hex, comp, x, y)=> {
                     var present = hex.getItem(hexM.Composite);
                     if (present) {
                         hex.removeItem(present);
                     }
-                    hex.putItem(comp);
+                    hex.putItem(comp.move(0, 0));
+                    return true;
                 },
                 (comp, x, y)=> {
                     comp.move(0, 0);
+                    return true;
                 },
                 comp=> {
                     if (!hexComposite.isHighlighted()) {
@@ -261,9 +273,11 @@ exports.mapEditor = function(svg) {
                     else {
                         comp.hex.map.select(comp);
                     }
+                    return true;
                 },
                 (comp)=> {
                     comp.hex.removeItem(comp);
+                    return true;
                 }
             );
 
@@ -313,13 +327,17 @@ exports.mapEditor = function(svg) {
                             let items = composite.children.slice(0);
                             for (let i = 0; i < items.length; i++) {
                                 composite.remove(items[i]);
-                                this.enableDnD(items[i]);
+                                ItemSupport.prototype.enableDnD(items[i]);
                                 hex.putItem(items[i]);
                             }
                         }
                         hex.removeItem(composite);
                     });
                 });
+        }
+
+        disableDnD(comp) {
+            comp.removeEvent('mousedown');
         }
     }
 
@@ -354,18 +372,24 @@ exports.mapEditor = function(svg) {
         }
 
         enableDnD(unit) {
-            installDnD(unit,
+            hexM.installDnD(unit, frame,
+                (unit, rotate)=> {
+                    return true;
+                },
                 (unit, angle)=> {
                     unit.rotate(Math.round(angle / 30) * 30);
+                    return true;
                 },
-                (hex, unit)=> {
-                    hex.putUnit(unit);
+                (hex, unit, x, y)=> {
+                    hex.putUnit(unit.move(0, 0));
+                    return true;
                 },
                 (unit, x, y)=> {
                     unit.move(0, 0);
+                    return true;
                 },
                 (unit)=> {
-                    if (unit.hex.map.selected===unit) {
+                    if (unit.selected) {
                         new EditUnitPopin(unit)
                             .addSymbol(hexM.symbols.infantry)
                             .addSymbol(hexM.symbols.cavalry)
@@ -383,9 +407,11 @@ exports.mapEditor = function(svg) {
                             hex.putUnit(unit);
                         }
                     }
+                    return true;
                 },
                 (unit)=> {
                     unit.hex.removeUnit(unit);
+                    return true;
                 }
             );
         }
@@ -393,64 +419,6 @@ exports.mapEditor = function(svg) {
         disableDnD(unit) {
             unit.removeEvent('mousedown');
         }
-    }
-
-    function installDnD(item, doRotate, doDrop, doMove, doClick, doRemove) {
-        item.addEvent('mousedown', event=> {
-            let itemParent = item.component.parent;
-            let delta = itemParent.localPoint(event.x, event.y);
-            let local = item.glass.localPoint(event.x, event.y);
-            if (item.anchor(local.x, local.y)) {
-                var angle = Math.round(Math.atan2(delta.x - item.x, -delta.y + item.y) / Math.PI * 180);
-            }
-            let {x:initX, y:initY, angle:initAngle} = item;
-            let click = true;
-            item.addEvent('mousemove', moveEvent=> {
-                let depl = itemParent.localPoint(moveEvent.x, moveEvent.y);
-                if (angle) {
-                    var newAngle = Math.round(Math.atan2(depl.x - item.x, -depl.y + item.y) / Math.PI * 180);
-                    item.rotate(initAngle + newAngle - angle);
-                }
-                else {
-                    frame.drag(item.component, itemParent, initX + depl.x - delta.x, initY + depl.y - delta.y);
-                }
-                click = false;
-            });
-            item.addEvent('mouseup', endEvent=> {
-                item.removeEvent('mousemove');
-                item.removeEvent('mouseup');
-                if (click && endEvent.x === event.x && endEvent.y === event.y) {
-                    doClick(item)
-                }
-                else {
-                    let depl = itemParent.localPoint(endEvent.x, endEvent.y);
-                    if (angle) {
-                        let newAngle = Math.round(Math.atan2(depl.x - item.x, -depl.y + item.y) / Math.PI * 180);
-                        doRotate(item, initAngle + newAngle - angle);
-                    }
-                    else {
-                        let finalX = Math.round(initX + depl.x - delta.x);
-                        let finalY = Math.round(initY + depl.y - delta.y);
-                        let global = itemParent.globalPoint(finalX, finalY);
-                        let onMap = item.hex.map.component.localPoint(global);
-                        let newHex = item.hex.map.getHexFromPoint(onMap);
-                        frame.drop(item.component, itemParent, finalX, finalY);
-                        if (newHex === item.hex) {
-                            doMove(item, finalX, finalY);
-                        }
-                        else {
-                            doRemove(item);
-                            if (newHex) {
-                                var local = newHex.component.localPoint(global);
-                                doMove(item, Math.round(local.x), Math.round(local.y));
-                                doDrop(newHex, item);
-                            }
-                        }
-                    }
-                }
-                Memento.begin();
-            });
-        });
     }
 
     function createSurfaceHexes(surfaces) {
@@ -541,8 +509,8 @@ exports.mapEditor = function(svg) {
             super(600, 400);
             this.add(new gui.Label(-120, -130, "Edit Turn").font("arial", 60));
             this.whenOk(function () {
-                Memento.begin();
                 turn.label(this.turnTitle.textMessage);
+                Memento.begin();
                 this.close();
             }).whenCancel(function () {
             });
@@ -559,8 +527,8 @@ exports.mapEditor = function(svg) {
             super(600, 400);
             this.add(new gui.Label(-120, -130, "Edit Team").font("arial", 60));
             this.whenOk(function () {
-                Memento.begin();
                 team.label(this.teamTitle.textMessage);
+                Memento.begin();
                 this.close();
             }).whenCancel(function () {
             });
@@ -575,13 +543,13 @@ exports.mapEditor = function(svg) {
 
         constructor(player) {
             super(600, 400);
-            this.add(new gui.Label(-120, -130, "Edit Player").font("arial", 60));
             this.whenOk(function () {
-                Memento.begin();
                 player.label(this.playerTitle.textMessage);
+                Memento.begin();
                 this.close();
             }).whenCancel(function () {
             });
+            this.add(new gui.Label(-120, -130, "Edit Player").font("arial", 60));
             this.playerTitleLabel = new gui.Label(-180, -60, "Label").font("arial", 30);
             this.playerTitle = new gui.TextField(0, 0, 350, 80, player.title).font("arial", 40);
             this.add(this.playerTitleLabel).add(this.playerTitle);
@@ -589,17 +557,11 @@ exports.mapEditor = function(svg) {
 
     }
 
-    class NewPopin extends gui.Popin {
+    class EditMapPopin extends gui.Popin {
 
-        constructor() {
+        constructor(title) {
             super(1000, 700);
-            this.add(new gui.Label(-120, -280, "Edit Map").font("arial", 60));
-            this.whenOk(function() {
-                updateTurnNumber(this.turnSelector.value());
-                this.close();
-            }).whenCancel(function() {
-                Memento.rollback();
-            });
+            this.add(new gui.Label(-120, -280, title).font("arial", 60));
             this.hexSelectorLabel = new gui.Label(-290, -220, "Basic Terrain").font("arial", 30);
             this.hexSelector = new gui.Selector(-200, -160, 200, 100,
                 createSurfaceHexes(baseSurfaces).map(hex=>hex.component),
@@ -645,6 +607,39 @@ exports.mapEditor = function(svg) {
             Memento.begin();
         }
 
+    }
+
+    class EditPopin extends EditMapPopin {
+        constructor() {
+            super("Edit Map");
+            this.whenOk(function() {
+                updateTurnNumber(this.turnSelector.value());
+                Memento.begin();
+                this.close();
+            }).whenCancel(function() {
+                Memento.rollback();
+            });
+        }
+    }
+
+    class NewPopin extends EditMapPopin {
+        constructor() {
+            let oldMap = map;
+            createMap();
+            Memento.disable();
+            super("New Map");
+            this.whenOk(function () {
+                updateTurnNumber(this.turnSelector.value());
+                Memento.enable();
+                Memento.clear();
+                Memento.begin();
+                this.close();
+            }).whenCancel(function () {
+                map = oldMap;
+                frame.set(map.component);
+                Memento.enable();
+            });
+        }
     }
 
     function updateTurnNumber(count) {
@@ -706,6 +701,18 @@ exports.mapEditor = function(svg) {
         preparePlayers();
         Memento.enable();
         Memento.clear();
+    }
+
+    function createMap() {
+        Memento.disable();
+        map = new hexM.Map(0, 10, 10, hexM.HEX_WIDTH, ordered, baseSurfaces[0], MAP_COLOR)
+            .turn(120, 120, [svg.HORIZON, 3, svg.BLUE])
+            .addGlasses(actionOnMap);
+        frame.set(map.component);
+        map.createPlayer("Blue").createPlayer("Red");
+        updateTurnNumber(10);
+        preparePlayers();
+        Memento.enable();
     }
 
     class MapResizer {
@@ -841,25 +848,37 @@ exports.mapEditor = function(svg) {
     }
 
     function deleteSelected() {
-        if (map.selected) {
+        if (!map.selected.empty()) {
             Memento.register(map);
-            if (map.selected instanceof hexM.Item) {
-                map.selected.hex.removeItem(map.selected);
+            for (let what of map.selected) {
+                if (what instanceof hexM.Item) {
+                    what.hex.removeItem(what);
+                }
+                else if (what instanceof hexM.Unit) {
+                    what.hex.removeUnit(what);
+                    manageUnitRemoval(what);
+                }
             }
-            else if (map.selected instanceof hexM.Unit) {
-                let unit = map.selected;
-                map.selected.hex.removeUnit(unit);
-                manageUnitRemoval(unit);
-            }
-            map.selected = null;
+            map.selected.clear();
             Memento.begin();
         }
+    }
+
+    function editIcon() {
+        return new svg.Translation()
+            .add(new svg.Hexagon(hexM.HEX_WIDTH).direction("V").color(svg.LIGHT_GREEN, 3, svg.DARK_GREEN))
+            .add(new svg.Chevron(hexM.HEX_WIDTH*2/3, hexM.HEX_WIDTH*3/2, hexM.HEX_WIDTH/4, "W")
+                .position(-hexM.HEX_WIDTH*2/3, 0).color(svg.ORANGE, 2, svg.RED))
+            .add(new svg.Chevron(hexM.HEX_WIDTH*2/3, hexM.HEX_WIDTH*3/2, hexM.HEX_WIDTH/4, "E")
+                .position(hexM.HEX_WIDTH*2/3, 0).color(svg.ORANGE, 2, svg.RED))
+            .add(
+                new svg.Text("4").font("arial", 60).color(svg.LIGHT_GREY, 2, svg.GREY).position(0, hexM.HEX_WIDTH/3));
     }
 
     let ordered = [];
 
     var paneSaveLoad = new fileManager.FilePane([[255, 230, 150], 4, [10, 10, 10]], "Save/load", 120, "/uscw/edit")
-        .newPopin(NewPopin);
+        .newPopin(NewPopin).editPopin(editIcon(), EditPopin);
     paneSaveLoad.handlers(saveMap, loadMap);
     var paneTerrain = new gui.Pane([svg.BEIGE, 4, [10, 10, 10]], "Terrain", 120);
     var panePath = new gui.Pane([[215, 230, 150], 4, [10, 10, 10]], "Path", 120);
@@ -919,14 +938,8 @@ exports.mapEditor = function(svg) {
     addUnitSupport(new hexM.Unit("dark_blue", 64, 64, 0, hexM.symbols.infantry, [svg.DARK_BLUE, 3, svg.ALMOST_WHITE]));
     addUnitSupport(new hexM.Unit("light_blue", 64, 64, 0, hexM.symbols.infantry, [svg.LIGHT_BLUE, 3, svg.ALMOST_BLACK]));
 
-    var map = new hexM.Map(0, 10, 10, hexM.HEX_WIDTH, ordered, baseSurfaces[0], MAP_COLOR)
-        .turn(120, 120, [svg.HORIZON, 3, svg.BLUE])
-        .addGlasses(actionOnMap);
-    map.createPlayer("Blue").createPlayer("Red");
-    updateTurnNumber(10);
-    preparePlayers();
-
-    frame.set(map.component);
+    var map;
+    createMap();
 
     function resizeAll() {
         const PALETTE_WIDTH = 400;

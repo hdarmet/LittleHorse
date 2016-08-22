@@ -1663,7 +1663,7 @@ exports.SVG = function(runtime) {
 
     class Polygon extends Shape {
 
-        constructor(x, y) {
+        constructor(x=0, y=0) {
             super();
             this.component = svgr.create("polygon");
             this.x = x;
@@ -1794,7 +1794,7 @@ exports.SVG = function(runtime) {
 
         inside(x, y) {
             var local = this.localPoint(x, y);
-            return insidePolygon(local.x + this.x, local.y + this.y, this.points);
+            return insidePolygon(local.x, local.y, this.points);
         }
 
         duplicate() {
@@ -1821,7 +1821,7 @@ exports.SVG = function(runtime) {
             this.x = x;
             this.y = y;
             this._draw();
-            this.moveHandler && this.moveHandler({x:x, y:y});
+            this.moveHandler && this.moveHandler({x:x+this.x, y:y+this.y});
             return this;
         }
 
@@ -2269,7 +2269,7 @@ exports.SVG = function(runtime) {
         }
 
         duplicate() {
-            let clone = super.duplicate(new Text(this.message)
+            let clone = super.duplicate(new Text(this.messageText)
                 .dimension(this.width, this.height)
                 .font(this.fontName, this.fontSize, this.lineSpacing)
                 .anchor(this.anchorText)

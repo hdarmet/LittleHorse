@@ -7,6 +7,8 @@ exports.Memento = {
     next : [],
     current : null,
 
+    MAX_DO : 100,
+
     clear() {
         if (this.enabled) {
             this.previous = [];
@@ -25,6 +27,9 @@ exports.Memento = {
 
     begin() {
         if (this.enabled) {
+            while (this.previous.length>this.MAX_DO) {
+                this.previous.shift();
+            }
             if (this.current && this.current.size) {
                 this.previous.push(this.current);
             }
@@ -163,7 +168,7 @@ exports.Memento = {
         target._draw();
     },
 
-    rollback() {
+    rollback(notCancelable) {
         if (this.enabled) {
             if (!this.current || this.current.size == 0) {
                 this.current = this.previous.pop();
@@ -172,11 +177,15 @@ exports.Memento = {
                 let toCome = new Map();
                 for (let registrable of this.current.keys()) {
                     let memento = this.current.get(registrable);
-                    let save = registrable.memorize();
-                    toCome.set(registrable, save);
+                    if (!notCancelable) {
+                        let save = registrable.memorize();
+                        toCome.set(registrable, save);
+                    }
                     registrable.revert(memento);
                 }
-                this.next.push(toCome);
+                if (!notCancelable) {
+                    this.next.push(toCome);
+                }
                 this.finalizer && this.finalizer();
             }
             this.current = new Map();
