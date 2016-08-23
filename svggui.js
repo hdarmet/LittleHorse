@@ -1101,9 +1101,9 @@ exports.Gui = function(svg, param) {
             return this;
         }
 
-        whenCancel(ifCancel) {
+        whenCancel(ifCancel=(()=>{})) {
             let glass = new svg.Circle(40).color(svg.BLACK).opacity(0.005);
-            this.ifCancel=ifCancel||this.close;
+            this.ifCancel=ifCancel;
             svg.addEvent(glass, "click", ()=>this.cancel());
             this.cancelIcon = new svg.Translation().add(new svg.Rotation(45)
                 .add(new svg.Circle(40).color(svg.RED, 3, svg.DARK_RED))

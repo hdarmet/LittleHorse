@@ -82,7 +82,7 @@ exports.Hex = function(svg) {
             this.selected = [];
             this.hexSupport = new svg.Translation();
             this.itemSupport = new svg.Translation();
-            this.zoneSupport = new svg.Translation();
+            this.zoneSupport = new svg.Translation().active(false);
             this.unitSupport = new svg.Translation();
             this.turnSupport = new svg.Translation();
             this.playerSupport = new svg.Translation();
@@ -99,6 +99,14 @@ exports.Hex = function(svg) {
                 this.background.onResize(handler);
             };
             this.createHexes(rowCount);
+        }
+
+        playMode() {
+            this.hexSupport = new svg.Translation().active(false);
+            this.itemSupport = new svg.Translation().active(false);
+            this.turnSupport = new svg.Translation().active(false);
+            this.playerSupport = new svg.Translation().active(false);
+            return this;
         }
 
         player(playerHeight, teamWidth, playerColors) {
@@ -1732,7 +1740,7 @@ exports.Hex = function(svg) {
     class Item {
 
         constructor(angle, glass) {
-            this.base = new svg.Translation();
+            this.base = new svg.Translation().active(false);
             this.rotation = new svg.Rotation(angle);
             this.component = new svg.Translation().add(this.rotation.add(this.base));
             this.glass = glass.color(svg.BLACK, 3, svg.RED).opacity(0.001);
@@ -2236,12 +2244,13 @@ exports.Hex = function(svg) {
             this.rotation = new svg.Rotation(angle);
             this.component = new svg.Translation().add(this.rotation.add(this.base));
             this.glass = new svg.Rect(width, height).opacity(0.001).color(svg.BLACK, 3, svg.RED);
-            this.content = new svg.Translation()
+            this.content = new svg.Translation().active(false)
+                .add(new svg.Rect(width, height).color(colors[0], colors[1]+1, colors[0]))
+                .add(new svg.Rect(width, height).color(colors[0], colors[1], colors[2]))
                 .add(this.upLeftField).add(this.upRightField).add(this.upCenterField).add(this.topCenterField)
                 .add(this.leftField).add(this.rightField)
                 .add(this.bottomLeftField).add(this.bottomCenterField).add(this.bottomRightField);
             this.base
-                .add(new svg.Rect(width, height).color(colors[0], colors[1], colors[2]))
                 .add(this.content)
                 .add(this.glass)
                 .add(this.unitBaseSupport.add(this.unitSupport));
@@ -2479,7 +2488,7 @@ exports.Hex = function(svg) {
             this.glass = new svg.Rect(width, height).corners(width/10, height/10).color([0, 0, 0]).opacity(0.001);
             this.titleLabel = new svg.Text(title).font("arial", height/8).position(0, -height/3).color(colors[2]);
             this.component
-                .add(this.base
+                .add(this.base.active(false)
                     .add(this.background)
                     .add(this.titleLabel))
                 .add(this.glass);

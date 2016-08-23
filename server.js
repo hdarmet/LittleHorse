@@ -27,6 +27,7 @@ app.post('/log', function(req, res) {
 
 const GAMES_URL = "./uscw/games/";
 const PLAYS_URL = "./uscw/plays/";
+const MODEL_URL = "./modeler/save/";
 
 function save(url, req, res) {
     let fileName = url + req.body.file + ".json";
@@ -148,6 +149,27 @@ app.post('/uscw/play', function(req, res) {
     }
     else if (req.body.method==='loadgame') {
         load(GAMES_URL, req, res);
+    }
+    else {
+        res.send({ack: 'ko', err: 'unknown method'});
+    }
+});
+
+app.post('/model/edit', function(req, res) {
+    if (req.body.method==='save') {
+        save(MODEL_URL, req, res);
+    }
+    else if (req.body.method==='replace') {
+        replace(MODEL_URL, req, res);
+    }
+    else if (req.body.method==='list') {
+        list(MODEL_URL, req, res);
+    }
+    else if (req.body.method==='load') {
+        load(MODEL_URL, req, res);
+    }
+    else if (req.body.method==='remove') {
+        remove(MODEL_URL, req, res);
     }
     else {
         res.send({ack: 'ko', err: 'unknown method'});

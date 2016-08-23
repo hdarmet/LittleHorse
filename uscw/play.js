@@ -114,7 +114,7 @@ exports.play = function(svg) {
 
     function loadGame(desc) {
         Memento.disable();
-        map = new hexM.MapBuilder().map(desc)/*.addGlasses(actionOnMap)*/;
+        map = new hexM.MapBuilder().map(desc).playMode();
         frame.set(map.component);
         map.forEachHex(hex=>hex.setZoneOrder(["move"]));
         manipulator.enableDnDForPlayer(map.players[0]);
