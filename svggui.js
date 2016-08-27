@@ -29,25 +29,25 @@ exports.Gui = function(svg, param) {
             this.component.glass = new svg.Rect(width, height).mark("glass").position(width / 2, height / 2).opacity(0.001);
             this.drawing.add(this.component.background).add(this.component.glass);
             this.currentFocus = null;
-            let drag = null;
+            this.drag = null;
             this.component.glass.onMouseDown(event=> {
-                if (!drag) {
+                if (!this.drag) {
                     let target = this.component.background.getTarget(event.pageX, event.pageY);
-                    drag = target;
+                    this.drag = target;
                     if (target) {
                         svg.event(target, 'mousedown', event);
                     }
                 }
             });
             this.component.glass.onMouseMove(event=> {
-                let target = drag || this.component.background.getTarget(event.pageX, event.pageY);
+                let target = this.drag || this.component.background.getTarget(event.pageX, event.pageY);
                 if (target) {
                     svg.event(target, 'mousemove', event);
                 }
             });
             this.component.glass.onMouseUp(event=> {
-                let target = drag || this.component.background.getTarget(event.pageX, event.pageY);
-                drag = null;
+                let target = this.drag || this.component.background.getTarget(event.pageX, event.pageY);
+                this.drag = null;
                 if (target) {
                     this.currentFocus = this.getFocus(target);
                     svg.event(target, 'mouseup', event);
@@ -55,13 +55,13 @@ exports.Gui = function(svg, param) {
                 }
             });
             this.component.glass.onMouseOut(event=> {
-                if (drag) {
-                    svg.event(drag, 'mouseup', event);
+                if (this.drag) {
+                    svg.event(this.drag, 'mouseup', event);
                 }
-                drag = null;
+                this.drag = null;
             });
             this.component.glass.onMouseWheel(event=> {
-                let target = drag || this.component.background.getTarget(event.pageX, event.pageY);
+                let target = this.drag || this.component.background.getTarget(event.pageX, event.pageY);
                 if (target) {
                     svg.event(target, 'wheel', event);
                 }
@@ -76,6 +76,11 @@ exports.Gui = function(svg, param) {
 
         mark(label) {
             this.component.mark(label);
+            return this;
+        }
+
+        dragFocus(drag) {
+            this.drag = drag;
             return this;
         }
 
@@ -240,9 +245,13 @@ exports.Gui = function(svg, param) {
         }
 
         drop(item, parent, x, y) {
-            this.scale.remove(item);
+            if (item.parent===this.scale) {
+                this.scale.remove(item);
+            }
             let point = parent.localPoint(x, y);
-            parent.add(item);
+            if (item.parent!==parent) {
+                parent.add(item);
+            }
             item.move(x, y);
         }
 

@@ -169,6 +169,9 @@ exports.Memento = {
     },
 
     rollback(notCancelable) {
+        if (notCancelable) {
+            console.log("not cancel");
+        }
         if (this.enabled) {
             if (!this.current || this.current.size == 0) {
                 this.current = this.previous.pop();

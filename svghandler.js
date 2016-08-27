@@ -150,6 +150,34 @@ exports.SVG = function(runtime) {
         };
     }
 
+    function intersectLineLine(a1, a2, b1, b2) {
+        let uat = (b2.x - b1.x) * (a1.y - b1.y) - (b2.y - b1.y) * (a1.x - b1.x);
+        let ubt = (a2.x - a1.x) * (a1.y - b1.y) - (a2.y - a1.y) * (a1.x - b1.x);
+        let ubd = (b2.y - b1.y) * (a2.x - a1.x) - (b2.x - b1.x) * (a2.y - a1.y);
+
+        if (ub != 0) {
+            var ua = uat / ubd;
+            var ub = ubt / ubd;
+            if (0 <= ua && ua <= 1 && 0 <= ub && ub <= 1) {
+                return { x:a1.x + ua * (a2.x - a1.x), y:a1.y + ua * (a2.y - a1.y)};
+            }
+        }
+        return null;
+    }
+
+    function intersectLinePolygon(a1, a2, points) {
+        var result = [];
+        var length = points.length;
+
+        for ( var i = 0; i < points.length; i++ ) {
+            var b1 = points[i];
+            var b2 = points[(i+1) % points.length];
+            var inter = intersectLineLine(a1, a2, b1, b2);
+            inter && result.push(inter);
+        }
+        return result;
+    }
+
     function getPoint(args) {
         if (args[0] !== undefined && (typeof args[0] === 'number')) {
             return {x: args[0], y: args[1]}
@@ -2745,6 +2773,8 @@ exports.SVG = function(runtime) {
         insidePolygon:insidePolygon,
         angle:angle,
         rotate:rotate,
+        intersectLineLine : intersectLineLine,
+        intersectLinePolygon : intersectLinePolygon,
 
         onChannel : onChannel,
         animate: animate,

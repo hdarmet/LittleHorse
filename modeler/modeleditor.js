@@ -85,13 +85,36 @@ exports.modelEditor = function(svg) {
     class ClassSupport extends Support {
 
         constructor(pane) {
-            super(pane)
+            super(pane);
+            let superPutClass = Uml.Schema.prototype.putClazz;
+            Uml.Schema.prototype.putClazz = function(clazz) {
+                superPutClass.call(this, clazz);
+                ClassSupport.prototype.enableDnD(clazz);
+            };
+            let superRemoveClass = Uml.Schema.prototype.removeClazz;
+            Uml.Schema.prototype.removeClazz = function(clazz) {
+                superRemoveClass.call(this, clazz);
+                ClassSupport.prototype.disableDnD(clazz);
+            };
+            let superSelect = Uml.Clazz.prototype.select;
+            Uml.Clazz.prototype.select = function() {
+                superSelect.call(this);
+                this.anchors.forEach((field, anchor)=>ClassSupport.prototype.enableAnchorDnD(anchor));
+            };
+            let superUnselect = Uml.Clazz.prototype.unselect;
+            Uml.Clazz.prototype.unselect = function() {
+                superUnselect.call(this);
+                this.anchors.forEach((field, anchor)=>ClassSupport.prototype.disableAnchorDnD(anchor));
+            };
             this.action(()=> {
-                this.pane.palette.action = (schema, x, y)=> {
+                if (schema) {
+                    schema.classMode();
+                }
+                this.pane.palette.mouseDownAction = null;
+                this.pane.palette.clickAction = (schema, x, y)=> {
                     let clazz = new Uml.Clazz(150, 150, x, y);
                     schema.putClazz(clazz);
-                    this.enableDnD(clazz);
-                    //this.enableDnD(clazz);
+                    clazz.select();
                 };
             });
         }
@@ -108,14 +131,21 @@ exports.modelEditor = function(svg) {
 
         enableDnD(clazz) {
             Uml.installDnD(clazz, frame,
+                (clazz, x, y)=> {
+                    clazz.move(x, y);
+                    return {x, y};
+                },
                 (clazz)=> {
+                    clazz.unselect();
                     return true;
                 },
                 (clazz, x, y)=> {
                     clazz.move(x, y);
+                    clazz.select();
                     return true;
                 },
                 (clazz)=> {
+                    clazz.select();
                     return true;
                 }
             );
@@ -123,6 +153,119 @@ exports.modelEditor = function(svg) {
 
         disableDnD(clazz) {
             clazz.removeEvent('mousedown');
+        }
+
+        enableAnchorDnD(anchor) {
+            Uml.installDnD(anchor, frame,
+                (anchor, x, y)=> {
+                    return anchor.update(x, y);
+                },
+                (anchor)=> {
+                    return true;
+                },
+                (anchor, x, y)=> {
+                    anchor.move(x, y);
+                    return true;
+                },
+                (anchor)=> {
+                    return true;
+                }
+            );
+        }
+
+        disableAnchorDnD(anchor) {
+            anchor.removeEvent('mousedown');
+        }
+    }
+
+    class RelationshipSupport extends Support {
+
+        constructor(pane) {
+            super(pane);
+
+            let superPutLink = Uml.Schema.prototype.putLink;
+            Uml.Schema.prototype.putLink = function(relationship) {
+                superPutLink.call(this, relationship);
+                RelationshipSupport.prototype.enableClick(relationship);
+            };
+            let superRemoveLink = Uml.Schema.prototype.removeLink;
+            Uml.Schema.prototype.removeClazz = function(relationship) {
+                superRemoveLink.call(this, relationship);
+                RelationshipSupport.prototype.disableClick(relationship);
+            };
+
+            let superSelect = Uml.Relationship.prototype.select;
+            Uml.Relationship.prototype.select = function() {
+                superSelect.call(this);
+                RelationshipSupport.prototype.enableAnchorDnD(this.anchors.p1, false);
+                RelationshipSupport.prototype.enableAnchorDnD(this.anchors.p2, true);
+            };
+            let superUnselect = Uml.Relationship.prototype.unselect;
+            Uml.Relationship.prototype.unselect = function() {
+                superUnselect.call(this);
+                this.anchors.forEach((field, anchor)=>RelationshipSupport.prototype.disableAnchorDnD(anchor));
+            };
+            this.action(()=> {
+                if (schema) {
+                    schema.linkMode();
+                }
+                this.pane.palette.clickAction = null;
+                this.pane.palette.mouseDownAction = (schema, x, y)=> {
+                    let startClazz = schema.getClazz(x, y);
+                    if (startClazz) {
+                        let relationship = new Uml.Relationship(startClazz, x, y);
+                        schema.putLink(relationship);
+                        relationship.select();
+                    }
+                };
+            });
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Line(-40, 40, 40, -40).color([], 4, svg.ALMOST_BLACK))
+                .add(new svg.Rect(80, 80).position(0, 0).color(svg.WHITE).opacity(0.001));
+        }
+
+        buildSelectedBorder(clazz) {
+            return new svg.Rect(82, 82).color([], 4, svg.ALMOST_RED);
+        }
+
+        enableClick(relationship) {
+            Uml.installClick(relationship,
+                (relationship)=> {
+                    return true;
+                }
+            );
+        }
+
+        disableClick(relationship) {
+            relationship.removeEvent('mousedown');
+        }
+
+        enableAnchorDnD(anchor, beginDrag) {
+            if (beginDrag) {
+                drawing.dragFocus(anchor.component);
+            }
+            Uml.installDnD(anchor, frame,
+                (anchor, x, y)=> {
+                    return anchor.update(x, y);
+                },
+                (anchor)=> {
+                    return true;
+                },
+                (anchor, x, y)=> {
+                    return anchor.finalize(x, y);
+                },
+                (anchor)=> {
+                    return true;
+                },
+                beginDrag
+            );
+        }
+
+        disableAnchorDnD(anchor) {
+            anchor.removeEvent('mousedown');
         }
     }
 
@@ -171,7 +314,13 @@ exports.modelEditor = function(svg) {
 
     function actionOnSchema(schema) {
         schema.component.onClick(event=> {
-            palette.action(schema, event.pageX, event.pageY);
+            let point = schema.component.localPoint(event.pageX, event.pageY);
+            palette.clickAction && palette.clickAction(schema, point.x, point.y);
+            Memento.begin();
+        });
+        schema.component.onMouseDown(event=> {
+            let point = schema.component.localPoint(event.pageX, event.pageY);
+            palette.mouseDownAction && palette.mouseDownAction(schema, point.x, point.y);
             Memento.begin();
         });
         schema.clazzes.forEach(clazz=>ClassSupport.prototype.enableDnD(clazz));
@@ -202,6 +351,7 @@ exports.modelEditor = function(svg) {
     drawing.add(palette.component);
 
     new ClassSupport(paneItems);
+    new RelationshipSupport(paneItems);
 
     resizeAll();
 

@@ -80,6 +80,7 @@ exports.Hex = function(svg) {
             this.turns = [];
             this.players = [];
             this.selected = [];
+            this.highlighted = [];
             this.hexSupport = new svg.Translation();
             this.itemSupport = new svg.Translation();
             this.zoneSupport = new svg.Translation().active(false);
@@ -423,6 +424,7 @@ exports.Hex = function(svg) {
             memento.maxRowCount = this.maxRowCount;
             memento.hexWidth = this.hexWidth;
             memento.selected = Memento.registerArray(this.selected);
+            memento.highlighted = Memento.registerArray(this.highlighted);
             memento.ordered = Memento.registerArray(this.ordered);
             memento.rows = Memento.registerArrayOfArrays(this.rows);
             memento.turns = Memento.registerArray(this.turns);
@@ -449,6 +451,7 @@ exports.Hex = function(svg) {
             this.maxRowCount = memento.maxRowCount;
             this.hexWidth = memento.hexWidth;
             Memento.revertArray(memento.selected, this.selected);
+            Memento.revertArray(memento.highlighted, this.highlighted);
             Memento.revertArray(memento.ordered, this.ordered);
             Memento.revertArrayOfArrays(memento.rows, this.rows);
             Memento.revertArray(memento.turns, this.turns);
@@ -702,6 +705,38 @@ exports.Hex = function(svg) {
             }
         }
 
+        unselectAll() {
+            if (!this.selected.empty()) {
+                Memento.register(this);
+                this.selected.forEach(something=>something.unselect());
+                this.selected.clear();
+            }
+        }
+
+        highlight(something) {
+            if (something && !this.highlighted.contains(something)) {
+                Memento.register(this);
+                this.highlighted.push(something);
+                something.highlight();
+            }
+        }
+
+        unhighlight(something) {
+            if (something && this.highlighted.contains(something)) {
+                Memento.register(this);
+                this.highlighted.remove(something);
+                something.unhighlight();
+            }
+        }
+
+        unhighlightAll() {
+            if (!this.highlighted.empty()) {
+                Memento.register(this);
+                this.highlighted.forEach(something=>something.unhighlight());
+                this.highlighted.clear();
+            }
+        }
+
         findTeam(type) {
             for (let player of this.players) {
                 let team = player.findTeam(type);
@@ -711,6 +746,16 @@ exports.Hex = function(svg) {
             }
             return null;
         }
+
+        findPlayer(type) {
+            for (let player of this.players) {
+                if (player.findTeam(type)) {
+                    return player;
+                }
+            }
+            return null;
+        }
+
     }
 
     Map.MIN_COLS = 2;
@@ -2209,6 +2254,9 @@ exports.Hex = function(svg) {
         };
     }
 
+    const SELECT_COLOR = [svg.BLACK, 3, svg.RED];
+    const HIGHLIGHT_COLOR = [svg.BLACK, 3, svg.BLUE];
+
     class Unit {
 
         constructor(type, width, height, angle, symbol, colors) {
@@ -2257,6 +2305,7 @@ exports.Hex = function(svg) {
             this.events = {};
             this.nextUnit = null;
             this.selected = false;
+            this.highlighted = false;
             this._setSymbol(symbol);
         }
 
@@ -2306,8 +2355,11 @@ exports.Hex = function(svg) {
             memento.base = Memento.registerSVGTranslation(this.base);
             memento.rotation = Memento.registerSVGRotation(this.rotation);
             memento.component = Memento.registerSVGTranslation(this.component);
+            memento.unitSupport = Memento.registerSVGTranslation(this.unitSupport);
+            memento.unitBaseSupport = Memento.registerSVGRotation(this.unitBaseSupport);
             memento.events = Memento.registerObject(this.events);
             memento.selected = this.selected;
+            memento.highlighted = this.highlighted;
             memento.symbol = this.symbol;
             memento.upLeft = this.upLeft;
             memento.upRight = this.upRight;
@@ -2328,6 +2380,8 @@ exports.Hex = function(svg) {
             Memento.revertSVGTranslation(memento.base, this.base);
             Memento.revertSVGRotation(memento.rotation, this.rotation);
             Memento.revertSVGTranslation(memento.component, this.component);
+            Memento.revertSVGTranslation(memento.unitSupport, this.unitSupport);
+            Memento.revertSVGRotation(memento.unitBaseSupport, this.unitBaseSupport);
             for (let eventName in this.events) {
                 svg.removeEvent(this.glass, eventName);
             }
@@ -2341,7 +2395,16 @@ exports.Hex = function(svg) {
                 memento.bottomLeft, memento.bottomCenter, memento.bottomRight);
             this.nextUnit = memento.nextUnit;
             this.selected = memento.selected;
-            this.selected ? this.glass.opacity(1).fillOpacity(0.001) : this.glass.opacity(0.001).fillOpacity(1);
+            this.highlighted = memento.highlighted;
+            if (this.selected) {
+                this.glass.opacity(1).color(...SELECT_COLOR).fillOpacity(0.001)
+            }
+            else if (this.highlighted) {
+                this.glass.opacity(1).color(...HIGHLIGHT_COLOR).fillOpacity(0.001)
+            }
+            else {
+                this.glass.opacity(0.001).fillOpacity(1);
+            }
             this._turn = memento._turn;
         }
 
@@ -2461,12 +2524,31 @@ exports.Hex = function(svg) {
         select() {
             Memento.register(this);
             this.selected = true;
-            this.glass.opacity(1).fillOpacity(0.001);
+            this.glass.opacity(1).color(...SELECT_COLOR).fillOpacity(0.001);
         }
 
         unselect() {
             Memento.register(this);
             this.selected = false;
+            if (this.highlighted) {
+                this.glass.opacity(1).color(...HIGHLIGHT_COLOR).fillOpacity(0.001);
+            }
+            else {
+                this.glass.opacity(0.001).fillOpacity(1);
+            }
+        }
+
+        highlight() {
+            Memento.register(this);
+            this.highlighted = true;
+            if (!this.selected) {
+                this.glass.opacity(1).color(...HIGHLIGHT_COLOR).fillOpacity(0.001);
+            }
+        }
+
+        unhighlight() {
+            Memento.register(this);
+            this.highlighted = false;
             this.glass.opacity(0.001).fillOpacity(1);
         }
 

@@ -7,6 +7,7 @@ var FileManager = require("../filemanager.js").FileManager;
 var Hex = require("../uscw/hextools.js").Hex;
 var Memento = require("../memento").Memento;
 var GameItems = require("../gameitems").GameItems;
+var Rules = require("./rules").Rules;
 
 exports.play = function(svg) {
 
@@ -17,12 +18,9 @@ exports.play = function(svg) {
     var fileManager = FileManager(svg, gui);
     var hexM = Hex(svg);
     var gItems = GameItems(svg);
+    var rules = Rules(hexM);
 
     let MAP_COLOR = [180, 240, 180];
-
-    hexM.Unit.prototype.movementFactor = function() {
-        return parseInt(this.bottomRight, 10);
-    };
 
     function resizeAll() {
         const MIN_WIDTH = 800;
@@ -141,7 +139,7 @@ exports.play = function(svg) {
                 let nextZone = this.getPrimaryMoveZone(nextUnit);
                 zone.forEach((val, hex)=>{
                     if (!nextZone.has(hex)) {
-                        console.log(zone.delete(hex));
+                        zone.delete(hex);
                     }
                 });
                 nextUnit = nextUnit.nextUnit;
@@ -159,13 +157,11 @@ exports.play = function(svg) {
                 if (hex && (!zone.has(hex) || zone.get(hex)<movementFactor)) {
                     zone.set(hex, movementFactor);
                     //console.log(hex.x+" "+hex.y);
-                    if (movementFactor>0) {
-                        process(hex.ne, movementFactor - 1);
-                        process(hex.e, movementFactor - 1);
-                        process(hex.se, movementFactor - 1);
-                        process(hex.sw, movementFactor - 1);
-                        process(hex.w, movementFactor - 1);
-                        process(hex.nw, movementFactor - 1);
+                    for (let dir of ["ne", "e", "se", "sw", "w", "nw"]) {
+                        let move = rule.movement(map, unit, startHex, movementFactor, hex, dir);
+                        if (move.auth) {
+                            process(hex[dir], move.ma);
+                        }
                     }
                 }
             }
@@ -217,6 +213,8 @@ exports.play = function(svg) {
                     let zone = this.getMoveZone(unit);
                     if (zone.has(hex)) {
                         hex.putUnit(unit.move(0, 0));
+                        map.unselectAll();
+                        map.unhighlightAll();
                         hideMoveZone();
                         return true;
                     }
@@ -232,10 +230,12 @@ exports.play = function(svg) {
                 (unit)=> {
                     hideMoveZone();
                     if (unit.selected) {
-                        map.unselect(unit);
+                        rule.friendSelected(map, unit, false);
+                        //map.unselect(unit);
                     }
                     else {
-                        map.select(unit);
+                        rule.friendSelected(map, unit, true);
+                        //map.select(unit);
                     }
                     if (unit.nextUnit) {
                         let nextUnit = unit.nextUnit;
@@ -272,10 +272,12 @@ exports.play = function(svg) {
             hexM.installClickable(unit,
                 (unit)=> {
                     if (unit.selected) {
-                        map.unselect(unit);
+                        rule.foeSelected(map, unit, false);
+                        //map.unselect(unit);
                     }
                     else {
-                        map.select(unit);
+                        rule.foeSelected(map, unit, true);
+                        //map.select(unit);
                     }
                     if (unit.nextUnit) {
                         let nextUnit = unit.nextUnit;
@@ -318,6 +320,7 @@ exports.play = function(svg) {
         .titleAction(null);
     paneSaveLoad.handlers(saveGame, loadGame);
 
+    var rule = new rules.SimpleRule();
     var map;
     var menu = new gItems.Exit(()=>{
         openPane();
