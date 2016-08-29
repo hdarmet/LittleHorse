@@ -86,13 +86,13 @@ exports.modelEditor = function(svg) {
 
         constructor(pane) {
             super(pane);
-            let superPutClass = Uml.Schema.prototype.putClazz;
-            Uml.Schema.prototype.putClazz = function(clazz) {
+            let superPutClass = Uml.Schema.prototype.putNode;
+            Uml.Schema.prototype.putNode = function(clazz) {
                 superPutClass.call(this, clazz);
                 ClassSupport.prototype.enableDnD(clazz);
             };
-            let superRemoveClass = Uml.Schema.prototype.removeClazz;
-            Uml.Schema.prototype.removeClazz = function(clazz) {
+            let superRemoveClass = Uml.Schema.prototype.removeNode;
+            Uml.Schema.prototype.removeNode = function(clazz) {
                 superRemoveClass.call(this, clazz);
                 ClassSupport.prototype.disableDnD(clazz);
             };
@@ -108,12 +108,12 @@ exports.modelEditor = function(svg) {
             };
             this.action(()=> {
                 if (schema) {
-                    schema.classMode();
+                    schema.nodeMode();
                 }
                 this.pane.palette.mouseDownAction = null;
                 this.pane.palette.clickAction = (schema, x, y)=> {
                     let clazz = new Uml.Clazz(150, 150, x, y);
-                    schema.putClazz(clazz);
+                    schema.putNode(clazz);
                     clazz.select();
                 };
             });
@@ -189,16 +189,16 @@ exports.modelEditor = function(svg) {
                 RelationshipSupport.prototype.enableClick(relationship);
             };
             let superRemoveLink = Uml.Schema.prototype.removeLink;
-            Uml.Schema.prototype.removeClazz = function(relationship) {
+            Uml.Schema.prototype.removeLink = function(relationship) {
                 superRemoveLink.call(this, relationship);
                 RelationshipSupport.prototype.disableClick(relationship);
             };
 
             let superSelect = Uml.Relationship.prototype.select;
-            Uml.Relationship.prototype.select = function() {
+            Uml.Relationship.prototype.select = function(beginDrag=false) {
                 superSelect.call(this);
                 RelationshipSupport.prototype.enableAnchorDnD(this.anchors.p1, false);
-                RelationshipSupport.prototype.enableAnchorDnD(this.anchors.p2, true);
+                RelationshipSupport.prototype.enableAnchorDnD(this.anchors.p2, beginDrag);
             };
             let superUnselect = Uml.Relationship.prototype.unselect;
             Uml.Relationship.prototype.unselect = function() {
@@ -211,11 +211,11 @@ exports.modelEditor = function(svg) {
                 }
                 this.pane.palette.clickAction = null;
                 this.pane.palette.mouseDownAction = (schema, x, y)=> {
-                    let startClazz = schema.getClazz(x, y);
+                    let startClazz = schema.getNode(x, y);
                     if (startClazz) {
                         let relationship = new Uml.Relationship(startClazz, x, y);
                         schema.putLink(relationship);
-                        relationship.select();
+                        relationship.select(true);
                     }
                 };
             });
@@ -233,7 +233,8 @@ exports.modelEditor = function(svg) {
 
         enableClick(relationship) {
             Uml.installClick(relationship,
-                (relationship)=> {
+                ()=> {
+                    relationship.select();
                     return true;
                 }
             );
@@ -258,7 +259,7 @@ exports.modelEditor = function(svg) {
                     return anchor.finalize(x, y);
                 },
                 (anchor)=> {
-                    return true;
+                    return false;
                 },
                 beginDrag
             );
@@ -321,9 +322,17 @@ exports.modelEditor = function(svg) {
         schema.component.onMouseDown(event=> {
             let point = schema.component.localPoint(event.pageX, event.pageY);
             palette.mouseDownAction && palette.mouseDownAction(schema, point.x, point.y);
-            Memento.begin();
         });
-        schema.clazzes.forEach(clazz=>ClassSupport.prototype.enableDnD(clazz));
+        schema.nodes.forEach(clazz=>ClassSupport.prototype.enableDnD(clazz));
+    }
+
+    function deleteSelected() {
+        if (schema.selected) {
+            Memento.register(schema);
+            schema.selected.remove();
+            schema.selected = null;
+            Memento.begin();
+        }
     }
 
     function editIcon() {
@@ -342,9 +351,8 @@ exports.modelEditor = function(svg) {
     var frame = new gui.Frame(600, 1000).backgroundColor(SCHEMA_COLOR);
     var drawing = new gui.Canvas(1000, 1000)
         .add(frame.component)
-        //.key(46, deleteSelected)
-        //.key(8, deleteSelected)
-        ;
+        .key(46, deleteSelected)
+        .key(8, deleteSelected);
     var palette = new gui.Palette(400, 1000)
         .addPane(paneSaveLoad)
         .addPane(paneItems);

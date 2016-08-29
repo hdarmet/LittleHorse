@@ -8,18 +8,6 @@ var Hex = require("../uscw/hextools.js").Hex;
 
 exports.Rules = function(hexM) {
 
-    hexM.Unit.prototype.movementFactor = function() {
-        return parseInt(this.bottomRight, 10);
-    };
-
-    hexM.Unit.prototype.attackFactor = function() {
-        return parseInt(this.bottomLeft, 10);
-    };
-
-    hexM.Unit.prototype.rangeFactor = function() {
-        return parseInt(this.upLeft, 10);
-    };
-
     function forEachNearHex(hex, callback) {
         for (let dir of ["ne", "e", "se", "sw", "w", "nw"]) {
             let nearHex = hex[dir];
@@ -61,74 +49,6 @@ exports.Rules = function(hexM) {
             }
         }
 
-    }
-
-    class SimpleRule extends Rule {
-
-        constructor() {
-            super();
-        }
-
-        movement(map, unit, start, ma, from, dir) {
-            if (ma>0) {
-                if (this.inZOC(map, unit, from).length) {
-                    return {auth: false}
-                }
-                else {
-                    if (this.isRoad(from, dir, 0)) {
-                        return ma>=0.5 ? {auth: true, ma: ma - 0.5} : {auth: false};
-                    }
-                    else if (this.isPath(from, dir, 0)) {
-                        return ma>=1 ? {auth: true, ma: ma - 1} : {auth: false};
-                    }
-                    else if (this.isProhibited(from, dir)) {
-                        return {auth: false};
-                    }
-                    else if (this.isRiver(from, dir, 0)) {
-                        return (start===from) ? {auth: true, ma:0} : {auth: false};
-                    }
-                    else {
-                        return ma>=1 ? {auth: true, ma: ma - 1} : {auth: false};
-                    }
-                }
-            }
-            else {
-                return {auth:false}
-            }
-        }
-
-        inZOC(map, unit, hex) {
-            let friendlyPlayer = this.getPlayer(map, unit);
-            let foes = [];
-            forEachNearHex(hex, nearHex=>{
-                nearHex.units.forEach(otherUnit=>{
-                    if (otherUnit!==unit && this.getPlayer(map, otherUnit)!==friendlyPlayer) {
-                        foes.add(otherUnit);
-                    }
-                });
-            });
-            return foes;
-        }
-
-        isRoad(hex, dir, minValue) {
-            let road = hex.getLineEntry(dir, "road");
-            return road && road>=minValue;
-        }
-
-        isPath(hex, dir, minValue) {
-            let path = hex.getLineEntry(dir, "road");
-            return path && path>=minValue;
-        }
-
-        isRiver(hex, dir, minValue) {
-            let river = hex.getBorderSide(dir, "river");
-            return river && river>=minValue;
-        }
-
-        isProhibited(hex, dir, minValue) {
-            return !hex[dir] || hex[dir].getBorderSide("c", "river");
-        }
-
         targets(map, unit) {
             let targets = [];
             let friendlyPlayer = this.getPlayer(map, unit);
@@ -146,7 +66,7 @@ exports.Rules = function(hexM) {
             let friendlyPlayer = this.getPlayer(map, unit);
             let range = this.getMaxRange(map);
             this.getHexesInRange(unit, range).forEach((hexRange, hex)=>hex.units.forEach(otherUnit=>{
-                if (this.getPlayer(map, otherUnit)!==friendlyPlayer && this.getRange(otherUnit)<=range-hexRange) {
+                if (this.getPlayer(map, otherUnit)!==friendlyPlayer && this.getRange(otherUnit)>=range-hexRange) {
                     attackers.push(otherUnit);
                 }
             }));
@@ -265,6 +185,14 @@ exports.Rules = function(hexM) {
             units.forEach(unit=>selected.contains(unit)||map.select(unit, false));
         }
 
+        friendsFighting(map, player) {
+            return this.friends(map, this.selectedUnits(map), player);
+        }
+
+        foesFighting(map, player) {
+            return this.foes(map, this.selectedUnits(map), player);
+        }
+
         highlightUnits(map, ...units) {
             let highlighted = this.highlightedUnits(map);
             highlighted.forEach(unit=>units.contains(unit)||map.unhighlight(unit));
@@ -289,6 +217,161 @@ exports.Rules = function(hexM) {
             return map.maxRange;
         }
 
+        getFight(map) {
+            let fight = new Map();
+            this.selectedUnits(map).forEach(unit=>{
+                let player = this.getPlayer(map, unit);
+                let units = fight.get(player);
+                if (units) {
+                    units.push(unit);
+                }
+                else {
+                    units = [unit];
+                    fight.set(player, units);
+                }
+            });
+            return fight.size>=2 ? fight : null;
+        }
+
+    }
+
+    class SimpleRule extends Rule {
+
+        constructor() {
+            super();
+            hexM.Unit.prototype.movementFactor = function() {
+                return parseInt(this.bottomRight, 10);
+            };
+            hexM.Unit.prototype.combatFactor = function() {
+                return parseInt(this.bottomLeft, 10);
+            };
+            hexM.Unit.prototype.rangeFactor = function() {
+                return parseInt(this.upLeft, 10);
+            };
+            this.CRT=[
+                ["AR", "AE", "AE", "AE", "AE", "AE"],
+                ["AR", "AR", "AE", "AE", "AE", "AE"],
+                ["DR", "AR", "AR", "AR", "AE", "AE"],
+                ["DR", "DR", "AR", "AR", "AR", "AR"],
+                ["DR", "DR", "DR", "AR", "AR", "AR"],
+                ["DR", "DR", "DR", "DR", "AR", "AR"],
+                ["DR", "DR", "DR", "DR", "DR", "AR"],
+                ["DE", "DR", "DR", "DR", "DR", "EX"],
+                ["DE", "DE", "DE", "DR", "DR", "EX"],
+                ["DE", "DE", "DE", "DE", "EX", "EX"]
+            ];
+            this.CRT_COLUMNS = ["1-5", "1-4", "1-3", "1-2", "1-1", "2-1", "3-1", "4-1", "5-1", "6-1"];
+            this.CRT_ROWS = ["1", "2", "3", "4", "5", "6"];
+        }
+
+        movement(map, unit, start, ma, from, dir) {
+            if (ma>0) {
+                if (this.inZOC(map, unit, from).length) {
+                    return {auth: false}
+                }
+                else {
+                    if (this.isRoad(from, dir, 0)) {
+                        return ma>=0.5 ? {auth: true, ma: ma - 0.5} : {auth: false};
+                    }
+                    else if (this.isPath(from, dir, 0)) {
+                        return ma>=1 ? {auth: true, ma: ma - 1} : {auth: false};
+                    }
+                    else if (this.isProhibited(from, dir)) {
+                        return {auth: false};
+                    }
+                    else if (this.isRiver(from, dir, 0)) {
+                        return (start===from) ? {auth: true, ma:0} : {auth: false};
+                    }
+                    else {
+                        return ma>=1 ? {auth: true, ma: ma - 1} : {auth: false};
+                    }
+                }
+            }
+            else {
+                return {auth:false}
+            }
+        }
+
+        retreat(map, unit, from, dir) {
+            if (!from[dir]
+                || this.inZOC(map, unit, from[dir]).length
+                || this.isProhibited(from, dir)) {
+                return {auth: false}
+            }
+            else {
+                return {auth: true}
+            }
+        }
+
+        inZOC(map, unit, hex) {
+            let friendlyPlayer = this.getPlayer(map, unit);
+            let foes = [];
+            forEachNearHex(hex, nearHex=>{
+                nearHex.units.forEach(otherUnit=>{
+                    if (otherUnit!==unit && this.getPlayer(map, otherUnit)!==friendlyPlayer) {
+                        foes.add(otherUnit);
+                    }
+                });
+            });
+            return foes;
+        }
+
+        isRoad(hex, dir, minValue) {
+            let road = hex.getLineEntry(dir, "road");
+            return road && road>=minValue;
+        }
+
+        isPath(hex, dir, minValue) {
+            let path = hex.getLineEntry(dir, "road");
+            return path && path>=minValue;
+        }
+
+        isRiver(hex, dir, minValue) {
+            let river = hex.getBorderSide(dir, "river");
+            return river && river>=minValue;
+        }
+
+        isProhibited(hex, dir, minValue) {
+            return !hex[dir] || hex[dir].getBorderSide("c", "river");
+        }
+
+        resolveFight(map, attackerPlayer, dieValue) {
+
+            let attackStrength =
+                this.friends(map, this.selectedUnits(map), attackerPlayer)
+                    .reduce((strength, unit)=>strength+unit.combatFactor(),0);
+            let defenseStrength =
+                this.foes(map, this.selectedUnits(map), attackerPlayer)
+                    .reduce((strength, unit)=>strength+unit.combatFactor(),0);
+            if (attackStrength>=defenseStrength) {
+                let ratio = Math.floor(attackStrength/defenseStrength);
+                if (ratio>6) {
+                    ratio=6;
+                }
+                return {
+                    ratio:ratio+3, // +4 -1 :)
+                    result:this.CRT[ratio+3][dieValue-1]
+                };
+            }
+            else {
+                let ratio = Math.ceil(defenseStrength/attackStrength);
+                if (ratio>5) {
+                    ratio=5;
+                }
+                return {
+                    ratio:5-ratio,
+                    result:this.CRT[5-ratio][dieValue-1]
+                };
+            }
+        }
+
+        getCRT() {
+            return {
+                rows:this.CRT_ROWS,
+                columns:this.CRT_COLUMNS,
+                cells:this.CRT
+            }
+        }
     }
 
     return {

@@ -11,15 +11,15 @@ exports.UML = function(svg) {
             this.component.width = width;
             this.component.height = height;
             this.background = new svg.Rect(width, height).color(svg.ALMOST_WHITE).position(width/2, height/2);
-            this.clazzSupport = new svg.Translation();
+            this.nodeSupport = new svg.Translation();
             this.linkSupport = new svg.Translation();
             this.anchorSupport = new svg.Translation();
             this.component
                 .add(this.background)
-                .add(this.clazzSupport)
+                .add(this.nodeSupport)
                 .add(this.linkSupport)
                 .add(this.anchorSupport);
-            this.clazzes = [];
+            this.nodes = [];
             this.links = [];
             this.selected = null;
         }
@@ -29,33 +29,33 @@ exports.UML = function(svg) {
             if (this.selected) {
                 this.selected.unselect();
             }
-            this.clazzSupport.active(false);
+            this.nodeSupport.active(false);
         }
 
-        getClazz(x, y) {
-            return this.clazzes.find(clazz=>clazz.inside(x, y));
+        getNode(x, y) {
+            return this.nodes.find(clazz=>clazz.inside(x, y));
         }
 
-        classMode() {
+        nodeMode() {
             Memento.register(this);
             if (this.selected) {
                 this.selected.unselect();
             }
-            this.clazzSupport.active(true);
+            this.nodeSupport.active(true);
         }
 
-        putClazz(clazz) {
+        putNode(node) {
             Memento.register(this);
-            clazz.schema = this;
-            this.clazzes.push(clazz);
-            this.clazzSupport.add(clazz.component);
+            node.schema = this;
+            this.nodes.push(node);
+            this.nodeSupport.add(node.component);
             return this;
         }
 
-        removeClazz(clazz) {
+        removeNode(node) {
             Memento.register(this);
-            this.clazzes.remove(clazz);
-            this.clazzSupport.remove(clazz.component);
+            this.nodes.remove(node);
+            this.nodeSupport.remove(node.component);
             return this;
         }
 
@@ -75,11 +75,13 @@ exports.UML = function(svg) {
         }
 
         putAnchors(...anchors) {
+            Memento.register(this);
             anchors.forEach(anchor=>this.anchorSupport.add(anchor.component));
             return this;
         }
 
         removeAnchors(...anchors) {
+            Memento.register(this);
             anchors.forEach(anchor=>this.anchorSupport.remove(anchor.component));
             return this;
         }
@@ -106,10 +108,10 @@ exports.UML = function(svg) {
                 component : Memento.registerSVGTranslation(this.component),
                 width : this.component.width,
                 height : this.component.height,
-                clazzSupport : Memento.registerSVGTranslation(this.clazzSupport),
+                nodeSupport : Memento.registerSVGTranslation(this.nodeSupport),
                 linkSupport : Memento.registerSVGTranslation(this.linkSupport),
                 anchorSupport : Memento.registerSVGTranslation(this.anchorSupport),
-                clazzes : Memento.registerArray(this.clazzes),
+                nodes : Memento.registerArray(this.nodes),
                 links : Memento.registerArray(this.links),
                 selected : this.selected
             }
@@ -119,10 +121,10 @@ exports.UML = function(svg) {
             Memento.revertSVGTranslation(memento.component, this.component);
             this.width = memento.width;
             this.height = memento.height,
-            Memento.revertSVGTranslation(memento.clazzSupport, this.clazzSupport);
+            Memento.revertSVGTranslation(memento.nodeSupport, this.nodeSupport);
             Memento.revertSVGTranslation(memento.linkSupport, this.linkSupport);
             Memento.revertSVGTranslation(memento.anchorSupport, this.anchorSupport);
-            Memento.revertArray(memento.clazzes, this.clazzes);
+            Memento.revertArray(memento.nodes, this.nodes);
             Memento.revertArray(memento.links, this.links);
             this.selected = memento.selected;
         }
@@ -131,16 +133,52 @@ exports.UML = function(svg) {
     const TITLE_HEIGHT = 50;
     const ANCHOR_SIZE = 10;
 
-    class Anchor {
+    class Item {
+
+        constructor() {
+            this.events = {};
+        }
+
+        addEvent(eventName, handler) {
+            Memento.register(this);
+            svg.addEvent(this.component, eventName, handler);
+            this.events[eventName] = handler;
+        }
+
+        removeEvent(eventName) {
+            Memento.register(this);
+            svg.removeEvent(this.component, eventName);
+            delete this.events[eventName];
+        }
+
+        memorize(memento) {
+            memento.events = Memento.registerObject(this.events);
+            return memento;
+        }
+
+        revert(memento) {
+            if (memento===undefined) {
+                console.log("undefined");
+            }
+            this.events = memento.events;
+            for (let eventName in this.events) {
+                svg.addEvent(this.component, eventName, this.events[eventName]);
+            }
+            this._draw();
+        }
+
+    }
+
+    class Anchor extends Item {
         constructor(x, y, update, finalize) {
+            super();
             this.x = x;
             this.y = y;
             this.update = update;
             this.finalize = finalize;
             this.component = new svg.Translation().add(
                 new svg.Rect(ANCHOR_SIZE, ANCHOR_SIZE).color(svg.ALMOST_WHITE, 1, svg.ALMOST_BLACK));
-            this.events = {};
-            this.addEvent("click", (event)=>{});
+            this.component.onClick((event)=>{});
             this._draw();
         }
 
@@ -169,53 +207,34 @@ exports.UML = function(svg) {
             let memento = {
                 x:this.x,
                 y:this.y,
-                events : Memento.registerObject(this.events)
             };
-            return memento;
+            return super.memorize(memento);
         }
 
         revert(memento) {
+            super.revert(memento);
             ({x:this.x, y:this.y}=memento);
-            for (let eventName in this.events) {
-                svg.addEvent(this.component, eventName, this.events[eventName]);
-            }
             this._draw();
         }
 
-        addEvent(eventName, handler) {
-            Memento.register(this);
-            svg.addEvent(this.component, eventName, handler);
-            this.events[eventName] = handler;
-        }
-
-        removeEvent(eventName) {
-            Memento.register(this);
-            svg.removeEvent(this.component, eventName);
-            delete this.events[eventName];
-        }
     }
 
     const MINIMAL_SIZE = 50;
 
-    class Clazz {
+    class Node extends Item {
 
         constructor(width, height, x, y) {
+            super();
             this.width = width;
             this.height = height;
             this.x = x;
             this.y = y;
             this.background = new svg.Rect(this.width, this.height).color(svg.ALMOST_WHITE, 3, svg.ALMOST_WHITE);
-            this.title = new svg.Rect(this.width, TITLE_HEIGHT).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
-            this.body = new svg.Rect(this.width, this.height-TITLE_HEIGHT).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
             this.component = new svg.Translation()
-                .add(this.background)
-                .add(this.title)
-                .add(this.body);
-            this.events = {};
+                .add(this.background);
             this.anchors = {};
             this.links = [];
-            this.addEvent("click", (event)=>{});
-            this._draw();
+            this.component.onClick((event)=>{});
         }
 
         select() {
@@ -293,6 +312,16 @@ exports.UML = function(svg) {
             return this;
         }
 
+        remove() {
+            Memento.register(this);
+            [...this.links].forEach(link=>link.remove());
+            this.anchors.ul && this.schema.removeAnchors(
+                this.anchors.ul, this.anchors.ur,
+                this.anchors.dl, this.anchors.dr);
+            this.schema.removeNode(this);
+            return this;
+        }
+
         inside(x, y) {
             return this.x-this.width/2<x && this.x+this.width/2>x && this.y-this.height/2<y && this.y+this.height/2>y;
         }
@@ -300,8 +329,6 @@ exports.UML = function(svg) {
         _draw() {
             this.component.move(this.x, this.y);
             this.background.dimension(this.width, this.height).position(0, 0);
-            this.title.dimension(this.width, TITLE_HEIGHT).position(0, -this.height/2+TITLE_HEIGHT/2);
-            this.body.dimension(this.width, this.height-TITLE_HEIGHT).position(0, TITLE_HEIGHT/2);
             if (!this.anchors.empty()) {
                 this.anchors.ul.adjust(this.x-this.width/2, this.y-this.height/2);
                 this.anchors.ur.adjust(this.x+this.width/2, this.y-this.height/2);
@@ -347,20 +374,6 @@ exports.UML = function(svg) {
             this.links.forEach(link=>link.follow(this));
         }
 
-        addEvent(eventName, handler) {
-            Memento.register(this);
-            svg.addEvent(this.component, eventName, handler);
-            this.events[eventName] = handler;
-            return this;
-        }
-
-        removeEvent(eventName) {
-            Memento.register(this);
-            svg.removeEvent(this.component, eventName);
-            delete this.events[eventName];
-            return this;
-        }
-
         memorize() {
             let memento = {
                 width : this.width,
@@ -368,94 +381,142 @@ exports.UML = function(svg) {
                 x : this.x,
                 y : this.y,
                 anchors : Memento.registerObject(this.anchors),
-                events : Memento.registerObject(this.events),
                 links : Memento.registerArray(this.links)
             };
+            return super.memorize(memento);
+        }
+
+        revert(memento) {
+            super.revert(memento);
+            [this.x, this.y, this.width, this.height] = [memento.x, memento.y, memento.width, memento.height];
+            Memento.revertObject(memento.anchors, this.anchors);
+            Memento.revertArray(memento.links, this.links);
+        }
+    }
+
+    class Clazz extends Node {
+
+        constructor(width, height, x, y) {
+            super(width, height, x, y);
+            this.title = new svg.Rect(this.width, TITLE_HEIGHT).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
+            this.body = new svg.Rect(this.width, this.height-TITLE_HEIGHT).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
+            this.component
+                .add(this.title)
+                .add(this.body);
+            this._draw();
+        }
+
+        _draw() {
+            super._draw();
+            this.title.dimension(this.width, TITLE_HEIGHT).position(0, -this.height/2+TITLE_HEIGHT/2);
+            this.body.dimension(this.width, this.height-TITLE_HEIGHT).position(0, TITLE_HEIGHT/2);
+        }
+
+        memorize() {
+            let memento = super.memorize();
             return memento;
         }
 
         revert(memento) {
-            [this.x, this.y, this.width, this.height] = [memento.x, memento.y, memento.width, memento.height];
-            Memento.revertObject(memento.events, this.events);
-            Memento.revertObject(memento.anchors, this.anchors);
-            Memento.revertArray(memento.links, this.links);
-            for (let eventName in this.events) {
-                svg.addEvent(this.component, eventName, this.events[eventName]);
-            }
+            super.revert(memento);
             this._draw();
         }
     }
 
-    class Relationship {
-        constructor(clazz1, ...args) {
-            this.line = new svg.Line(0, 0, 0, 0).color(svg.ALMOST_BLACK, 2, svg.ALMOST_BLACK);
+    class Link extends Item {
+
+        constructor(node1, ...args) {
+            super();
+            this.line = this.buildLine();
             this.component = new svg.Translation().add(this.line);
             this.anchors = {};
-            this.events = {};
-            this.begin(clazz1);
-            if (args[0] instanceof Clazz) {
+            this.begin(node1);
+            if (args[0] instanceof Node) {
                 this.end(args[0]);
             }
             else {
                 [this.x2, this.y2] = args;
             }
-            this._draw();
+            this.component.onClick((event)=>{});
         }
 
-        begin(clazz) {
+        buildLine() {
+            return new svg.Line(0, 0, 0, 0).color(svg.ALMOST_BLACK, 2, svg.ALMOST_BLACK);
+        }
+
+        begin(node) {
             Memento.register(this);
-            this.clazz1 = clazz;
-            clazz.addLink(this);
-            this.x1 = null;
-            this.y1 = null;
-            this.anchors.p1 && this.anchors.p1.adjust(this.clazz1.x, this.clazz1.y);
+            this.node1 = node;
+            node.addLink(this);
+            this.x1 = this.node1.x;
+            this.y1 = this.node1.y;
+            this.anchors.p1 && this.anchors.p1.adjust(this.node1.x, this.node1.y);
+            this.computeIntersects();
             this._draw();
             return this;
         }
 
         detachBegin(x, y) {
             Memento.register(this);
-            this.clazz1 && this.clazz1.removeLink(this);
+            this.node1 && this.node1.removeLink(this);
             this.x1 = x;
             this.y1 = y;
-            this.clazz1 = null;
+            this.node1 = null;
             this.anchors.p1 && this.anchors.p1.adjust(this.x1, this.y1);
+            this.computeIntersects();
             this._draw();
             return this;
         }
 
-        end(clazz) {
+        end(node) {
             Memento.register(this);
-            this.clazz2 = clazz;
-            clazz.addLink(this);
-            this.x2 = null;
-            this.y2 = null;
-            this.anchors.p2 && this.anchors.p2.adjust(this.clazz2.x, this.clazz2.y);
+            this.node2 = node;
+            node.addLink(this);
+            this.x2 = this.node2.x;
+            this.y2 = this.node2.y;
+            this.anchors.p2 && this.anchors.p2.adjust(this.node2.x, this.node2.y);
+            this.computeIntersects();
             this._draw();
             return this;
         }
 
         detachEnd(x, y) {
             Memento.register(this);
-            this.clazz2 && this.clazz2.removeLink(this);
+            this.node2 && this.node2.removeLink(this);
             this.x2 = x;
             this.y2 = y;
-            this.clazz2 = null;
+            this.node2 = null;
             this.anchors.p2 && this.anchors.p2.adjust(this.x2, this.y2);
+            this.computeIntersects();
             this._draw();
             return this;
         }
 
-        follow(clazz) {
+        remove() {
             Memento.register(this);
-            if (clazz===this.clazz1) {
-                this.anchors.p1 && this.anchors.p1.adjust(this.clazz1.x, this.clazz1.y);
-                this._draw();
+            this.node1 && this.node1.removeLink(this);
+            this.node2 && this.node2.removeLink(this);
+            this.node1 = null;
+            this.node2 = null;
+            this.anchors.p1 && this.schema.removeAnchors(this.anchors.p1, this.anchors.p2);
+            this.schema.removeLink(this);
+            return this;
+        }
+
+        follow(node) {
+            Memento.register(this);
+            if (node===this.node1) {
+                this.x1 = this.node1.x;
+                this.y1 = this.node1.y;
+                this.anchors.p1 && this.anchors.p1.adjust(this.node1.x, this.node1.y);
             }
-            else if (clazz===this.clazz2) {
-                this.anchors.p2 && this.anchors.p2.adjust(this.clazz2.x, this.clazz2.y);
-                this._draw();
+            else if (node===this.node2) {
+                this.x2 = this.node2.x;
+                this.y2 = this.node2.y;
+                this.anchors.p2 && this.anchors.p2.adjust(this.node2.x, this.node2.y);
             }
+            this.computeIntersects();
+            this._draw();
             return this;
         }
 
@@ -467,7 +528,7 @@ exports.UML = function(svg) {
                     this.detachBegin(x, y);
                     return {x, y};
                 },(x, y)=> {
-                    let clazz = this.schema.getClazz(x, y);
+                    let clazz = this.schema.getNode(x, y);
                     if (clazz) {
                         this.begin(clazz);
                         return true;
@@ -480,7 +541,7 @@ exports.UML = function(svg) {
                     this.detachEnd(x, y);
                     return {x, y};
                 },(x, y)=> {
-                    let clazz = this.schema.getClazz(x, y);
+                    let clazz = this.schema.getNode(x, y);
                     if (clazz) {
                         this.end(clazz);
                         return true;
@@ -504,7 +565,8 @@ exports.UML = function(svg) {
             return this;
         }
 
-        _draw() {
+        computeIntersects() {
+            Memento.register(this);
             function polygon(clazz) {
                 return [
                     {x:clazz.x-clazz.width/2, y:clazz.y-clazz.height/2},
@@ -516,17 +578,9 @@ exports.UML = function(svg) {
             function point(clazz) {
                 return {x:clazz.x, y:clazz.y};
             }
-            if (this.clazz1) {
-                this.x1 = this.clazz1.x;
-                this.y1 = this.clazz1.y;
-            }
-            if (this.clazz2) {
-                this.x2 = this.clazz2.x;
-                this.y2 = this.clazz2.y;
-            }
-            if (this.clazz1) {
+            if (this.node1) {
                 let intersects = svg.intersectLinePolygon(
-                    point(this.clazz1), {x:this.x2, y:this.y2}, polygon(this.clazz1));
+                    point(this.node1), {x:this.x2, y:this.y2}, polygon(this.node1));
                 if (!intersects.empty()) {
                     ({x: this.px1, y: this.py1} = intersects[0]);
                 }
@@ -535,9 +589,9 @@ exports.UML = function(svg) {
                 this.px1 = this.x1;
                 this.py1 = this.y1;
             }
-            if (this.clazz2) {
+            if (this.node2) {
                 let intersects = svg.intersectLinePolygon(
-                    {x:this.x1, y:this.y1}, point(this.clazz2), polygon(this.clazz2));
+                    {x:this.x1, y:this.y1}, point(this.node2), polygon(this.node2));
                 if (!intersects.empty()) {
                     ({x: this.px2, y: this.py2} = intersects[0]);
                 }
@@ -546,6 +600,9 @@ exports.UML = function(svg) {
                 this.px2 = this.x2;
                 this.py2 = this.y2;
             }
+        }
+
+        _draw() {
             if (this.px1 && this.px2) {
                 this.line.start(this.px1, this.py1);
                 this.line.end(this.px2, this.py2);
@@ -556,40 +613,44 @@ exports.UML = function(svg) {
             }
         }
 
-        addEvent(eventName, handler) {
-            Memento.register(this);
-            svg.addEvent(this.component, eventName, handler);
-            this.events[eventName] = handler;
-            return this;
-        }
-
-        removeEvent(eventName) {
-            Memento.register(this);
-            svg.removeEvent(this.component, eventName);
-            delete this.events[eventName];
-            return this;
-        }
-
         memorize() {
-            return {
+            return super.memorize({
                 x1 : this.x1,
                 y1 : this.y1,
-                clazz1 : this.clazz1,
+                px1 : this.px1,
+                py1 : this.py1,
+                node1 : this.node1,
                 x2 : this.x2,
                 y2 : this.y2,
-                clazz2 : this.clazz2,
+                px2 : this.px2,
+                py2 : this.py2,
+                node2 : this.node2,
                 anchors : Memento.registerObject(this.anchors),
-                events : Memento.registerObject(this.events)
-            }
+            });
         }
 
         revert(memento) {
-            ({x1:this.x1, y1:this.y1, clazz1:this.clazz1, x2:this.x1, y2:this.y1, clazz2:this.clazz2} = memento);
-            Memento.revertObject(memento.events, this.events);
+            super.revert(memento);
+            ({x1:this.x1, y1:this.y1, px1:this.px1, py1:this.py1, node1:this.node1,
+                x2:this.x2, y2:this.y2, px2:this.px2, py2:this.py2, node2:this.node2} = memento);
             Memento.revertObject(memento.anchors, this.anchors);
-            for (let eventName in this.events) {
-                svg.addEvent(this.component, eventName, this.events[eventName]);
-            }
+        }
+    }
+
+    class Relationship extends Link {
+
+        constructor(node, ...args) {
+            super(node,...args);
+            this._draw();
+        }
+
+        memorize() {
+            let memento = super.memorize();
+            return memento;
+        }
+
+        revert(memento) {
+            super.revert(memento);
             this._draw();
         }
     }
@@ -600,7 +661,7 @@ exports.UML = function(svg) {
             let spec = {
                 width : schema.component.width,
                 height : schema.component.height,
-                clazzes : schema.clazzes.map(clazz=>({
+                clazzes : schema.nodes.map(clazz=>({
                     x:clazz.x,
                     y:clazz.y,
                     width:clazz.width,
@@ -612,7 +673,7 @@ exports.UML = function(svg) {
 
         schema(desc) {
             let schema = new Schema(desc.width, desc.height);
-            desc.clazzes.forEach(descClazz=>schema.putClazz(
+            desc.nodes.forEach(descClazz=>schema.putNode(
                 new Clazz(descClazz.width, descClazz.height,descClazz.x, descClazz.y)));
             return schema;
         }
@@ -667,7 +728,7 @@ exports.UML = function(svg) {
     }
 
     function installClick(what, doClick) {
-        what.addEvent('mouseclick', event=> {
+        what.addEvent('click', event=> {
             doClick();
             Memento.begin();
         });

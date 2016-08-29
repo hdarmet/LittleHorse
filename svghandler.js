@@ -114,6 +114,21 @@ exports.SVG = function(runtime) {
         });
     }
 
+    if (!Map.prototype.filter) {
+        Object.defineProperty(Object.prototype, "filter", {
+            enumerable: false,
+            value: function(predicate) {
+                let result = new Map();
+                this.forEach((value, key)=>{
+                    if (predicate(value, key)) {
+                        result.set(key, value);
+                    }
+                });
+                return result;
+            }
+        });
+    }
+
     var svgr = runtime;
 
     function print(points) {
@@ -2383,7 +2398,7 @@ exports.SVG = function(runtime) {
         inside(x, y) {
             let local = this.localPoint(x, y);
             let dist = distanceToSegment(local, {x: this.x1, y: this.y1}, {x: this.x2, y: this.y2});
-            return dist < (this.strokeWidth || 2) / 2;
+            return dist < (this.strokeWidth || 2);
 
             function distanceToSegment(p, s1, s2) {
                 return Math.sqrt(distanceToSegmentSquared(p, s1, s2));
@@ -2794,6 +2809,7 @@ exports.SVG = function(runtime) {
         request: request,
 
         GREY : [128, 128, 128],
+        DARK_GREY : [80, 80, 80],
         LIGHT_GREY : [200, 200, 200],
 
         BLUE : [0, 0, 200],

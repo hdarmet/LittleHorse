@@ -26,6 +26,7 @@ exports.Memento = {
     },
 
     begin() {
+        console.log("begin");
         if (this.enabled) {
             while (this.previous.length>this.MAX_DO) {
                 this.previous.shift();
@@ -73,6 +74,9 @@ exports.Memento = {
     },
 
     registerObject(source) {
+        if (!source) {
+            console.log("! source ?");
+        }
         return source.duplicate();
     },
 
@@ -173,6 +177,7 @@ exports.Memento = {
             console.log("not cancel");
         }
         if (this.enabled) {
+            this.enabled = false;
             if (!this.current || this.current.size == 0) {
                 this.current = this.previous.pop();
             }
@@ -192,11 +197,13 @@ exports.Memento = {
                 this.finalizer && this.finalizer();
             }
             this.current = new Map();
+            this.enabled = true;
         }
     },
 
     replay() {
         if (this.enabled) {
+            this.enabled = false;
             if (!this.current || this.current.size == 0) {
                 this.current = this.next.pop();
                 if (this.current) {
@@ -211,6 +218,7 @@ exports.Memento = {
                     this.finalizer && this.finalizer();
                 }
                 this.current = new Map();
+                this.enabled = true;
             }
         }
     },

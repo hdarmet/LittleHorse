@@ -203,7 +203,7 @@ exports.mapEditor = function(svg) {
         }
 
         enableDnD(item) {
-            hexM.installDnD(item, frame,
+            hexM.installDnDOnHexes(item, frame,
                 (item, rotate)=> {
                     return true;
                 },
@@ -243,7 +243,7 @@ exports.mapEditor = function(svg) {
 
         enableCompositeDnD(composite) {
             let hexComposite = this.hex.getItem(hexM.Composite);
-            hexM.installDnD(composite, frame,
+            hexM.installDnDOnHexes(composite, frame,
                 (comp, rotate)=> {
                     return true;
                 },
@@ -372,7 +372,7 @@ exports.mapEditor = function(svg) {
         }
 
         enableDnD(unit) {
-            hexM.installDnD(unit, frame,
+            hexM.installDnDOnHexes(unit, frame,
                 (unit, rotate)=> {
                     return true;
                 },

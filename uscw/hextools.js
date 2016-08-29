@@ -87,6 +87,9 @@ exports.Hex = function(svg) {
             this.unitSupport = new svg.Translation();
             this.turnSupport = new svg.Translation();
             this.playerSupport = new svg.Translation();
+            this.eliminatedColors = [backgroundColor, 4, [backgroundColor[0]/2, backgroundColor[1]/2, backgroundColor[2]/2]];
+            this.eliminatedBox = new Box("Eliminated units", 200, 100, this.eliminatedColors);
+            this.eliminatedSupport = new svg.Translation().add(this.eliminatedBox.component);
             this.component = new svg.Translation();
             this.baseSurface = baseSurface;
             this.background = new svg.Rect(0, 0).color(backgroundColor);
@@ -95,7 +98,7 @@ exports.Hex = function(svg) {
             this.component
                 .add(this.background)
                 .add(this.hexSupport).add(this.itemSupport).add(this.zoneSupport).add(this.unitSupport)
-                .add(this.turnSupport).add(this.playerSupport);
+                .add(this.turnSupport).add(this.playerSupport).add(this.eliminatedSupport);
             this.component.onResize = (handler)=>{
                 this.background.onResize(handler);
             };
@@ -201,6 +204,8 @@ exports.Hex = function(svg) {
                 );
                 margin+=this.players[t].width+MARGIN;
             }
+            this.eliminatedSupport.move(MARGIN*2+margin, mapHeight + MARGIN * 2);
+            this.eliminatedBox.dimension(mapWidth+turnsWidth - margin - MARGIN, this.playerHeight);
         }
 
         setBaseSurface(baseSurface) {
@@ -413,6 +418,7 @@ exports.Hex = function(svg) {
             memento.unitSupport = Memento.registerSVGTranslation(this.unitSupport);
             memento.turnSupport = Memento.registerSVGTranslation(this.turnSupport);
             memento.playerSupport = Memento.registerSVGTranslation(this.playerSupport);
+            memento.eliminatedSupport = Memento.registerSVGTranslation(this.eliminatedSupport);
             memento.component = Memento.registerSVGTranslation(this.component);
             memento.rowOffset = this.rowOffset;
             memento.colCount = this.colCount;
@@ -430,6 +436,11 @@ exports.Hex = function(svg) {
             memento.turns = Memento.registerArray(this.turns);
             memento.players = Memento.registerArray(this.players);
             memento.turnCount = this.turnCount;
+            memento.teamWidth = this.teamWidth;
+            memento.playerHeight = this.playerHeight;
+            memento.playerColors = this.playerColors;
+            memento.playerColors = this.playerColors;
+            memento.eliminatedColors = this.eliminatedColors;
             return memento;
         }
 
@@ -440,6 +451,7 @@ exports.Hex = function(svg) {
             Memento.revertSVGTranslation(memento.unitSupport, this.unitSupport);
             Memento.revertSVGTranslation(memento.turnSupport, this.turnSupport);
             Memento.revertSVGTranslation(memento.playerSupport, this.playerSupport);
+            Memento.revertSVGTranslation(memento.eliminatedSupport, this.eliminatedSupport);
             Memento.revertSVGTranslation(memento.component, this.component);
             this.rowOffset = memento.rowOffset;
             this.colCount = memento.colCount;
@@ -457,6 +469,10 @@ exports.Hex = function(svg) {
             Memento.revertArray(memento.turns, this.turns);
             Memento.revertArray(memento.players, this.players);
             this.turnCount = memento.turnCount;
+            this.teamWidth = memento.teamWidth;
+            this.playerHeight = memento.playerHeight;
+            this.playerColors = memento.playerColors;
+            this.eliminatedColors = memento.eliminatedColors;
             this._updateSize();
         }
 
@@ -2731,6 +2747,96 @@ exports.Hex = function(svg) {
         }
     }
 
+    const BOX_CORNER = 10;
+
+    class Box {
+
+        constructor(title, width, height, colors) {
+            this._titleText = title;
+            this.title = new svg.Text(this._titleText).font("arial", height/6);
+            this.width = width;
+            this.height = height;
+            this._colors = colors;
+            this.units = [];
+            this.component = new svg.Translation();
+            this.content = new svg.Translation();
+            this.border = new svg.Rect(width, height).corners(BOX_CORNER, BOX_CORNER);
+            this.component.add(this.border).add(this.title).add(this.content);
+            this._draw();
+        }
+
+        dimension(width, height) {
+            Memento.register(this);
+            this.width = width;
+            this.height = height;
+            this._draw();
+            return this;
+        }
+
+        colors(colors) {
+            Memento.register(this);
+            this._colors = colors;
+            this._draw();
+            return this;
+        }
+
+        title(title) {
+            this._titleText = title;
+            this._draw();
+            return this;
+        }
+
+        addUnit(unit) {
+            if (!this.units.contains(unit)) {
+                Memento.register(this);
+                Memento.register(unit);
+                unit.box = this;
+                unit.hex = null;
+                this.units.push(unit);
+                this.content.add(unit.component);
+            }
+            return this;
+        }
+
+        removeUnit(unit) {
+            if (this.units.contains(unit)) {
+                Memento.register(this);
+                Memento.register(unit);
+                this.units.remove(unit);
+                unit.box = null;
+                this.content.add(unit.component);
+            }
+            return this;
+        }
+
+        memorize() {
+            return {
+                component : Memento.registerSVGTranslation(this.component),
+                content : Memento.registerSVGTranslation(this.content),
+                units : Memento.registerArray(this.units),
+                width : this.width,
+                height : this.height,
+                colors : this._colors,
+                titleText : this._titleText
+            }
+        }
+
+        revert(memento) {
+            ({width:this.width, height:this.height, colors:this._colors, titleText:this._titleText}=memento);
+            Memento.revertSVGTranslation(memento.component, this.component);
+            Memento.revertSVGTranslation(memento.content, this.content);
+            Memento.revertArray(memento.units, this.units),
+            this._draw();
+        }
+
+        _draw() {
+            this.component.move(this.width/2, this.height/2);
+            this.border.dimension(this.width+BOX_CORNER*2, this.height+BOX_CORNER*2).color(...this._colors);
+            this.title.position(0, -this.height*0.4).color(this._colors[2]);
+        }
+
+    }
+
     class MapBuilder {
 
         spec(map) {
@@ -3037,7 +3143,7 @@ exports.Hex = function(svg) {
         }
     };
 
-    function installDnD(what, glass, doSelect, doRotate, doDrop, doMove, doClick, doRemove) {
+    function installDnDOnHexes(what, glass, doSelect, doRotate, doDrop, doMove, doClick, doRemove) {
         what.addEvent('mousedown', event=> {
             let whatParent = what.component.parent;
             let delta = whatParent.localPoint(event.x, event.y);
@@ -3113,7 +3219,7 @@ exports.Hex = function(svg) {
         });
     }
 
-    function installClickable(what, doClick) {
+    function installClickableOnHexes(what, doClick) {
         what.addEvent('mousedown', event=> {
             what.addEvent('mouseup', endEvent=> {
                 what.removeEvent('mouseup');
@@ -3124,6 +3230,43 @@ exports.Hex = function(svg) {
                 }
                 Memento.begin();
             });
+        });
+    }
+
+    function installDnDOnBox(what, glass, box, doSelect, doMove, doClick) {
+        what.addEvent('mousedown', event=> {
+            let whatParent = what.component.parent;
+            let delta = whatParent.localPoint(event.x, event.y);
+            let {x:initX, y:initY} = what;
+            if (doSelect(what)) {
+                let click = true;
+                what.addEvent('mousemove', moveEvent=> {
+                    let depl = whatParent.localPoint(moveEvent.x, moveEvent.y);
+                    glass.drag(what.component, whatParent, initX + depl.x - delta.x, initY + depl.y - delta.y);
+                    click = false;
+                });
+                what.addEvent('mouseup', endEvent=> {
+                    what.removeEvent('mousemove');
+                    what.removeEvent('mouseup');
+                    if (click && endEvent.x === event.x && endEvent.y === event.y) {
+                        if (!doClick(what)) {
+                            Memento.rollback(true);
+                        }
+                    }
+                    else {
+                        let depl = whatParent.localPoint(endEvent.x, endEvent.y);
+                        let finalX = Math.round(initX + depl.x - delta.x);
+                        let finalY = Math.round(initY + depl.y - delta.y);
+                        let global = whatParent.globalPoint(finalX, finalY);
+                        let onBox = box.component.localPoint(global);
+                        glass.drop(what.component, box.component, finalX, finalY);
+                        if (!doMove(what, finalX, finalY)) {
+                            Memento.rollback(true);
+                        }
+                    }
+                    Memento.begin();
+                });
+            }
         });
     }
 
@@ -3149,8 +3292,9 @@ exports.Hex = function(svg) {
         MapBuilder : MapBuilder,
 
         symbols : symbols,
-        installDnD : installDnD,
-        installClickable : installClickable,
+        installDnDOnHexes : installDnDOnHexes,
+        installClickableOnHexes : installClickableOnHexes,
+        installDnDOnBox : installDnDOnBox,
 
         HEX_WIDTH : HEX_WIDTH,
         ALL_DIRECTIONS : ALL_DIRECTIONS
