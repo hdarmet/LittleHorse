@@ -27,10 +27,9 @@ app.post('/log', function(req, res) {
 
 const GAMES_URL = "./uscw/games/";
 const PLAYS_URL = "./uscw/plays/";
-const MODEL_URL = "./modeler/save/";
 
-function save(url, req, res) {
-    let fileName = url + req.body.file + ".json";
+function save(url, req, res, ext=".json") {
+    let fileName = url + req.body.file + ext;
     fs.stat(fileName, function(err, stat) {
         if(err == null) {
             res.send({ack:'ko', err:"file exists."});
@@ -52,8 +51,8 @@ function save(url, req, res) {
     });
 }
 
-function replace(url, req, res) {
-    let fileName = url + req.body.file + ".json";
+function replace(url, req, res, ext=".json") {
+    let fileName = url + req.body.file + ext;
     fs.writeFile(fileName, JSON.stringify(req.body.data) + "\n",
         (err)=>{
             if (err) {
@@ -81,8 +80,8 @@ function list(url, req, res) {
         });
 }
 
-function load(url, req, res) {
-    let fileName = url + req.body.file + ".json";
+function load(url, req, res, ext=".json") {
+    let fileName = url + req.body.file + ext;
     fs.readFile(fileName,
         (err, data)=>{
             if (err) {
@@ -155,6 +154,10 @@ app.post('/uscw/play', function(req, res) {
     }
 });
 
+const MODEL_URL = "./modeler/save/";
+const PATTERN_URL = "./modeler/patterns/";
+const GENERATE_URL = "./modeler/generate/";
+
 app.post('/model/edit', function(req, res) {
     if (req.body.method==='save') {
         save(MODEL_URL, req, res);
@@ -170,6 +173,12 @@ app.post('/model/edit', function(req, res) {
     }
     else if (req.body.method==='remove') {
         remove(MODEL_URL, req, res);
+    }
+    else if (req.body.method==='pattern') {
+        load(PATTERN_URL, req, res, ".mdl");
+    }
+    else if (req.body.method==='generate') {
+        replace(GENERATE_URL, req, res, ".gen");
     }
     else {
         res.send({ack: 'ko', err: 'unknown method'});

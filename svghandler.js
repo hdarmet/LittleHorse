@@ -100,6 +100,19 @@ exports.SVG = function(runtime) {
         });
     }
 
+    if (!Object.prototype.toArray) {
+        Object.defineProperty(Object.prototype, "toArray", {
+            enumerable: false,
+            value: function() {
+                let result=[];
+                for (let field in this) {
+                    result.push(this[field]);
+                }
+                return result;
+            }
+        });
+    }
+
     if (!Object.prototype.keyOf) {
         Object.defineProperty(Object.prototype, "keyOf", {
             enumerable: false,
@@ -138,6 +151,34 @@ exports.SVG = function(runtime) {
             line += " "+points[i].x+","+points[i].y;
         }
         return line;
+    }
+
+    function distanceToSegment(p, s1, s2) {
+        return Math.sqrt(distanceToSegmentSquared(p, s1, s2));
+
+        function squareDistance(p1, p2) {
+            return (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y)
+        }
+
+        function distanceToSegmentSquared(p, s1, s2) {
+            var l2 = squareDistance(s1, s2);
+            if (l2 == 0) return squareDistance(p, s1);
+            var t = ((p.x - s1.x) * (s2.x - s1.x) + (p.y - s1.y) * (s2.y - s1.y)) / l2;
+            if (t < 0) return squareDistance(p, s1);
+            if (t > 1) return squareDistance(p, s2);
+            return squareDistance(p, {x: s1.x + t * (s2.x - s1.x), y: s1.y + t * (s2.y - s1.y)});
+        }
+    }
+
+    function distanceToEllipse(p, c, rx, ry) {
+        let x = p.x - c.x;
+        let y = p.y - c.y;
+        let d1 = ry*x*ry*x;
+        let d2 = rx*y*rx*y;
+        let d3 = rx*rx*ry*ry;
+        let r1 = Math.sqrt(d1+d2)-Math.sqrt(d3);
+        let r2 = Math.sqrt(r1);
+        return r2;
     }
 
     function insidePolygon(x, y, polygon) {
@@ -229,6 +270,14 @@ exports.SVG = function(runtime) {
             this.moveHandler = handler;
             return this;
         }
+
+        globalAngle() {
+            return this.parent ? this.parent.globalAngle() : 0;
+        }
+
+        globalScale() {
+            return this.parent ? this.parent.globalScale() : 1;
+        }
     }
 
     class SvgElement extends Element {
@@ -251,8 +300,8 @@ exports.SVG = function(runtime) {
         constructor(width, height){
             super();
             this.component = svgr.createDOM("div");
-            this.dimension(width, height);
             this.children = [];
+            this.dimension(width, height);
         }
 
         add(domObject) {
@@ -261,6 +310,7 @@ exports.SVG = function(runtime) {
                 svgr.add(this.component, domObject.component);
                 domObject.parent = this;
                 this.children.push(domObject);
+                domObject._draw && domObject._draw();
             }
             return this;
         }
@@ -273,6 +323,10 @@ exports.SVG = function(runtime) {
                 this.children.splice(index, 1);
             }
             return this;
+        }
+
+        getDelta() {
+            return {x:0, y:0};
         }
 
         show(id) {
@@ -294,6 +348,7 @@ exports.SVG = function(runtime) {
             style += "height:" + this.height + "px;";
             style += "position: absolute;";
             svgr.attr(this.component, "style", style);
+            this.children.forEach(child=>child._draw && child._draw());
         }
 
         globalPoint(...args) {
@@ -312,19 +367,20 @@ exports.SVG = function(runtime) {
     }
 
     class Block extends DomElement{
+
         constructor(width, height){
             super();
+            this.component = svgr.createDOM("div");
             this.move(0, 0);
             this.dimension(width, height);
-            this.component = svgr.createDOM("div");
             this.children = [];
-            this._draw();
         }
 
         add(domObject) {
             svgr.add(this.component, domObject.component);
             domObject.parent = this;
             this.children.push(domObject);
+            domObject._draw && domObject._draw();
             return this;
         }
 
@@ -354,12 +410,22 @@ exports.SVG = function(runtime) {
             return this;
         }
 
-        _draw(){
-            svgr.attr(this.component, "left", this.x);
-            svgr.attr(this.component, "top", this.y);
-            svgr.attr(this.component, "width", this.width);
-            svgr.attr(this.component, "height", this.height);
-            svgr.attr(this.component, "position", "absolute");
+        getDelta() {
+            let delta = this.parent ? this.parent.getDelta() : {x:0, y:0};
+            return {x:this.x-this.width/2+delta.x, y:this.y-this.height/2+delta.y}
+        }
+
+        _draw(style=""){
+            if (this.parent) {
+                let delta = this.parent.getDelta();
+                style += "position:absolute;";
+                style += "left:" + Math.round(this.x - this.width / 2 - delta.x) + "px;";
+                style += "top:" + Math.round(this.y - this.height / 2 - delta.y) + "px;";
+                style += "width:" + this.width + "px;";
+                style += "height:" + this.height + "px;";
+                svgr.attr(this.component, "style", style);
+                this.children.forEach(child=>child._draw && child._draw());
+            }
         }
 
         duplicate() {
@@ -369,14 +435,32 @@ exports.SVG = function(runtime) {
         }
     }
 
+    class Clip extends Block {
+
+        constructor(drawing) {
+            super(0, 0);
+            let scale = drawing.globalScale();
+            let globalWidth = scale*drawing.width;
+            let globalHeight = scale*drawing.height;
+            let global = drawing.globalPoint(globalWidth/2, globalHeight/2);
+            this.move(global.x, global.y);
+            this.dimension(globalWidth, globalHeight);
+        }
+
+        _draw(){
+            super._draw("overflow:hidden;pointer-events:none;border:none;");
+        }
+    }
+
     class TextItem extends DomElement {
 
         constructor(x, y, width, height, component){
             super();
             this.component = component;
-            this.anchorText = TextArea.CENTER;
+            this.anchorText = TextItem.CENTER;
             this.fontName = "arial";
             this.fontSize = 12;
+            this._fontColor = svg.BLACK;
             this.dimension(width, height);
             this.position(x, y);
             this.messageText = "";
@@ -386,6 +470,9 @@ exports.SVG = function(runtime) {
                 for (let handler of this.onInputListeners) {
                     handler(this.messageText);
                 }
+            });
+            svgr.addEvent(component, "keydown", (event)=>{
+                event.processed  = true;
             });
             this.onInputListeners = [];
         }
@@ -406,22 +493,26 @@ exports.SVG = function(runtime) {
         }
 
         dimension(width, height) {
-            this.width = width;
-            this.height = height;
-            svgr.attr(this.component, "width", width);
-            svgr.attr(this.component, "height", height);
-            this._draw();
-            this.resizeHandler && this.resizeHandler({width:width, height:height});
+            if (this.width!==width || this.height!==height) {
+                this.width = width;
+                this.height = height;
+                svgr.attr(this.component, "width", width);
+                svgr.attr(this.component, "height", height);
+                this._draw();
+                this.resizeHandler && this.resizeHandler({width: width, height: height});
+            }
             return this;
         }
 
         position(x, y) {
-            this.x = x;
-            this.y = y;
-            svgr.attr(this.component, "x", x);
-            svgr.attr(this.component, "y", y);
-            this._draw();
-            this.moveHandler && this.moveHandler({x:x, y:y});
+            if (this.x!==x || this.y!==y) {
+                this.x = x;
+                this.y = y;
+                svgr.attr(this.component, "x", x);
+                svgr.attr(this.component, "y", y);
+                this._draw();
+                this.moveHandler && this.moveHandler({x: x, y: y});
+            }
             return this;
         }
 
@@ -431,9 +522,19 @@ exports.SVG = function(runtime) {
             return this;
         }
 
-        font(fontName, fontSize) {
-            this.fontName = fontName;
-            this.fontSize = fontSize;
+        font(fontName, fontSize, lineSpacing) {
+            if (this.fontName !== fontName || this.fontSize !== fontSize
+                || this.lineSpacing !== lineSpacing) {
+                this.fontName = fontName;
+                this.fontSize = fontSize;
+                this.lineSpacing = lineSpacing;
+                this._draw();
+            }
+            return this;
+        }
+
+        fontColor(fontColor) {
+            this._fontColor = fontColor;
             this._draw();
             return this;
         }
@@ -459,21 +560,27 @@ exports.SVG = function(runtime) {
         }
 
         _draw(style){
-            style += "left:" + (this.x || 0) + "px;";
-            style += "top:" + (this.y || 0) + "px;";
-            style += "width:" + (this.width || 0) + "px;";
-            style += "height:" + (this.height || 0) + "px;";
-            style += "text-align:" + (this.anchorText || TextItem.CENTER) + ";";
-            style += "font-family:" + (this.fontName || "Arial") + ";";
-            style += "font-size:" + (this.fontSize || 20) +"px;";
-            style += "background-color:" + ((this.fillColor && this.fillColor.length) ? "rgb(" + this.fillColor.join(",") + ");" : "transparent;");
-            style += "border:" + (this.strokeWidth || 0) + "px solid black;";
-            style += "margin:" + -(this.strokeWidth || 0) + "px;";
-            style += "outline:" + "none;";
-            style += "color:" + ((this.strokeColor && this.strokeColor.length) ? "rgb(" + this.strokeColor.join(",") + ");" : "transparent;");
-            svgr.attr(this.component, "style", style);
-            svgr.value(this.component, this.messageText || '');
-            svgr.attr(this.component, "placeholder", this.placeHolderText || '');
+            if (this.parent) {
+                let delta = this.parent.getDelta();
+                style += "left:" + ((this.x || 0)-delta.x) + "px;";
+                style += "top:" + ((this.y || 0)-delta.y) + "px;";
+                style += "width:" + (this.width || 0) + "px;";
+                style += "height:" + (this.height || 0) + "px;";
+                style += "text-align:" + (this.anchorText || TextItem.CENTER) + ";";
+                style += "font-family:" + (this.fontName || "Arial") + ";";
+                style += "font-size:" + (this.fontSize || 20) + "px;";
+                if (this.lineSpacing) {
+                    style += "line-height:" + this.lineSpacing + "px;";
+                }
+                style += "background-color:" + ((this.fillColor && this.fillColor.length) ? "rgb(" + this.fillColor.join(",") + ");" : "transparent;");
+                style += "border:" + (this.strokeWidth || 0) + "px solid " + ((this.strokeColor && this.strokeColor.length) ? "rgb(" + this.strokeColor.join(",") + ");" : "transparent;") + ";";
+                style += "margin:" + -(this.strokeWidth || 0) + "px;";
+                style += "outline: none; pointer-events: initial;";
+                style += "color:" + ((this._fontColor && this._fontColor.length) ? "rgb(" + this._fontColor.join(",") + ");" : "transparent;");
+                svgr.attr(this.component, "style", style);
+                svgr.value(this.component, this.messageText || '');
+                svgr.attr(this.component, "placeholder", this.placeHolderText || '');
+            }
         }
 
         duplicate(item) {
@@ -496,6 +603,24 @@ exports.SVG = function(runtime) {
         constructor(x, y, width, height){
             super(x, y, width, height, svgr.createDOM("textarea"));
             this.scroll(TextArea.CLIPPED);
+            let self = this;
+            svgr.addEvent(this.component, "keydown", (event)=>{
+                event.processed  = true;
+                if (event.keyCode===13) {
+                    let maxLineCount = Math.floor(this.height/this.lineSpacing);
+                    if (this.messageText.split("\n").length>=maxLineCount) {
+                        svgr.preventDefault(event);
+                    }
+                }
+            });
+        }
+
+        font(fontName, fontSize, lineSpacing) {
+            this.fontName = fontName;
+            this.fontSize = fontSize;
+            this.lineSpacing = lineSpacing;
+            this._draw();
+            return this;
         }
 
         scroll(mode){
@@ -506,7 +631,7 @@ exports.SVG = function(runtime) {
 
         _draw(){
             var style = "overflow:" + (this.mode || TextArea.CLIPPED) +";";
-            style += "resize:" + "none;";
+            style += "resize:none;";
             style += "position: absolute;";
             super._draw(style);
         }
@@ -730,6 +855,9 @@ exports.SVG = function(runtime) {
         }
 
         add(svgObject) {
+            if (this.children.contains(svgObject)) {
+                console.log("bug !!");
+            }
             svgr.add(this.component, svgObject.component);
             svgObject.parent = this;
             this.children.push(svgObject);
@@ -889,6 +1017,7 @@ exports.SVG = function(runtime) {
             this.children.forEach(child=>clone.add(child.duplicate()));
             return clone;
         }
+
     }
 
     class Ordered extends Handler {
@@ -978,9 +1107,14 @@ exports.SVG = function(runtime) {
         }
 
         globalPoint(...args) {
-            var point = getPoint(args);
-            point = {x: point.x + this.x, y: point.y + this.y};
-            return this.parent ? this.parent.globalPoint(point) : null;
+            try {
+                var point = getPoint(args);
+                point = {x: point.x + this.x, y: point.y + this.y};
+                return this.parent ? this.parent.globalPoint(point) : null;
+            }
+            catch (err) {
+                console.log("bug !!");
+            }
         }
 
         localPoint(...args) {
@@ -1008,6 +1142,10 @@ exports.SVG = function(runtime) {
             this.angle = angle;
             svgr.attr(this.component, "transform", "rotate(" + angle + ")");
             return this;
+        }
+
+        globalAngle() {
+            return this.parent ? this.parent.globalAngle()+this.angle : this.angle;
         }
 
         prepareAnimator(animator) {
@@ -1053,6 +1191,10 @@ exports.SVG = function(runtime) {
             this.factor = factor;
             svgr.attr(this.component, "transform", "scale(" + factor + ")");
             return this;
+        }
+
+        globalScale() {
+            return this.parent ? this.parent.globalScale()*this.factor : this.factor;
         }
 
         prepareAnimator(animator) {
@@ -1369,9 +1511,14 @@ exports.SVG = function(runtime) {
         }
 
         inside(x, y) {
-            var local = this.localPoint(x, y);
-            return local.x >= -this.width / 2 && local.x <= this.width / 2
-                && local.y >= -this.height / 2 && local.y <= this.height / 2;
+            try {
+                var local = this.localPoint(x, y);
+                return local.x >= -this.width / 2 && local.x <= this.width / 2
+                    && local.y >= -this.height / 2 && local.y <= this.height / 2;
+            }
+            catch (err) {
+                bug();
+            }
         }
 
         duplicate() {
@@ -2231,6 +2378,9 @@ exports.SVG = function(runtime) {
         }
 
         anchor(anchorText) {
+            if (anchorText==="middle") {
+                console.log(anchorText);
+            }
             this.anchorText = anchorText;
             this._draw();
             return this;
@@ -2243,7 +2393,11 @@ exports.SVG = function(runtime) {
             this.lines = [];
             var lines = this.messageText.split("\n");
             svgr.attr(this.component, "x", this.x);
-            svgr.attr(this.component, "y", this.y - (lines.length - 1) / 2 * this.lineSpacing);
+            let baseY = this.y;
+            if (this.height) {
+                baseY += - this.height/2 + this.lineSpacing/2 - this.fontSize/4;
+            }
+            svgr.attr(this.component, "y", baseY);
             svgr.attr(this.component, "text-anchor", this.anchorText);
             svgr.attr(this.component, "font-family", this.fontName);
             svgr.attr(this.component, "font-size", this.fontSize);
@@ -2252,7 +2406,7 @@ exports.SVG = function(runtime) {
                 var line = svgr.create("tspan");
                 svgr.add(this.component, line);
                 svgr.attr(line, "x", this.x);
-                svgr.attr(line, "y", this.y - (lines.length - l - 1) / 2 * this.lineSpacing);
+                svgr.attr(line, "y", baseY + l * this.lineSpacing);
                 this._format(line, lines[l]);
                 this.lines[l - 1] = line;
             }
@@ -2399,23 +2553,6 @@ exports.SVG = function(runtime) {
             let local = this.localPoint(x, y);
             let dist = distanceToSegment(local, {x: this.x1, y: this.y1}, {x: this.x2, y: this.y2});
             return dist < (this.strokeWidth || 2);
-
-            function distanceToSegment(p, s1, s2) {
-                return Math.sqrt(distanceToSegmentSquared(p, s1, s2));
-
-                function squareDistance(p1, p2) {
-                    return (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y)
-                }
-
-                function distanceToSegmentSquared(p, s1, s2) {
-                    var l2 = squareDistance(s1, s2);
-                    if (l2 == 0) return squareDistance(p, s1);
-                    var t = ((p.x - s1.x) * (s2.x - s1.x) + (p.y - s1.y) * (s2.y - s1.y)) / l2;
-                    if (t < 0) return squareDistance(p, s1);
-                    if (t > 1) return squareDistance(p, s2);
-                    return squareDistance(p, {x: s1.x + t * (s2.x - s1.x), y: s1.y + t * (s2.y - s1.y)});
-                }
-            }
         }
 
         getTarget(x, y) {
@@ -2757,9 +2894,15 @@ exports.SVG = function(runtime) {
         return svgr.screenSize(width, height);
     }
 
+    function bug(err) {
+        console.log("Bug encountered ! : "+err);
+        throw err;
+    }
+
     return {
         Screen : Screen,
         Block : Block,
+        Clip : Clip,
         TextItem : TextItem,
         TextArea : TextArea,
         TextField : TextField,
@@ -2785,6 +2928,8 @@ exports.SVG = function(runtime) {
 
         Animator : Animator,
 
+        distanceToSegment:distanceToSegment,
+        distanceToEllipse:distanceToEllipse,
         insidePolygon:insidePolygon,
         angle:angle,
         rotate:rotate,
@@ -2807,6 +2952,7 @@ exports.SVG = function(runtime) {
         clearTimeout : clearTimeout,
         clearInterval : clearInterval,
         request: request,
+        bug : bug,
 
         GREY : [128, 128, 128],
         DARK_GREY : [80, 80, 80],
@@ -2834,7 +2980,7 @@ exports.SVG = function(runtime) {
         BLACK : [0, 0, 0],
         ALMOST_BLACK : [10, 10, 10],
         WHITE : [255, 255, 255],
-        ALMOST_WHITE: [240, 240, 240]
+        ALMOST_WHITE: [250, 250, 250]
     }
 };
 

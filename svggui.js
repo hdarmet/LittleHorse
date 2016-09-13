@@ -31,51 +31,84 @@ exports.Gui = function(svg, param) {
             this.currentFocus = null;
             this.drag = null;
             this.component.glass.onMouseDown(event=> {
-                if (!this.drag) {
-                    let target = this.component.background.getTarget(event.pageX, event.pageY);
-                    this.drag = target;
-                    if (target) {
-                        svg.event(target, 'mousedown', event);
+                if (!event.processed) {
+                    if (!this.drag) {
+                        let target = this.component.background.getTarget(event.pageX, event.pageY);
+                        this.drag = target;
+                        if (target) {
+                            svg.event(target, 'mousedown', event);
+                        }
                     }
+                    this.activated();
                 }
             });
             this.component.glass.onMouseMove(event=> {
-                let target = this.drag || this.component.background.getTarget(event.pageX, event.pageY);
-                if (target) {
-                    svg.event(target, 'mousemove', event);
+                if (!event.processed) {
+                    let target = this.drag || this.component.background.getTarget(event.pageX, event.pageY);
+                    if (target) {
+                        svg.event(target, 'mousemove', event);
+                    }
+                    this.activated();
                 }
             });
             this.component.glass.onMouseUp(event=> {
-                let target = this.drag || this.component.background.getTarget(event.pageX, event.pageY);
-                this.drag = null;
-                if (target) {
-                    this.currentFocus = this.getFocus(target);
-                    svg.event(target, 'mouseup', event);
-                    svg.event(target, 'click', event);
+                if (!event.processed) {
+                    let target = this.drag || this.component.background.getTarget(event.pageX, event.pageY);
+                    this.drag = null;
+                    if (target) {
+                        this.currentFocus = this.getFocus(target);
+                        svg.event(target, 'mouseup', event);
+                        svg.event(target, 'click', event);
+                    }
+                    this.activated();
                 }
             });
             this.component.glass.onMouseOut(event=> {
-                if (this.drag) {
-                    svg.event(this.drag, 'mouseup', event);
+                if (!event.processed) {
+                    if (this.drag) {
+                        svg.event(this.drag, 'mouseup', event);
+                    }
+                    this.drag = null;
+                    this.activated();
                 }
-                this.drag = null;
             });
             this.component.glass.onMouseWheel(event=> {
-                let target = this.drag || this.component.background.getTarget(event.pageX, event.pageY);
-                if (target) {
-                    svg.event(target, 'wheel', event);
+                if (!event.processed) {
+                    let target = this.drag || this.component.background.getTarget(event.pageX, event.pageY);
+                    if (target) {
+                        svg.event(target, 'wheel', event);
+                    }
+                    this.activated();
                 }
             });
             svg.addGlobalEvent("keydown", event=> {
-                if (this.processKeys(event.keyCode, event.ctrlKey, event.altKey)) {
-                    event.preventDefault();
+                if (!event.processed) {
+                    if (this.processKeys(event.keyCode, event.ctrlKey, event.altKey)) {
+                        svg.runtime.preventDefault(event);
+                    }
+                    this.activated();
                 }
             });
             this.keys=[];
+            this.activationListeners = [];
         }
 
         mark(label) {
             this.component.mark(label);
+            return this;
+        }
+
+        activated() {
+            [...this.activationListeners].forEach(listener=>listener.refresh());
+        }
+
+        addActivationListener(activationListener) {
+            this.activationListeners.add(activationListener);
+            return this;
+        }
+
+        removeActivationListener(activationListener) {
+            this.activationListeners.remove(activationListener);
             return this;
         }
 
@@ -802,7 +835,6 @@ exports.Gui = function(svg, param) {
             this.back = new svg.Rect(width, height).color(colors[0], colors[1], colors[2]);
             this.component = new svg.Translation().add(this.back);
             this.text = new svg.Text(text).font("Arial", 24);
-            this.component.add(this.text.position(0, 8));
             this.glass = new svg.Rect(width, height).color([0, 0, 0]).opacity(0.001);
             this.component.add(this.text.position(0, 8)).add(this.glass);
         }
@@ -1229,10 +1261,6 @@ exports.Gui = function(svg, param) {
             return this;
         }
 
-        hideControl() {
-            canvas(this.component).component.remove(this.control);
-        }
-
         position(x, y) {
             this.x = x;
             this.y = y;
@@ -1315,7 +1343,7 @@ exports.Gui = function(svg, param) {
         }
     }
 
-    class TextField {
+    class TextItem {
 
         constructor(x, y, width, height, message) {
             this.x = x;
@@ -1323,26 +1351,33 @@ exports.Gui = function(svg, param) {
             this.width = width;
             this.height = height;
             this.textMessage = message;
-            this.frame = new svg.Rect(width, height).color(svg.LIGHT_GREY, 3, svg.GREY);
+            this.textAnchor="left";
+            this._colors = [svg.LIGHT_GREY, 3, svg.GREY];
+            this._editColor = [svg.WHITE, 3, svg.ALMOST_BLACK];
+            this.frame = new svg.Rect(width, height).color(...this._colors);
             this.glass = new svg.Rect(width, height).color(svg.BLACK).opacity(0.005);
             svg.addEvent(this.glass, "click", ()=>{
-               this.showControl();
+                this.showControl();
             });
             this.component = new svg.Translation().move(x, y).add(this.frame);
-            this.text = new svg.Text(message).anchor("start").dimension(width, height);
+            this.text = this.buildLabel(message, x, y, width, height);
             this.component.add(this.text).add(this.glass);
-            this.control = new svg.TextField(x, y, width, height).message(message)
-                .color(svg.WHITE, 3, svg.ALMOST_BLACK).anchor(svg.TextItem.LEFT);
+            this.control = this.buildControl(message, x, y, width, height);
+            this.control.color(...this._editColor);
             this.onInputFct = (message)=>{
+                let oldMessage = this.textMessage;
                 let valid = this.controlValidity(message);
                 if (this._onInput) {
-                    this._onInput(message, valid);
+                    this._onInput(oldMessage, message, valid);
                 }
                 return valid;
             };
             this.control.onInput((message)=>{this.onInputFct(message);});
             svg.addEvent(this.control, "blur", ()=>{
                 this.hideControl();
+                if (this._onBlur) {
+                    this._onBlur();
+                }
             });
             this.fontName = "arial";
             this.fontSize = 32;
@@ -1351,15 +1386,33 @@ exports.Gui = function(svg, param) {
             this._draw();
         }
 
+        anchor(textAnchor) {
+            if (textAnchor==="left") {
+                this.text.anchor("start");
+                this.control.anchor(svg.TextItem.LEFT);
+            }
+            else if (textAnchor==="center") {
+                this.text.anchor("middle");
+                this.control.anchor(svg.TextItem.CENTER);
+            }
+            else if (textAnchor==="right") {
+                this.text.anchor("end");
+                this.control.anchor(svg.TextItem.RIGHT);
+            }
+            this.textAnchor = textAnchor;
+            this._draw();
+            return this;
+        }
+
         controlValidity(message) {
             let valid = this.validate(message);
             if (valid) {
                 this.textMessage = message;
                 this.text.message(message);
-                this.control.color(svg.WHITE, 3, svg.ALMOST_BLACK);
+                this.control.fontColor(svg.BLACK);
             }
             else {
-                this.control.color(svg.WHITE, 3, svg.RED);
+                this.control.fontColor(svg.RED);
             }
             return valid;
         }
@@ -1386,48 +1439,109 @@ exports.Gui = function(svg, param) {
             return this;
         }
 
+        color(colors) {
+            this._colors = colors;
+            this.frame.color(...this._colors);
+            return this;
+        }
+
+        editColor(colors) {
+            this._editColors = colors;
+            this.control.color(...this._editColors);
+            return this;
+        }
+
         showControl() {
-            canvas(this.component).component.add(this.control);
-            this._draw();
-            this.control.focus().select();
+            function buildClip(component, control) {
+                if (component instanceof svg.Drawing && component.parent!=null) {
+                    let clip = new svg.Clip(component);
+                    console.log(clip.x+" "+clip.y+" "+clip.width+" "+clip.height);
+                    clip.add(control);
+                    control = clip;
+                }
+                if (component.parent) {
+                    return buildClip(component.parent, control);
+                }
+                else {
+                    return control;
+                }
+            }
+
+            if (!this.controlShown) {
+                this.controlShown = true;
+                this.refresh();
+                this.clip = buildClip(this.component, this.control);
+                canvas(this.component).addActivationListener(this).component.add(this.clip);
+                this._draw();
+                this.control.focus().select();
+            }
+        }
+
+        refresh() {
+            let scale = this.component.globalScale();
+            let position = this.component.globalPoint(-this.width/2, -this.height/2);
+            if (position) {
+                this.control.position(position.x, position.y);
+            }
+            this.control.dimension(this.width * scale, this.height * scale);
+            this.control.font(this.fontName, this.fontSize * scale, this.lineSpacing);
         }
 
         hideControl() {
-            canvas(this.component).component.remove(this.control);
+            if (this.controlShown) {
+                this.controlShown = false;
+                canvas(this.component).addActivationListener(this).component.remove(this.clip);
+            }
         }
 
         position(x, y) {
-            this.x = x;
-            this.y = y;
-            this.component.move(x, y);
-            this._draw();
+            if (this.x !== x || this.y !== y) {
+                this.x = x;
+                this.y = y;
+                this.component.move(x, y);
+                this._draw();
+            }
             return this;
         }
 
         dimension(width, height) {
-            this.width = width;
-            this.height = height;
-            this.frame.dimension(width, height);
-            this.text.dimension(width, height);
-            this.control.dimension(width, height);
-            this._draw();
+            if (this.width!==width || this.height!==height) {
+                this.width = width;
+                this.height = height;
+                this.frame.dimension(width, height);
+                this.text.dimension(width, height);
+                this.glass.dimension(width, height);
+                this.control.dimension(width, height);
+                this._draw();
+            }
             return this;
         }
 
-        font(fontName, fontSize) {
+        font(fontName, fontSize, lineSpacing) {
+            this.fontName = fontName;
             this.fontSize = fontSize;
-            this.text.font(fontName, fontSize);
-            this.control.font(fontName, fontSize);
+            this.lineSpacing = lineSpacing;
+            this.text.font(fontName, fontSize, lineSpacing);
+            this.control.font(fontName, fontSize, lineSpacing);
             this._draw();
             return this;
         }
 
         _draw() {
-            this.text.position(- this.width / 2 /*+ this.fontSize / 4*/, this.fontSize / 3);
+            if (this.textAnchor==="left") {
+                this.text.position(- this.width / 2, this.fontSize / 3);
+            }
+            else if (this.textAnchor==="center") {
+                this.text.position(0, this.fontSize / 3);
+            }
+            else if (this.textAnchor==="right") {
+                this.text.position(this.width / 2, this.fontSize / 3);
+            }
             let position = this.component.globalPoint(-this.width/2, -this.height/2);
             if (position) {
                 this.control.position(position.x, position.y);
             }
+            this.text._draw();
         }
 
         close() {
@@ -1436,7 +1550,45 @@ exports.Gui = function(svg, param) {
 
         onInput(input) {
             this._onInput = input;
+            return this;
         }
+
+        onBlur(blur) {
+            this._onBlur = blur;
+            return this;
+        }
+    }
+
+    class TextField extends TextItem {
+
+        constructor(x, y, width, height, message) {
+            super(x, y, width, height, message);
+        }
+
+        buildLabel(message, x, y, width, height) {
+            return new svg.Text(message).anchor("start").dimension(width, height);
+        }
+
+        buildControl(message, x, y, width, height) {
+            return new svg.TextField(x, y, width, height).anchor(svg.TextItem.LEFT).message(message);
+        }
+
+    }
+
+    class TextArea extends TextItem {
+
+        constructor(x, y, width, height, message) {
+            super(x, y, width, height, message);
+        }
+
+        buildLabel(message, x, y, width, height) {
+            return new svg.Text(message).anchor("start").dimension(width, height);
+        }
+
+        buildControl(message, x, y, width, height) {
+            return new svg.TextArea(x, y, width, height).anchor(svg.TextItem.LEFT).message(message);
+        }
+
     }
 
     class NumberField extends TextField {
@@ -1519,6 +1671,7 @@ exports.Gui = function(svg, param) {
         WarningPopin:WarningPopin,
         Grid:Grid,
         TextField:TextField,
+        TextArea:TextArea,
         NumberField:NumberField,
         Label:Label,
         Selector:Selector

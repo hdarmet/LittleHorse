@@ -3,8 +3,6 @@
  */
 
 var Hex = require("../uscw/hextools.js").Hex;
-//var Memento = require("../memento").Memento;
-//var GameItems = require("../gameitems").GameItems;
 
 exports.Rules = function(hexM) {
 
@@ -217,7 +215,7 @@ exports.Rules = function(hexM) {
             return map.maxRange;
         }
 
-        getFight(map) {
+        getFight(map, startMoves) {
             let fight = new Map();
             this.selectedUnits(map).forEach(unit=>{
                 let player = this.getPlayer(map, unit);
@@ -266,7 +264,7 @@ exports.Rules = function(hexM) {
 
         movement(map, unit, start, ma, from, dir) {
             if (ma>0) {
-                if (this.inZOC(map, unit, from).length) {
+                if (this.foesInZOC(map, unit, from).length) {
                     return {auth: false}
                 }
                 else {
@@ -276,7 +274,7 @@ exports.Rules = function(hexM) {
                     else if (this.isPath(from, dir, 0)) {
                         return ma>=1 ? {auth: true, ma: ma - 1} : {auth: false};
                     }
-                    else if (this.isProhibited(from, dir)) {
+                    else if (this.isProhibited(from[dir])) {
                         return {auth: false};
                     }
                     else if (this.isRiver(from, dir, 0)) {
@@ -294,7 +292,7 @@ exports.Rules = function(hexM) {
 
         retreat(map, unit, from, dir) {
             if (!from[dir]
-                || this.inZOC(map, unit, from[dir]).length
+                || this.foesInZOC(map, unit, from[dir]).length
                 || this.isProhibited(from, dir)) {
                 return {auth: false}
             }
@@ -303,15 +301,21 @@ exports.Rules = function(hexM) {
             }
         }
 
-        inZOC(map, unit, hex) {
+        foesInZOC(map, unit, hex) {
+            let foes = this.foesInHex(map, unit, hex);
+            forEachNearHex(hex, nearHex=>{
+                foes.push(...this.foesInHex(map, unit, nearHex));
+            });
+            return foes;
+        }
+
+        foesInHex(map, unit, hex) {
             let friendlyPlayer = this.getPlayer(map, unit);
             let foes = [];
-            forEachNearHex(hex, nearHex=>{
-                nearHex.units.forEach(otherUnit=>{
-                    if (otherUnit!==unit && this.getPlayer(map, otherUnit)!==friendlyPlayer) {
-                        foes.add(otherUnit);
-                    }
-                });
+            hex.units.forEach(otherUnit=>{
+                if (otherUnit!==unit && this.getPlayer(map, otherUnit)!==friendlyPlayer) {
+                    foes.add(otherUnit);
+                }
             });
             return foes;
         }
@@ -331,8 +335,8 @@ exports.Rules = function(hexM) {
             return river && river>=minValue;
         }
 
-        isProhibited(hex, dir, minValue) {
-            return !hex[dir] || hex[dir].getBorderSide("c", "river");
+        isProhibited(hex, minValue) {
+            return !hex || hex.getBorderSide("c", "river");
         }
 
         resolveFight(map, attackerPlayer, dieValue) {

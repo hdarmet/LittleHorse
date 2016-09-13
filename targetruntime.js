@@ -2,6 +2,7 @@
  * Created by HDA3014 on 13/03/2016.
  */
 console.log("Target runtime loaded...");
+
 exports.targetRuntime = function() {
     var svgNS = "http://www.w3.org/2000/svg";
     var xlink = "http://www.w3.org/1999/xlink";
@@ -29,6 +30,9 @@ exports.targetRuntime = function() {
         },
         attr(component, name, value) {
             try {
+                if (value && value.startsWith && value.startsWith("NaN")) {
+                    console.log("bug");
+                }
                 if (value !== undefined) {
                     component.setAttribute(name, value);
                 }
@@ -93,14 +97,14 @@ exports.targetRuntime = function() {
             return component.getBoundingClientRect();
         },
         addEvent(component, eventName, handler) {
-            if (!component.listeners) {
-                component.listeners = {};
-            }
-            else if (component.listeners[eventName]) {
-                component.removeEventListener(eventName, component.listeners[eventName]);
-            }
-            component.listeners[eventName] = handler;
-            component.addEventListener(eventName, handler);
+                if (!component.listeners) {
+                    component.listeners = {};
+                }
+                else if (component.listeners[eventName]) {
+                    component.removeEventListener(eventName, component.listeners[eventName]);
+                }
+                component.listeners[eventName] = handler;
+                component.addEventListener(eventName, handler);
         },
         addGlobalEvent(eventName, handler) {
             if (!window.listeners) {

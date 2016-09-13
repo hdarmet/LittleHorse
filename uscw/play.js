@@ -28,7 +28,7 @@ exports.play = function(svg) {
             .add(new svg.Path(-25, -5)
                 .line(40, -5).bezier(50, -5, 60, 0)
                 .bezier(50, 5, 40, 5).line(-25, 5).line(-25, -5)
-                .color(svg.LIGHT_GREY, 2, svg.DARK_GREY))
+                .color(svg.ALMOST_WHITE, 2, svg.DARK_GREY))
             .add(new svg.Rect(8, 28).corners(4, 4).position(-28, 0)
                 .color(svg.LIGHT_ORANGE, 2, svg.ORANGE))
             .add(new svg.Path(-33, -4).line(-50, -3).bezier(-60, 0, -50, 3)
@@ -39,6 +39,22 @@ exports.play = function(svg) {
         return component;
     }
 
+    function fadedSword() {
+        let component = new svg.Translation()
+            .add(new svg.Path(-25, -5)
+                .line(40, -5).bezier(50, -5, 60, 0)
+                .bezier(50, 5, 40, 5).line(-25, 5).line(-25, -5)
+                .color(svg.LIGHT_GREY, 2, svg.GREY))
+            .add(new svg.Rect(8, 28).corners(4, 4).position(-28, 0)
+                .color(svg.LIGHT_GREY, 2, svg.GREY))
+            .add(new svg.Path(-33, -4).line(-50, -3).bezier(-60, 0, -50, 3)
+                .line(-33, 4).line(-33, -4)
+                .color(svg.LIGHT_GREY, 2, svg.GREY))
+            .add(new svg.Circle(4).position(-56, 0)
+                .color(svg.LIGHT_GREY, 2, svg.GREY));
+        return component;
+    }
+
     function fight() {
         let component = new svg.Translation()
             .add(new svg.Rotation(-45).add(sword()))
@@ -46,10 +62,15 @@ exports.play = function(svg) {
         return component;
     }
 
+    function fadedFight() {
+        let component = new svg.Translation()
+            .add(new svg.Rotation(-45).add(fadedSword()))
+            .add(new svg.Rotation(-135).add(fadedSword()));
+        return component;
+    }
+
     const FIGHT_MARGIN_X = 50;
     const FIGHT_MARGIN_Y = 50;
-    const DIE_MARGIN_X = 20;
-    const DIE_MARGIN_Y = 120;
 
     function resizeAll() {
         const MIN_WIDTH = 800;
@@ -75,8 +96,7 @@ exports.play = function(svg) {
         drawing.dimension(canvasWidth, canvasHeight);
         frame.dimension(frameWidth, frameHeight)
             .position(MARGIN+frameWidth/2, MARGIN+frameHeight/2);
-        fight.move(-frameWidth/2 +FIGHT_MARGIN_X, -frameHeight/2 +FIGHT_MARGIN_Y);
-        die.component.move(-frameWidth/2 +DIE_MARGIN_X, -frameHeight/2 +DIE_MARGIN_Y);
+        command.move(-frameWidth/2 +FIGHT_MARGIN_X, -frameHeight/2 +FIGHT_MARGIN_Y);
     }
 
     class ParameterPopin extends gui.Popin {
@@ -148,9 +168,7 @@ exports.play = function(svg) {
         map.forEachHex(hex=>hex.setZoneOrder(["move"]));
         friendPlayer = map.players[0];
         foePlayer = map.players[1];
-        manipulator.enableDnDOnHexesForPlayer(friendPlayer);
-        manipulator.enableClickableOnHexesForPlayer(foePlayer);
-        manipulator.prepareMoves();
+        new Impulse(map, manipulator, command, rule, friendPlayer, foePlayer).play();
         Memento.enable();
         Memento.clear();
     }
@@ -158,11 +176,29 @@ exports.play = function(svg) {
     class UnitManipulator {
 
         constructor() {
+            this.eliminated = [];
+        }
+
+        context(map, impulse, command, rule) {
+            this.map = map;
+            this.impulse = impulse;
+            this.command = command;
+            this.rule = rule;
+        }
+
+        memorize() {
+            return {
+                eliminated : Memento.registerArray(this.eliminated)
+            }
+        }
+
+        revert(memento) {
+            Memento.revertArray(memento.eliminated, this.eliminated);
         }
 
         prepareMoves() {
             this.startMoves = new Map();
-            map.forEachUnit(unit=>this.startMoves.set(unit, unit.hex));
+            this.map.forEachUnit(unit=>this.startMoves.set(unit, unit.hex));
         }
 
         mergeZones(unit, zoneBuilder, ...args) {
@@ -185,24 +221,23 @@ exports.play = function(svg) {
         }
 
         getPrimaryMoveZone(unit) {
-            let zone = new Map();
-            let startHex = this.startMoves.get(unit);
-            process(startHex, unit.movementFactor());
-            return zone;
-
-            function process(hex, movementFactor) {
+            let process = (hex, movementFactor)=> {
                 if (hex && (!zone.has(hex) || zone.get(hex)<movementFactor)) {
                     zone.set(hex, movementFactor);
                     //console.log(hex.x+" "+hex.y);
                     for (let dir of ["ne", "e", "se", "sw", "w", "nw"]) {
-                        let move = rule.movement(map, unit, startHex, movementFactor, hex, dir);
+                        let move = this.rule.movement(this.map, unit, startHex, movementFactor, hex, dir);
                         if (move.auth) {
                             process(hex[dir], move.ma);
                         }
                     }
                 }
-            }
+            };
 
+            let zone = new Map();
+            let startHex = this.startMoves.get(unit);
+            process(startHex, unit.movementFactor());
+            return zone;
         }
 
         getAdvanceZone(unit, units, hexes) {
@@ -244,29 +279,29 @@ exports.play = function(svg) {
         }
 
         proposeFighting() {
-            if (rule.getFight(map)) {
-                fight.show();
+            if (this.rule.getFight(this.map)) {
+                if (this.command.status===HIDDEN) {
+                    this.command.show();
+                }
             }
             else {
-                fight.hide();
+                if (this.command.status!==HIDDEN) {
+                    this.command.hide();
+                }
             }
         }
 
-        enableDnDOnHexesForPlayer(player) {
+        enableDnDForMove(player) {
             player.teams.forEach(team=>{
-                manipulator.enableDnDOnHexesForTeam(team);
+                this.map.forEachUnit(unit=>{
+                    if (unit.type===team.unit.type) {
+                        this.enableDnDForMoveOnAUnit(unit);
+                    }
+                });
             });
         }
 
-        enableDnDOnHexesForTeam(team) {
-            map.forEachUnit(unit=>{
-               if (unit.type===team.unit.type) {
-                   this.enableDnDOnHexes(unit);
-               }
-            });
-        }
-
-        enableDnDOnHexes(unit) {
+        enableDnDForMoveOnAUnit(unit) {
 
             let showMoveZone=()=>{
                 let zone = this.getMoveZone(unit);
@@ -297,8 +332,8 @@ exports.play = function(svg) {
                     let zone = this.getMoveZone(unit);
                     if (zone.has(hex)) {
                         hex.putUnit(unit.move(0, 0));
-                        map.unselectAll();
-                        map.unhighlightAll();
+                        this.map.unselectAll();
+                        this.map.unhighlightAll();
                         this.proposeFighting();
                         hideMoveZone();
                         return true;
@@ -315,12 +350,14 @@ exports.play = function(svg) {
                 (unit)=> {
                     hideMoveZone();
                     if (unit.selected) {
-                        rule.friendSelected(map, unit, false);
+                        this.rule.friendSelected(this.map, unit, false);
                         this.proposeFighting();
                     }
                     else {
-                        rule.friendSelected(map, unit, true);
-                        this.proposeFighting();
+                        if (this.startMoves.get(unit)===unit.hex) {
+                            this.rule.friendSelected(this.map, unit, true);
+                            this.proposeFighting();
+                        }
                     }
                     this.putUnitOnTop(unit);
                     return true;
@@ -332,39 +369,58 @@ exports.play = function(svg) {
             );
         }
 
-        enableClickableOnHexesForPlayer(player) {
+        enableClickableForCombat(player) {
             player.teams.forEach(team=>{
-                manipulator.enableClickableOnHexesForTeam(team);
+                this.map.forEachUnit(unit=>{
+                    if (unit.type===team.unit.type) {
+                        this.enableClickableForCombatOnAUnit(unit);
+                    }
+                });
             });
         }
 
-        enableClickableOnHexesForTeam(team) {
-            map.forEachUnit(unit=>{
-                if (unit.type===team.unit.type) {
-                    this.enableClickableOnHexes(unit);
-                }
-            });
-        }
+        enableClickableForCombatOnAUnit(unit) {
 
-        enableClickableOnHexes(unit) {
             hexM.installClickableOnHexes(unit,
                 (unit)=> {
                     if (unit.selected) {
-                        rule.foeSelected(map, unit, false);
+                        this.rule.friendSelected(this.map, unit, false);
                         this.proposeFighting();
                     }
                     else {
-                        rule.foeSelected(map, unit, true);
+                        if (this.startMoves.get(unit)===unit.hex) {
+                            this.rule.friendSelected(this.map, unit, true);
+                            this.proposeFighting();
+                        }
+                    }
+                    this.putUnitOnTop(unit);
+                    return true;
+                }
+            );
+        }
+
+        enableClickableForTarget(player) {
+            player.teams.forEach(team=>{
+                this.map.forEachUnit(unit=>{
+                    if (unit.type===team.unit.type) {
+                        this.enableClickableForTargetOnOneUnit(unit);
+                    }
+                });
+            });
+        }
+
+        enableClickableForTargetOnOneUnit(unit, hexes) {
+            hexM.installClickableOnHexes(unit,
+                (unit)=> {
+                    if (unit.selected) {
+                        this.rule.foeSelected(this.map, unit, false);
                         this.proposeFighting();
                     }
-                    if (unit.nextUnit) {
-                        let nextUnit = unit.nextUnit;
-                        let hex = unit.hex;
-                        hex.removeUnit(nextUnit);
-                        hex.removeUnit(unit);
-                        hex.putUnit(nextUnit);
-                        hex.putUnit(unit);
+                    else {
+                        this.rule.foeSelected(this.map, unit, true);
+                        this.proposeFighting();
                     }
+                    this.putUnitOnTop(unit);
                     return true;
                 }
             );
@@ -377,27 +433,27 @@ exports.play = function(svg) {
                     return true;
                 },
                 (unit, x, y)=> {
-                    map.eliminatedBox.removeUnit(unit);
-                    if (x<-map.eliminatedBox.width/2+unit.width/2) {
-                        x=-map.eliminatedBox.width/2+unit.width/2;
+                    this.map.eliminatedBox.removeUnit(unit);
+                    if (x<-this.map.eliminatedBox.width/2+unit.width/2) {
+                        x=-this.map.eliminatedBox.width/2+unit.width/2;
                     }
-                    if (x>map.eliminatedBox.width/2-unit.width/2) {
-                        x=map.eliminatedBox.width/2-unit.width/2;
+                    if (x>this.map.eliminatedBox.width/2-unit.width/2) {
+                        x=this.map.eliminatedBox.width/2-unit.width/2;
                     }
-                    if (y<-map.eliminatedBox.height/3+unit.height/2) {
-                        y=-map.eliminatedBox.height/3+unit.height/2;
+                    if (y<-this.map.eliminatedBox.height/3+unit.height/2) {
+                        y=-this.map.eliminatedBox.height/3+unit.height/2;
                     }
-                    if (y>map.eliminatedBox.height/2-unit.height/2) {
-                        y=map.eliminatedBox.height/2-unit.height/2;
+                    if (y>this.map.eliminatedBox.height/2-unit.height/2) {
+                        y=this.map.eliminatedBox.height/2-unit.height/2;
                     }
                     unit.component.smoothy(param.speed, param.step).moveTo(x, y);
                     svg.animate(param.speed, ()=>unit.move(x, y));
-                    map.eliminatedBox.addUnit(unit);
+                    this.map.eliminatedBox.addUnit(unit);
                     return true;
                 },
                 (unit)=> {
-                    map.eliminatedBox.removeUnit(unit);
-                    map.eliminatedBox.addUnit(unit);
+                    this.map.eliminatedBox.removeUnit(unit);
+                    this.map.eliminatedBox.addUnit(unit);
                     return true;
                 }
             );
@@ -471,7 +527,7 @@ exports.play = function(svg) {
             );
         }
 
-        enableDnDForRetreat(unit, units, range, continued) {
+        enableDnDForRetreatOrDie(unit, units, range, continued) {
 
             let unitHex = unit.hex;
 
@@ -508,7 +564,14 @@ exports.play = function(svg) {
                         return true;
                     }
                     else {
-                        return false;
+                        if (!zone.size) { // No retreat => Die !
+                            this.eliminate(unit, hex.component.globalPoint(x, y));
+                            continued();
+                            return true;
+                        }
+                        else {
+                            return false;
+                        }
                     }
                 },
                 (unit, x, y)=> {
@@ -526,35 +589,147 @@ exports.play = function(svg) {
                     return true;
                 }
             );
+            return this;
+        }
+
+        enableDnDForLosses(unit, strength, continued) {
+            this.eliminated.clear();
+            hexM.installDnDOnHexes(unit, frame,
+                (unit, rotate)=> {
+                    return true;
+                },
+                (unit, angle)=> {
+                    return false;
+                },
+                (hex, unit, x, y)=> {
+                    Memento.register(this);
+                    this.eliminate(unit, hex.component.globalPoint(x, y));
+                    this.eliminated.add(unit);
+                    if (this.command.totalStrength(this.eliminated)>=strength) {
+                        continued();
+                    }
+                    return true;
+                },
+                (unit, x, y)=> {
+                    unit.move(0, 0);
+                    return true;
+                },
+                (unit)=> {
+                    this.putUnitOnTop(unit);
+                    return true;
+                },
+                (unit)=> {
+                    unit.hex.removeUnit(unit);
+                    return true;
+                }
+            );
+            return this;
         }
 
         disableForPlayer(player) {
             player.teams.forEach(team=>{
-                manipulator.disableForTeam(team);
+                this.disableForTeam(team);
             });
+            return this;
         }
 
         disableForTeam(team) {
-            map.forEachUnit(unit=>{
+            this.map.forEachUnit(unit=>{
                 if (unit.type===team.unit.type) {
                     this.disable(unit);
                 }
             });
+            return this;
         }
 
         disable(unit) {
             unit.removeEvent('mousedown');
+            return this;
         }
 
+        eliminate(unit, global) {
+            if (!global) {
+                global = unit.component.parent.globalPoint(unit.x, unit.y);
+                unit.hex.removeUnit(unit);
+            }
+            let local = this.map.eliminatedBox.content.localPoint(global);
+            this.enableDnDOnEliminatedBox(unit);
+            this.map.eliminatedBox.addUnit(unit.move(local.x, local.y));
+            unit.component.smoothy(param.speed, param.step).moveTo(0, 0);
+            unit.rotation.smoothy(param.speed, param.step).rotateTo(0);
+            svg.animate(param.speed, ()=>unit.move(0, 0));
+            return this;
+        }
     }
 
-    class Fight {
+    const DIE_MARGIN_X = -30;
+    const DIE_MARGIN_Y = 50;
+    const NEXT_MARGIN_X = -30;
+    const NEXT_MARGIN_Y = -40;
+    const FIGHT_MARGIN = 80;
+
+    const SHOWN = "shown";
+    const HIDDEN = "hidden";
+    const ACTIVE = "active";
+    const INACTIVE = "inactive";
+
+    class Command {
 
         constructor() {
+            this.status = HIDDEN;
+            this.active = fight().opacity(1);
+            this.passive = fadedFight().opacity(0);
             this.scale = new svg.Scaling(1);
             this.rotate = new svg.Rotation(0);
-            this.component = new svg.Translation().add(this.rotate.add(this.scale.add(fight())));
-            this.component.onClick(()=>this.resolveFight());
+            this.die = new gItems.Die(param);
+            this.next = new gItems.Next(()=>{
+                this.nextImpulse();
+            });
+            this.fight = new svg.Translation()
+                .add(this.rotate.add(this.scale.add(this.active).add(this.passive)))
+                .add(this.die.component)
+                .move(0, FIGHT_MARGIN).opacity(0);
+            this.action = ()=>this.resolveFight();
+            this.fight.onClick(this.action);
+            this.die.component.move(DIE_MARGIN_X, DIE_MARGIN_Y);
+            this.next.component.move(NEXT_MARGIN_X, NEXT_MARGIN_Y);
+            this.component = new svg.Translation()
+                .add(this.next.component).add(this.fight);
+            this.visible = false;
+        }
+
+        context(map, impulse, manipulator, rule, friendPlayer, foePlayer) {
+            this.map = map;
+            this.impulse = impulse;
+            this.manipulator = manipulator;
+            this.rule = rule;
+            this.friendPlayer = friendPlayer;
+            this.foePlayer = foePlayer;
+        }
+
+        memorize() {
+            return {
+                visible : this.visible,
+                action : this.action,
+                status : this.status
+            }
+        }
+
+        revert(memento) {
+            ({visible:this.visible, action:this.action, status:this.status} = memento);
+            this.fight.onClick(this.action);
+            if (this.status===SHOWN) {
+                this.show();
+            }
+            else if (this.status===HIDDEN) {
+                this.hide();
+            }
+            else if (this.status===ACTIVE) {
+                this.activate(this.action);
+            }
+            else if (this.status===INACTIVE) {
+                this.desactivate(()=>{});
+            }
         }
 
         move(x, y) {
@@ -563,40 +738,79 @@ exports.play = function(svg) {
         }
 
         show() {
-            this.component.opacity(1);
-            die.component.opacity(1);
+            Memento.register(this);
+            this.status = SHOWN;
+            this.rotate.rotate(0);
+            this.fight.opacity(0);
+            this.active.opacity(1);
+            this.passive.opacity(0);
+            this.die.component.opacity(1);
+            this.fight.smoothy(param.speed, 0.01).opacity(0, 1);
+            this.action = ()=>this.resolveFight();
+            this.fight.onClick(this.action);
+            this.visible = true;
             return this;
         }
 
         hide() {
-            this.component.opacity(0);
-            die.component.opacity(0);
+            Memento.register(this);
+            this.status = HIDDEN;
+            this.fight.smoothy(param.speed, 0.01).opacity(1, 0);
+            this.visible = false;
             return this;
         }
 
+        activate(callback) {
+            Memento.register(this);
+            this.status = ACTIVE;
+            this.passive.onChannel().smoothy(param.speed, 0.01).opacity(1, 0);
+            this.active.smoothy(param.speed, 0.01).opacity(0, 1);
+            this.action = callback;
+            this.fight.onClick(this.action);
+        }
+
+        desactivate(callback) {
+            Memento.register(this);
+            this.status = INACTIVE;
+            this.passive.onChannel().smoothy(param.speed, 0.01).opacity(0, 1);
+            this.active.smoothy(param.speed, 0.01).opacity(1, 0);
+            this.action = null;
+            this.fight.onClick(this.action);
+            callback();
+        }
+
+        turn() {
+            Memento.register(this);
+            this.status = INACTIVE;
+            this.die.component.onChannel().smoothy(param.speed, 0.01).opacity(1, 0);
+            this.passive.onChannel().smoothy(param.speed, 0.01).opacity(0, 1);
+            this.rotate.onChannel().smoothy(param.speed, 2).rotate(0, 180);
+            this.active.smoothy(param.speed, 0.01).opacity(1, 0);
+        }
+
         resolveFight() {
+            this.action = null;
+            this.fight.onClick(this.action);
             Memento.clear();
             Memento.disable();
-            manipulator.prepareMoves();
-            manipulator.disableForPlayer(friendPlayer);
-            manipulator.disableForPlayer(foePlayer);
+            this.manipulator.disableForPlayer(this.friendPlayer);
+            this.manipulator.disableForPlayer(this.foePlayer);
             this.scale.steppy(param.speed, 20).scale(1, 1.2).scale(1.2, 1);
-            die.roll();
+            this.die.roll();
             svg.animate(param.speed, ()=>{
-                let dieValue = die.value;
-                let result = rule.resolveFight(map, friendPlayer, dieValue);
+                let dieValue = this.die.value;
+                let result = this.rule.resolveFight(this.map, this.friendPlayer, dieValue);
                 new CRTPopin(result, dieValue).show(drawing);
             });
         }
 
         processResult(result) {
             console.log("fight:"+result.ratio+" "+result.result);
-            let friends = rule.friendsFighting(map, friendPlayer);
-            let foes = rule.foesFighting(map, friendPlayer);
-            map.unselectAll();
-            map.unhighlightAll();
-            this.hide();
-            result.result = "AR";
+            let friends = this.rule.friendsFighting(this.map, this.friendPlayer);
+            let foes = this.rule.foesFighting(this.map, this.friendPlayer);
+            this.map.unselectAll();
+            this.map.unhighlightAll();
+            this.turn();
             if (result.result==="AE") {
                 this.eliminate(friends);
                 this.closeFight();
@@ -604,15 +818,25 @@ exports.play = function(svg) {
             else if (result.result==="DE") {
                 let hexes = this.collectHexes(foes);
                 this.eliminate(foes);
-                this.advance(friends, hexes);
+                this.advance(friends, [], hexes);
             }
             else if (result.result==="EX") {
+                let strength = this.totalStrength(foes);
+                let hexes = this.collectHexes(foes);
                 this.eliminate(foes);
-                // to be continued :)
-                this.closeFight();
+                this.chooseLosses(friends, strength,
+                    ()=>this.proposeAdvanceAfterLosses(friends,
+                        ()=>this.advance(friends, this.manipulator.eliminated, hexes)));
             }
             else if (result.result==="AR") {
-                this.retreat(friends, 1);
+                this.retreat(friends, 1,
+                    ()=>this.proposeEndOfFight());
+            }
+            else if (result.result==="DR") {
+                let hexes = this.collectHexes(foes);
+                this.retreat(foes, 1,
+                    ()=>this.giveHand(
+                        ()=>this.advance(friends, [], hexes)));
             }
         }
 
@@ -622,16 +846,32 @@ exports.play = function(svg) {
             return hexes;
         }
 
-        proposeEndOfFight() {
-            this.rotate.rotate(180);
-            this.component.onClick(()=>this.closeFight());
-            this.show();
+        totalStrength(units) {
+            let strength = 0;
+            units.forEach(unit=>strength+=unit.combatFactor());
+            return strength;
         }
 
-        allUnitsHaveMoved(units) {
+        proposeEndOfFight() {
+            this.activate(()=>this.closeFight());
+        }
+
+        giveHand(callback) {
+            this.activate(()=>{
+                this.desactivate(callback);
+            });
+        }
+
+        proposeAdvanceAfterLosses(units, callback) {
+            this.activate(()=>{
+                this.desactivate(callback);
+            });
+        }
+
+        allUnitsHaveMovedOrDied(units) {
             let result = true;
             units.forEach(unit=>{
-                if (manipulator.startMoves.get(unit)===unit.hex) {
+                if (unit.hex && this.manipulator.startMoves.get(unit)===unit.hex) {
                     result = false;
                 }
             });
@@ -640,53 +880,90 @@ exports.play = function(svg) {
 
         closeFight() {
             svg.animate(param.speed, ()=>{
-                manipulator.enableDnDOnHexesForPlayer(friendPlayer);
-                manipulator.enableClickableOnHexesForPlayer(foePlayer);
-                map.unselectAll();
-                map.unhighlightAll();
-                this.component.onClick(()=>this.resolveFight());
+                this.map.unselectAll();
+                this.map.unhighlightAll();
                 this.hide();
                 Memento.enable();
                 Memento.clear();
+                this.manipulator.enableClickableForCombat(this.friendPlayer);
+                this.manipulator.enableClickableForTarget(this.foePlayer);
             });
         }
 
         eliminate(units) {
-            units.forEach(unit=>{
-                manipulator.enableDnDOnEliminatedBox(unit);
-                let global = unit.component.parent.globalPoint(unit.x, unit.y);
-                let local = map.eliminatedBox.content.localPoint(global);
-                unit.hex.removeUnit(unit);
-                map.eliminatedBox.addUnit(unit.move(local.x, local.y));
-                unit.component.smoothy(param.speed, param.step).moveTo(0, 0);
-                unit.rotation.smoothy(param.speed, param.step).rotateTo(0);
-                svg.animate(param.speed, ()=>unit.move(0, 0));
-            });
+            units.forEach(unit=>this.manipulator.eliminate(unit));
         }
 
-        advance(units, hexes) {
+        advance(units, discard, hexes) {
             svg.animate(param.speed, ()=>{
                 units.forEach(unit=>{
-                    map.highlight(unit);
-                    manipulator.enableDnDForAdvance(unit, units, hexes);
+                    if (!discard.contains(unit)) {
+                        this.map.highlight(unit);
+                        this.manipulator.enableDnDForAdvance(unit, units, hexes);
+                    }
                 });
                 this.proposeEndOfFight();
                 Memento.enable();
             });
         }
 
-        retreat(units, range) {
+        retreat(units, range, continued) {
             units.forEach(unit=>{
-                map.select(unit);
-                manipulator.enableDnDForRetreat(unit, units, range, ()=>{
-                    if (this.allUnitsHaveMoved(units)) {
-                        this.proposeEndOfFight();
-                    }
+                if (!this.manipulator.getRetreatZone(unit, units, range).size) {
+                    this.manipulator.eliminate(unit);
+                }
+                else {
+                    this.map.select(unit, false);
+                    this.manipulator.enableDnDForRetreatOrDie(unit, units, range, ()=> {
+                        if (this.allUnitsHaveMovedOrDied(units)) {
+                            continued();
+                        }
+                    });
+                }
+                continued();
+            });
+            Memento.enable();
+        }
+
+        chooseLosses(units, strength, continued) {
+            units.forEach(unit=>{
+                this.map.select(unit, false);
+                this.manipulator.enableDnDForLosses(unit, strength, ()=> {
+                    continued();
                 });
             });
             Memento.enable();
         }
 
+        nextImpulse() {
+            console.log("end of impulse !");
+        }
+
+    }
+
+    class Impulse {
+
+        constructor(map, manipulator, command, rule, friendPlayer, foePlayer) {
+            this.map = map;
+            this.manipulator = manipulator;
+            this.command = command;
+            this.rule = rule;
+            this.friendPlayer = friendPlayer;
+            this.foePlayer = foePlayer;
+
+            this.manipulator.context(map, this, command, rule);
+            this.command.context(map, this, manipulator, rule, friendPlayer, foePlayer);
+        }
+
+        play() {
+            this.manipulator.enableDnDForMove(this.friendPlayer);
+            this.manipulator.enableClickableForTarget(this.foePlayer);
+            this.manipulator.prepareMoves();
+        }
+
+        close() {
+            console.log("close");
+        }
     }
 
     class CRTPopin extends gui.Popin {
@@ -699,7 +976,7 @@ exports.play = function(svg) {
             this.add(table);
             svg.animate(2000, ()=>{
                 this.close();
-                fight.processResult(result);
+                command.processResult(result);
             });
         }
 
@@ -785,11 +1062,9 @@ exports.play = function(svg) {
     var push = new gItems.Push(()=>{
         closePane();
     });
-    var die = new gItems.Die(param);
-    var fight = new Fight().hide();
+    var command = new Command();
     var frame = new gui.Frame(600, 1000).backgroundColor(MAP_COLOR);
-    frame.component.add(fight.component);
-    frame.component.add(die.component);
+    frame.component.add(command.component);
     var drawing = new gui.Canvas(1000, 1000)
         .add(frame.component)
         .add(menu.component);

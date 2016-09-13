@@ -24,7 +24,7 @@ exports.FileManager = function(svg, gui) {
             this.fileList = new FileGrid();
             this.fileNameLabel = new gui.Label(0, 0, "File name:");
             this.fileName = new gui.TextField(0, 0, 600, 40, manager.fileName).pattern(/^[a-zA-Z_][a-zA-Z0-9_]*$/);
-            this.fileName.onInput((message, valid)=>{
+            this.fileName.onInput((oldMessage, message, valid)=>{
                 this.manageOk(valid);
             });
             this.add(this.title.position(0, -300));

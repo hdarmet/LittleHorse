@@ -18,10 +18,12 @@ exports.Memento = {
     },
 
     enable() {
+        console.log("Memento enable");
         this.enabled = true;
     },
 
     disable() {
+        console.log("Memento disable");
         this.enabled = false;
     },
 
@@ -206,20 +208,20 @@ exports.Memento = {
             this.enabled = false;
             if (!this.current || this.current.size == 0) {
                 this.current = this.next.pop();
-                if (this.current) {
-                    let last = new Map();
-                    for (let registrable of this.current.keys()) {
-                        let memento = this.current.get(registrable);
-                        let save = registrable.memorize();
-                        last.set(registrable, save);
-                        registrable.revert(memento);
-                    }
-                    this.previous.push(last);
-                    this.finalizer && this.finalizer();
-                }
-                this.current = new Map();
-                this.enabled = true;
             }
+            if (this.current) {
+                let last = new Map();
+                for (let registrable of this.current.keys()) {
+                    let memento = this.current.get(registrable);
+                    let save = registrable.memorize();
+                    last.set(registrable, save);
+                    registrable.revert(memento);
+                }
+                this.previous.push(last);
+                this.finalizer && this.finalizer();
+            }
+            this.current = new Map();
+            this.enabled = true;
         }
     },
 

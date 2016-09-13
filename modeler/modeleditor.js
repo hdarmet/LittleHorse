@@ -6,6 +6,7 @@ var Gui = require("../svggui.js").Gui;
 var FileManager = require("../filemanager.js").FileManager;
 var UML = require("./UML.js").UML;
 var Memento = require("../memento").Memento;
+var Generator = require("../generator").Generator;
 
 exports.modelEditor = function(svg) {
 
@@ -16,7 +17,11 @@ exports.modelEditor = function(svg) {
 
     var fileManager = FileManager(svg, gui);
 
-    var Uml = UML(svg);
+    var generator = Generator(svg, gui, "/model/edit");
+
+    var Uml = UML(svg, gui);
+
+    let currentMode;
 
     class Support {
 
@@ -82,6 +87,77 @@ exports.modelEditor = function(svg) {
         }
     }
 
+    class SelectSupport extends Support {
+
+        constructor(pane) {
+            super(pane);
+            this.action(()=> {
+                if (schema) {
+                    currentMode = "NODE";
+                    schema.nodeMode();
+                }
+                this.pane.palette.clickAction = null;
+                this.pane.palette.mouseDownAction = null;
+            });
+        }
+
+        buildIcon() {
+            return new svg.Translation().add(new svg.Rotation(45)
+                .add(new svg.Path(0, -25)
+                    .line(-15, 5).line(-5, 0).line(-7, 25)
+                    .line(7, 25).line(5, 0).line(15, 5)
+                    .line(0, -25).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK)));
+        }
+
+        buildSelectedBorder(clazz) {
+            return new svg.Rect(82, 82).color([], 4, svg.ALMOST_RED);
+        }
+
+    }
+
+    class SimpleSupport {
+
+        constructor(pane, ...args) {
+            this.pane = pane;
+            this.component = this.buildIcon();
+            this.tool = new gui.Tool(this.component);
+            this.pane.addTool(this.tool);
+            this.tool.component.onClick(()=> {
+                this.tool.callback(...args);
+            });
+        }
+
+        action(callback) {
+            this.tool.setCallback(callback);
+            return this;
+        }
+
+    }
+
+    class GenerateJPASupport extends SimpleSupport {
+
+        constructor(pane) {
+            super(pane);
+            this.action(()=>{
+                let gen = new generator.GeneratorJPA();
+                gen.generate(
+                    new Uml.SchemaBuilder().spec(schema),
+                    result=>{
+                        gen.save(paneSaveLoad.fileName, result);
+                        console.log(JSON.stringify(result));
+                    });
+               console.log("generate JPA");
+            });
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Rect(80, 80).color(svg.HORIZON, 4, svg.BLUE))
+                .add(new svg.Text("JPA").position(0,10).font("arial", 32).color(svg.BLUE))
+        }
+
+    }
+
     class ClassSupport extends Support {
 
         constructor(pane) {
@@ -97,9 +173,12 @@ exports.modelEditor = function(svg) {
                 ClassSupport.prototype.disableDnD(clazz);
             };
             let superSelect = Uml.Clazz.prototype.select;
-            Uml.Clazz.prototype.select = function() {
+            Uml.Clazz.prototype.select = function(beginDrag = false) {
                 superSelect.call(this);
-                this.anchors.forEach((field, anchor)=>ClassSupport.prototype.enableAnchorDnD(anchor));
+                ClassSupport.prototype.enableAnchorDnD(this.anchors.ul);
+                ClassSupport.prototype.enableAnchorDnD(this.anchors.ur);
+                ClassSupport.prototype.enableAnchorDnD(this.anchors.dl);
+                ClassSupport.prototype.enableAnchorDnD(this.anchors.dr, beginDrag);
             };
             let superUnselect = Uml.Clazz.prototype.unselect;
             Uml.Clazz.prototype.unselect = function() {
@@ -108,13 +187,15 @@ exports.modelEditor = function(svg) {
             };
             this.action(()=> {
                 if (schema) {
+                    currentMode = "NODE";
                     schema.nodeMode();
                 }
-                this.pane.palette.mouseDownAction = null;
-                this.pane.palette.clickAction = (schema, x, y)=> {
-                    let clazz = new Uml.Clazz(150, 150, x, y);
+                this.pane.palette.clickAction = null;
+                this.pane.palette.mouseDownAction = (schema, x, y)=> {
+                    let clazz = new Uml.Clazz(schema.idgen++, 70, 70, x-35, y-35);
                     schema.putNode(clazz);
-                    clazz.select();
+                    clazz.select(true);
+                    clazz._draw();
                 };
             });
         }
@@ -155,7 +236,10 @@ exports.modelEditor = function(svg) {
             clazz.removeEvent('mousedown');
         }
 
-        enableAnchorDnD(anchor) {
+        enableAnchorDnD(anchor, beginDrag) {
+            if (beginDrag) {
+                drawing.dragFocus(anchor.component);
+            }
             Uml.installDnD(anchor, frame,
                 (anchor, x, y)=> {
                     return anchor.update(x, y);
@@ -169,7 +253,8 @@ exports.modelEditor = function(svg) {
                 },
                 (anchor)=> {
                     return true;
-                }
+                },
+                beginDrag
             );
         }
 
@@ -178,42 +263,34 @@ exports.modelEditor = function(svg) {
         }
     }
 
-    class RelationshipSupport extends Support {
+    let schemaTooled = false;
+
+    class LinkSupport extends Support {
 
         constructor(pane) {
             super(pane);
-
-            let superPutLink = Uml.Schema.prototype.putLink;
-            Uml.Schema.prototype.putLink = function(relationship) {
-                superPutLink.call(this, relationship);
-                RelationshipSupport.prototype.enableClick(relationship);
-            };
-            let superRemoveLink = Uml.Schema.prototype.removeLink;
-            Uml.Schema.prototype.removeLink = function(relationship) {
-                superRemoveLink.call(this, relationship);
-                RelationshipSupport.prototype.disableClick(relationship);
-            };
-
-            let superSelect = Uml.Relationship.prototype.select;
-            Uml.Relationship.prototype.select = function(beginDrag=false) {
-                superSelect.call(this);
-                RelationshipSupport.prototype.enableAnchorDnD(this.anchors.p1, false);
-                RelationshipSupport.prototype.enableAnchorDnD(this.anchors.p2, beginDrag);
-            };
-            let superUnselect = Uml.Relationship.prototype.unselect;
-            Uml.Relationship.prototype.unselect = function() {
-                superUnselect.call(this);
-                this.anchors.forEach((field, anchor)=>RelationshipSupport.prototype.disableAnchorDnD(anchor));
-            };
+            if (!schemaTooled) {
+                let superPutLink = Uml.Schema.prototype.putLink;
+                Uml.Schema.prototype.putLink = function (link) {
+                    superPutLink.call(this, link);
+                    LinkSupport.prototype.enableClick(link);
+                };
+                let superRemoveLink = Uml.Schema.prototype.removeLink;
+                Uml.Schema.prototype.removeLink = function (link) {
+                    superRemoveLink.call(this, link);
+                    LinkSupport.prototype.disableClick(link);
+                };
+            }
             this.action(()=> {
                 if (schema) {
+                    currentMode = "LINK";
                     schema.linkMode();
                 }
                 this.pane.palette.clickAction = null;
                 this.pane.palette.mouseDownAction = (schema, x, y)=> {
-                    let startClazz = schema.getNode(x, y);
+                    let startClazz = schema.nodeFromPosition(x, y);
                     if (startClazz) {
-                        let relationship = new Uml.Relationship(startClazz, x, y);
+                        let relationship = this.buildLink(schema.idgen++, startClazz, x, y);
                         schema.putLink(relationship);
                         relationship.select(true);
                     }
@@ -221,27 +298,21 @@ exports.modelEditor = function(svg) {
             });
         }
 
-        buildIcon() {
-            return new svg.Translation()
-                .add(new svg.Line(-40, 40, 40, -40).color([], 4, svg.ALMOST_BLACK))
-                .add(new svg.Rect(80, 80).position(0, 0).color(svg.WHITE).opacity(0.001));
-        }
-
-        buildSelectedBorder(clazz) {
+        buildSelectedBorder(link) {
             return new svg.Rect(82, 82).color([], 4, svg.ALMOST_RED);
         }
 
-        enableClick(relationship) {
-            Uml.installClick(relationship,
+        enableClick(link) {
+            Uml.installClick(link,
                 ()=> {
-                    relationship.select();
+                    link.select();
                     return true;
                 }
             );
         }
 
-        disableClick(relationship) {
-            relationship.removeEvent('mousedown');
+        disableClick(link) {
+            link.removeEvent('mousedown');
         }
 
         enableAnchorDnD(anchor, beginDrag) {
@@ -268,6 +339,76 @@ exports.modelEditor = function(svg) {
         disableAnchorDnD(anchor) {
             anchor.removeEvent('mousedown');
         }
+    }
+
+    class RelationshipSupport extends LinkSupport {
+
+        constructor(pane) {
+            super(pane);
+            let superSelect = Uml.Relationship.prototype.select;
+            Uml.Relationship.prototype.select = function (beginDrag = false) {
+                if (superSelect.call(this)) {
+                    LinkSupport.prototype.enableAnchorDnD(this.anchors.p1, false);
+                    LinkSupport.prototype.enableAnchorDnD(this.anchors.p2, beginDrag);
+                    LinkSupport.prototype.enableAnchorDnD(this.title.anchor, false);
+                    LinkSupport.prototype.enableAnchorDnD(this.beginCardinality.anchor, false);
+                    LinkSupport.prototype.enableAnchorDnD(this.endCardinality.anchor, false);
+                    return true;
+                }
+                return false;
+            };
+            let superUnselect = Uml.Relationship.prototype.unselect;
+            Uml.Relationship.prototype.unselect = function () {
+                if (superUnselect.call(this)) {
+                    this.anchors.forEach((field, anchor)=>LinkSupport.prototype.disableAnchorDnD(anchor));
+                    LinkSupport.prototype.disableAnchorDnD(this.title.anchor);
+                    LinkSupport.prototype.disableAnchorDnD(this.beginCardinality.anchor);
+                    LinkSupport.prototype.disableAnchorDnD(this.endCardinality.anchor);
+                    return true;
+                }
+                return false;
+            };
+        }
+
+        buildLink(id, startClazz, x, y) {
+            return new Uml.Relationship(id, startClazz, x, y);
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Line(-40, 40, 40, -40).color([], 4, svg.ALMOST_BLACK))
+                .add(new svg.Rect(80, 80).position(0, 0).color(svg.WHITE).opacity(0.001));
+        }
+    }
+
+    class InheritSupport extends LinkSupport {
+
+        constructor(pane) {
+            super(pane);
+            let superSelect = Uml.Inherit.prototype.select;
+            Uml.Inherit.prototype.select = function (beginDrag = false) {
+                superSelect.call(this);
+                LinkSupport.prototype.enableAnchorDnD(this.anchors.p1, false);
+                LinkSupport.prototype.enableAnchorDnD(this.anchors.p2, beginDrag);
+            };
+            let superUnselect = Uml.Inherit.prototype.unselect;
+            Uml.Inherit.prototype.unselect = function () {
+                superUnselect.call(this);
+                this.anchors.forEach((field, anchor)=>LinkSupport.prototype.disableAnchorDnD(anchor));
+            };
+        }
+
+        buildLink(id, startClazz, x, y) {
+            return new Uml.Inherit(id, startClazz, x, y);
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Line(-40, 40, 40, -40).color([], 4, svg.ALMOST_BLACK))
+                .add(new svg.Path(40, -40).line(15, -30).line(30, -15).line(40, -40).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
+                .add(new svg.Rect(80, 80).position(0, 0).color(svg.WHITE).opacity(0.001));
+        }
+
     }
 
     class NewPopin extends gui.Popin {
@@ -301,13 +442,14 @@ exports.modelEditor = function(svg) {
         schema = new Uml.SchemaBuilder().schema(desc);
         actionOnSchema(schema);
         frame.set(schema.component);
+        schema._draw();
         Memento.enable();
         Memento.clear();
     }
 
     function createSchema() {
         Memento.disable();
-        schema = new Uml.Schema(3000, 6000);
+        schema = new Uml.Schema(0, 3000, 6000);
         actionOnSchema(schema);
         frame.set(schema.component);
         Memento.enable();
@@ -320,6 +462,7 @@ exports.modelEditor = function(svg) {
             Memento.begin();
         });
         schema.component.onMouseDown(event=> {
+            Memento.begin();
             let point = schema.component.localPoint(event.pageX, event.pageY);
             palette.mouseDownAction && palette.mouseDownAction(schema, point.x, point.y);
         });
@@ -358,8 +501,11 @@ exports.modelEditor = function(svg) {
         .addPane(paneItems);
     drawing.add(palette.component);
 
+    new SelectSupport(paneItems);
     new ClassSupport(paneItems);
     new RelationshipSupport(paneItems);
+    new InheritSupport(paneItems);
+    new GenerateJPASupport(paneItems);
 
     resizeAll();
 
@@ -388,6 +534,12 @@ exports.modelEditor = function(svg) {
     svg.runtime.addGlobalEvent("resize", event=>resizeAll());
 
     Memento.finalize(()=>{
+        if (currentMode==="LINK") {
+            schema.linkMode();
+        }
+        else {
+            schema.nodeMode();
+        }
     });
 
     Memento.begin();

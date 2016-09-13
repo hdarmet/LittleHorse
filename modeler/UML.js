@@ -3,10 +3,12 @@
  */
 var Memento = require("../memento").Memento;
 
+console.log("UML Loaded...");
 exports.UML = function(svg, gui) {
 
     class Schema {
-        constructor(width, height) {
+        constructor(idgen, width, height) {
+            this.idgen = idgen;
             this.component = new svg.Translation();
             this.component.width = width;
             this.component.height = height;
@@ -34,7 +36,11 @@ exports.UML = function(svg, gui) {
             this.nodeSupport.active(false);
         }
 
-        getNode(x, y) {
+        nodeFromId(id) {
+            return this.nodes.find(node=>node.id===id);
+        }
+
+        nodeFromPosition(x, y) {
             return this.nodes.find(clazz=>clazz.inside(x, y));
         }
 
@@ -51,6 +57,7 @@ exports.UML = function(svg, gui) {
             node.schema = this;
             this.nodes.push(node);
             this.nodeSupport.add(node.component);
+            node._draw();
             node.shown();
             return this;
         }
@@ -81,7 +88,6 @@ exports.UML = function(svg, gui) {
         }
 
         putAnchors(...anchors) {
-            //Memento.register(this);
             anchors.forEach(anchor=> {
                 this.anchorSupport.add(anchor.component);
                 anchor.schema = this;
@@ -91,7 +97,6 @@ exports.UML = function(svg, gui) {
         }
 
         removeAnchors(...anchors) {
-            //Memento.register(this);
             anchors.forEach(anchor=>{
                 this.anchorSupport.remove(anchor.component);
                 anchor.hidden();
@@ -120,18 +125,19 @@ exports.UML = function(svg, gui) {
 
         select(selectable) {
             if (this.selected!=selectable) {
-                //Memento.register(this);
                 if (this.selected) {
                     this.selected.unselect();
                 }
                 this.selected = selectable;
+                return true;
             }
+            return false;
         }
 
         unselect(selectable) {
             if (this.selected==selectable) {
-                //Memento.register(this);
                 this.selected = null;
+                return true;
             }
         }
 
@@ -143,10 +149,8 @@ exports.UML = function(svg, gui) {
                 nodeSupport : Memento.registerSVGTranslation(this.nodeSupport),
                 floatingSupport : Memento.registerSVGTranslation(this.floatingSupport),
                 linkSupport : Memento.registerSVGTranslation(this.linkSupport),
-                //anchorSupport : Memento.registerSVGTranslation(this.anchorSupport),
                 nodes : Memento.registerArray(this.nodes),
                 links : Memento.registerArray(this.links),
-                //selected : this.selected
             }
         }
 
@@ -157,10 +161,13 @@ exports.UML = function(svg, gui) {
             Memento.revertSVGTranslation(memento.nodeSupport, this.nodeSupport);
             Memento.revertSVGTranslation(memento.linkSupport, this.linkSupport);
             Memento.revertSVGTranslation(memento.floatingSupport, this.floatingSupport);
-            //Memento.revertSVGTranslation(memento.anchorSupport, this.anchorSupport);
             Memento.revertArray(memento.nodes, this.nodes);
             Memento.revertArray(memento.links, this.links);
-            //this.selected = memento.selected;
+        }
+
+        _draw() {
+            this.nodes.forEach(node=>node._draw());
+            this.links.forEach(link=>link._draw());
         }
     }
 
@@ -170,7 +177,8 @@ exports.UML = function(svg, gui) {
 
     class Item {
 
-        constructor() {
+        constructor(id) {
+            this.id = id;
             this.events = {};
         }
 
@@ -222,6 +230,7 @@ exports.UML = function(svg, gui) {
             this.component = new svg.Translation().add(
                 new svg.Rect(ANCHOR_SIZE, ANCHOR_SIZE).color(svg.ALMOST_WHITE, 1, svg.ALMOST_BLACK));
             this.component.onClick((event)=>{});
+            this.component.anchor = this;
             this._draw();
         }
 
@@ -248,7 +257,6 @@ exports.UML = function(svg, gui) {
         }
 
         adjust(x, y) {
-            //Memento.register(this);
             this.x = x;
             this.y = y;
             this._draw();
@@ -256,29 +264,12 @@ exports.UML = function(svg, gui) {
         }
 
         move(x, y) {
-            //Memento.register(this);
             this.x = x;
             this.y = y;
             this._draw();
             this.update(x, y);
             return this;
         }
-
-        /*
-        memorize() {
-            let memento = {
-                x:this.x,
-                y:this.y
-            };
-            return super.memorize(memento);
-        }
-
-        revert(memento) {
-            super.revert(memento);
-            ({x:this.x, y:this.y}=memento);
-            this._draw();
-        }
-        */
 
     }
 
@@ -288,7 +279,7 @@ exports.UML = function(svg, gui) {
     class Sensor extends Item {
 
         constructor(x, y, change) {
-            super();
+            super(null);
             this.x = x;
             this.y = y;
             this.change = change;
@@ -340,8 +331,8 @@ exports.UML = function(svg, gui) {
 
     class Node extends Item {
 
-        constructor(width, height, x, y) {
-            super();
+        constructor(id, width, height, x, y) {
+            super(id);
             this.width = width;
             this.height = height;
             this.x = x;
@@ -531,12 +522,15 @@ exports.UML = function(svg, gui) {
 
     class Clazz extends Node {
 
-        constructor(width, height, x, y) {
-            super(width, height, x, y);
-            this.title = new svg.Rect(this.width, TITLE_HEIGHT).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
-            this.body = new svg.Rect(this.width, this.height-TITLE_HEIGHT).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
+        constructor(id, width, height, x, y) {
+            super(id, width, height, x, y);
+            this.titleBackground = new svg.Rect(10, 10)
+                .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
+            this.bodyBackground = new svg.Rect(10, 10)
+                .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
             this._title = "ClassName";
-            this.titleText = new gui.TextField(0, 0, 100, 30, this._title)
+            this.titleText = new gui.TextField(0, 0, 10, 10,
+                this._title)
                 .font("arial", 16)
                 .color([svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE]);
             this.titleText.editColor([svg.LIGHT_GREY, 2, svg.LIGHT_GREY]);
@@ -547,7 +541,8 @@ exports.UML = function(svg, gui) {
                 Memento.begin();
             });
             this._content = "field : type";
-            this.contentText = new gui.TextArea(0, 0, 100, 100, this._content)
+            this.contentText = new gui.TextArea(0, 0, 10, 10,
+                this._content)
                 .font("arial", 16, 19)
                 .color([svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE]);
             this.contentText.editColor([svg.LIGHT_GREY, 2, svg.LIGHT_GREY]);
@@ -558,10 +553,11 @@ exports.UML = function(svg, gui) {
                 Memento.begin();
             });
             this.component
-                .add(this.title)
-                .add(this.body)
+                .add(this.titleBackground)
+                .add(this.bodyBackground)
                 .add(this.titleText.component)
                 .add(this.contentText.component);
+            this._resizeContent();
             this._draw();
         }
 
@@ -577,14 +573,28 @@ exports.UML = function(svg, gui) {
             return this.definition().length*19+FIELD_MARGIN*2+TITLE_HEIGHT;
         }
 
-        _draw() {
-            super._draw();
-            this.title.dimension(this.width, TITLE_HEIGHT).position(0, -this.height/2+TITLE_HEIGHT/2);
-            this.body.dimension(this.width, this.height-TITLE_HEIGHT).position(0, TITLE_HEIGHT/2);
+        dimension(width, height) {
+            super.dimension(width, height);
+            this._resizeContent();
+            this._draw();
+            return this;
+        }
+
+        _resizeContent() {
+            this.titleBackground.dimension(this.width, TITLE_HEIGHT).position(0, -this.height/2+TITLE_HEIGHT/2);
+            this.bodyBackground.dimension(this.width, this.height-TITLE_HEIGHT).position(0, TITLE_HEIGHT/2);
             this.titleText.dimension(this.width-FIELD_MARGIN*2, FIELD_HEIGHT)
                 .position(-1, -this.height/2+FIELD_HEIGHT/2+FIELD_MARGIN);
             this.contentText.dimension(this.width-FIELD_MARGIN*2, this.height-TITLE_HEIGHT-FIELD_MARGIN*2)
                 .position(-1, TITLE_HEIGHT/2);
+        }
+
+        _draw() {
+            super._draw();
+            this.titleBackground._draw();
+            this.bodyBackground._draw();
+            this.titleText._draw();
+            this.contentText._draw();
         }
 
         memorize() {
@@ -603,23 +613,50 @@ exports.UML = function(svg, gui) {
             this._draw();
         }
 
+        title(_title) {
+            if (_title) {
+                this._title = _title;
+                this.titleText.message(this._title);
+                this._draw();
+                return this;
+            }
+            return this._title;
+        }
+
+        content(_content) {
+            if (_content) {
+                this._content = _content;
+                this.contentText.message(this._content);
+                this._draw();
+                return this;
+            }
+            return this._content;
+        }
+
     }
 
     const CONTROL = 300;
 
     class Link extends Item {
 
-        constructor(node1, ...args) {
-            super();
+        constructor(id, node1, ...args) {
+            super(id);
             this.anchors = {};
-            this.h1 = {node:node1, x:0, y:0};
-            node1.addLink(this);
-            if (args[0] instanceof Node) {
-                this.h2 = {node:args[0], x:0, y:0};
-                args[0].addLink(this);
+            if (node1) {
+                this.h1 = {x: args[0], y: args[1]};
+                this.attach(this.h1, node1);
+                node1.addLink(this);
+                if (args[0] instanceof Node) {
+                    this.h2 = {node: args[0], x: 0, y: 0};
+                    args[0].addLink(this);
+                }
+                else {
+                    this.h2 = {x: args[0], y: args[1]};
+                }
             }
             else {
-                this.h2 = {x:args[0], y:args[1]};
+                this.h1 = {x:0, y:0};
+                this.h2 = {x:0, y:0};
             }
             this.line = this.buildLine();
             this.component = new svg.Translation().add(this.line);
@@ -627,7 +664,13 @@ exports.UML = function(svg, gui) {
         }
 
         buildLine() {
-            return new svg.Path().color([], 2, svg.ALMOST_BLACK);
+            let path = new svg.Path().color(svg.ALMOST_BLACK, 2, svg.ALMOST_BLACK).fillOpacity(0);
+            path.inside = (x, y)=>{
+                let p = path.localPoint({x, y});
+                let d = this.computeParameters(p.x, p.y);
+                return Math.abs(d.distance)<3;
+            };
+            return path;
         }
 
         angle() {
@@ -652,10 +695,16 @@ exports.UML = function(svg, gui) {
             }
         }
 
-        attach(handler, node) {
+        attach(handler, node, x, y) {
             handler.node = node;
-            handler.x = (handler.x-handler.node.x)/handler.node.width;
-            handler.y = (handler.y-handler.node.y)/handler.node.height;
+            if (x) {
+                handler.x = x;
+                handler.y = y;
+            }
+            else {
+                handler.x = (handler.x - handler.node.x) / handler.node.width;
+                handler.y = (handler.y - handler.node.y) / handler.node.height;
+            }
         }
 
         point(handler) {
@@ -673,9 +722,9 @@ exports.UML = function(svg, gui) {
             anchor && anchor.adjust(pt.x, pt.y);
         }
 
-        begin(node) {
+        begin(node, x, y) {
             Memento.register(this);
-            this.attach(this.h1, node);
+            this.attach(this.h1, node, x, y);
             node.addLink(this);
             this.adjustAnchor(this.h1, this.anchors.p1);
             this.computeBounds();
@@ -695,9 +744,9 @@ exports.UML = function(svg, gui) {
             return this;
         }
 
-        end(node) {
+        end(node, x, y) {
             Memento.register(this);
-            this.attach(this.h2, node);
+            this.attach(this.h2, node, x, y);
             node.addLink(this);
             this.adjustAnchor(this.h2, this.anchors.p2);
             this.computeBounds();
@@ -744,51 +793,53 @@ exports.UML = function(svg, gui) {
         }
 
         select() {
-            //Memento.register(this);
-            this.schema.select(this);
-            if (!this.anchors.p1) {
-                let pt1 = this.point(this.h1);
-                this.anchors.p1 = new Anchor(pt1.x, pt1.y, (x, y)=> {
-                    this.detachBegin(x, y);
-                    return {x, y};
-                },(x, y)=> {
-                    let clazz = this.schema.getNode(x, y);
-                    if (clazz) {
-                        this.begin(clazz);
-                        return true;
-                    }
-                    else {
-                        return false;
-                    }
-                });
-                let pt2 = this.point(this.h2);
-                this.anchors.p2 = new Anchor(pt2.x, pt2.y, (x, y)=> {
-                    this.detachEnd(x, y);
-                    return {x, y};
-                },(x, y)=> {
-                    let clazz = this.schema.getNode(x, y);
-                    if (clazz) {
-                        this.end(clazz);
-                        return true;
-                    }
-                    else {
-                        return false;
-                    }
-                });
-                this.schema.putAnchors(this.anchors.p1, this.anchors.p2);
+            if (this.schema.select(this)) {
+                if (!this.anchors.p1) {
+                    let pt1 = this.point(this.h1);
+                    this.anchors.p1 = new Anchor(pt1.x, pt1.y, (x, y)=> {
+                        this.detachBegin(x, y);
+                        return {x, y};
+                    }, (x, y)=> {
+                        let clazz = this.schema.nodeFromPosition(x, y);
+                        if (clazz) {
+                            this.begin(clazz);
+                            return true;
+                        }
+                        else {
+                            return false;
+                        }
+                    });
+                    let pt2 = this.point(this.h2);
+                    this.anchors.p2 = new Anchor(pt2.x, pt2.y, (x, y)=> {
+                        this.detachEnd(x, y);
+                        return {x, y};
+                    }, (x, y)=> {
+                        let clazz = this.schema.nodeFromPosition(x, y);
+                        if (clazz) {
+                            this.end(clazz);
+                            return true;
+                        }
+                        else {
+                            return false;
+                        }
+                    });
+                    this.schema.putAnchors(this.anchors.p1, this.anchors.p2);
+                }
+                return true;
             }
-            return this;
+            return false;
         }
 
         unselect() {
-            //Memento.register(this);
-            this.schema.unselect(this);
-            if (!this.anchors.empty()) {
-                this.schema.removeAnchors(this.anchors.p1, this.anchors.p2);
-                delete this.anchors.p1;
-                delete this.anchors.p2;
+            if (this.schema.unselect(this)) {
+                if (!this.anchors.empty()) {
+                    this.schema.removeAnchors(this.anchors.p1, this.anchors.p2);
+                    delete this.anchors.p1;
+                    delete this.anchors.p2;
+                }
+                return true;
             }
-            return this;
+            return false;
         }
 
         computeBounds() {
@@ -909,6 +960,115 @@ exports.UML = function(svg, gui) {
             }
         }
 
+        ellipseCoord(angle, dx, dy, sign) {
+            if (angle%180===90) {
+                return {x:0, y:dy};
+            }
+            else {
+                let tan = Math.tan(angle/180*Math.PI);
+                let ex = dx * dy * Math.sqrt(1 / (dy * dy + dx * dx * tan * tan)) * Math.sign(tan) * Math.sign(sign);
+                return {
+                    x: ex,
+                    y: ex * tan * Math.sign(sign*dx)
+                };
+            }
+        }
+
+        computePosition(ratio, distance) {
+            if (this.px1 && this.px2) {
+                let dx = this.px2 - this.px1;
+                let dy = this.py2 - this.py1;
+                if (dx === 0 && dy === 0) {
+                    return {x: this.px1, y: this.py1 - distance};
+                }
+                let px3 = this.px1 + dx * ratio;
+                let py3 = this.py1 + dy * ratio;
+                let dist = distance / Math.sqrt(dx * dx + dy * dy);
+                return {x: px3 + dy * dist, y: py3 - dx * dist};
+            }
+            else {
+                let mx = (this.dx1 + this.dx2)/2;
+                let my = (this.dy1 + this.dy2)/2;
+                let dx = (this.dx2 - this.dx1)/2;
+                let dy = (this.dy2 - this.dy1)/2;
+                let face = this.angle();
+                dx===0 && (dx = this.cx*0.75);
+                dy===0 && (dy = this.cy*0.75);
+                if (face===0 || face===180) {
+                    let angle = 180*ratio+face;
+                    let {x:ex, y:ey} = this.ellipseCoord(angle, dx, dy, Math.sign(-this.cy));
+                    let px = ex + Math.cos(angle / 180 * Math.PI) * distance * Math.sign(-this.cy*dx);
+                    let py = ey + Math.sin(angle / 180 * Math.PI) * distance;
+                    return {x: mx + px, y: my + py};
+                }
+                else {
+                    let angle = 180*ratio-90+face;
+                    let {x:ey, y:ex} = this.ellipseCoord(angle, dy, dx, Math.sign(-this.cx));
+                    let px = ex - Math.sin(angle / 180 * Math.PI) * distance;
+                    let py = ey + Math.cos(angle / 180 * Math.PI) * distance * Math.sign(this.cx*dy);
+                    return {x: mx + px, y: my + py};
+                }
+            }
+        }
+
+        computeParametersForLine(x, y) {
+            let dx = this.px2 - this.px1;
+            let dy = this.py2 - this.py1;
+            let t = (dx * (x - this.px2) + dy * (y - this.py2)) / (dx * dx + dy * dy);
+            let px = this.px2 + dx * t;
+            let py = this.py2 + dy * t;
+            let pdx = px - this.px1;
+            let pdy = py - this.py1;
+            let sign = pdy * (x - px) - pdx * (y - py) > 0 ? 1 : -1;
+            return {
+                ratio: Math.sqrt((pdx * pdx + pdy * pdy) / (dx * dx + dy * dy)),
+                distance: Math.sqrt((x - px) * (x - px) + (y - py) * (y - py)) * sign
+            };
+        }
+
+        computeParametersForEllipse(x, y) {
+            let mx = (this.dx1 + this.dx2)/2;
+            let my = (this.dy1 + this.dy2)/2;
+            let dx = (this.dx2 - this.dx1)/2;
+            let dy = (this.dy2 - this.dy1)/2;
+            let face = this.angle();
+            dx===0 && (dx = this.cx*0.75);
+            dy===0 && (dy = this.cy*0.75);
+            let px = x - mx;
+            let py = y - my;
+            if (face===0 || face===180) {
+                let sign = Math.sign(-dx);
+                let angle = Math.atan2(py*sign, px*sign)/Math.PI*180*sign*Math.sign(this.cy);
+                let ratio = angle/180;
+                let {x:ex} = this.ellipseCoord(angle, dx, dy, Math.sign(-this.cy));
+                let distance = (px - ex)/Math.cos(angle / 180 * Math.PI)*sign;
+                return {
+                    ratio:ratio,
+                    distance:distance
+                }
+            }
+            else {
+                let sign = Math.sign(-dy);
+                let angle = Math.atan2(px*sign, py*sign)/Math.PI*180*sign*Math.sign(this.cx);
+                let ratio = angle/180;
+                let {x:ex} = this.ellipseCoord(angle, dy, dx, Math.sign(-this.cx));
+                let distance = (py - ex)/Math.cos(angle / 180 * Math.PI)*sign;
+                return {
+                    ratio:ratio,
+                    distance:distance
+                }
+            }
+        }
+
+        computeParameters(x, y) {
+            if (this.px1 && this.px2) {
+                return this.computeParametersForLine(x, y);
+            }
+            else {
+                return this.computeParametersForEllipse(x, y);
+            }
+        }
+
         shown() {
         }
 
@@ -944,7 +1104,6 @@ exports.UML = function(svg, gui) {
             memento.cx = this.cx;
             memento.cy = this.cy;
 
-            //memento.anchors = Memento.registerObject(this.anchors);
             return memento;
         }
 
@@ -954,7 +1113,6 @@ exports.UML = function(svg, gui) {
                 x1:this.h1.x, y1:this.h1.y, px1:this.px1, py1:this.py1, node1:this.h1.node,
                 x2:this.h2.x, y2:this.h2.y, px2:this.px2, py2:this.py2, node2:this.h2.node,
                 dx1:this.dx1, dx2:this.dx2, dy1:this.dy1, dy2:this.dy2, cx:this.cx, cy:this.cy} = memento);
-            //Memento.revertObject(memento.anchors, this.anchors);
         }
     }
 
@@ -982,6 +1140,19 @@ exports.UML = function(svg, gui) {
                 this.rotation.add(this.items[index]);
             }
             this.index = index;
+        }
+
+        set(index) {
+            Memento.register(this);
+            if (index!=this.index) {
+                if (this.items[this.index]) {
+                    this.rotation.remove(this.items[this.index]);
+                }
+                if (this.items[index]) {
+                    this.rotation.add(this.items[index]);
+                }
+                this.index = index;
+            }
         }
 
         memorize() {
@@ -1021,8 +1192,8 @@ exports.UML = function(svg, gui) {
 
     class Relationship extends Link {
 
-        constructor(node, ...args) {
-            super(node,...args);
+        constructor(id, node, ...args) {
+            super(id, node,...args);
             this.title = new Floating(this, 0.5, FLOATING_DISTANCE, TITLE_SIZE, "title");
             this.beginCardinality = new Floating(this, 0.1, FLOATING_DISTANCE, CARDINALITY_SIZE, "1?");
             this.endCardinality = new Floating(this, 0.9, FLOATING_DISTANCE, CARDINALITY_SIZE, "2?");
@@ -1057,25 +1228,29 @@ exports.UML = function(svg, gui) {
         }
 
         select() {
-            super.select();
-            this.showSensors();
-            this.title.select();
-            this.beginCardinality.select();
-            this.endCardinality.select();
-            return this;
+            if (super.select()) {
+                this.showSensors();
+                this.title.select();
+                this.beginCardinality.select();
+                this.endCardinality.select();
+                return true;
+            }
+            return false;
         }
 
         unselect() {
-            super.unselect();
-            this.hideSensors();
-            this.title.unselect();
-            this.beginCardinality.unselect();
-            this.endCardinality.unselect();
-            return this;
+            if (super.unselect()) {
+                this.hideSensors();
+                this.title.unselect();
+                this.beginCardinality.unselect();
+                this.endCardinality.unselect();
+                return true;
+            }
+            return false;
         }
 
-        begin(node) {
-            super.begin(node);
+        begin(node, x, y) {
+            super.begin(node, x, y);
             this.showSensors();
             this.updateTerminations();
             this.updateFloatings();
@@ -1090,8 +1265,8 @@ exports.UML = function(svg, gui) {
             return this;
         }
 
-        end(node) {
-            super.end(node);
+        end(node, x, y) {
+            super.end(node, x, y);
             this.showSensors();
             this.updateTerminations();
             this.updateFloatings();
@@ -1207,8 +1382,8 @@ exports.UML = function(svg, gui) {
 
     class Inherit extends Link {
 
-        constructor(node, ...args) {
-            super(node,...args);
+        constructor(id, node, ...args) {
+            super(id, node,...args);
             this.endTermination = new Termination(this, [this.triangle()]);
             this.component.add(this.endTermination.component);
             this._draw();
@@ -1223,8 +1398,8 @@ exports.UML = function(svg, gui) {
             }
         }
 
-        begin(node) {
-            super.begin(node);
+        begin(node, x, y) {
+            super.begin(node, x, y);
             this.updateTerminations();
             return this;
         }
@@ -1235,8 +1410,8 @@ exports.UML = function(svg, gui) {
             return this;
         }
 
-        end(node) {
-            super.end(node);
+        end(node, x, y) {
+            super.end(node, x, y);
             this.updateTerminations();
             return this;
         }
@@ -1280,7 +1455,7 @@ exports.UML = function(svg, gui) {
     class Floating extends Item {
 
         constructor(link, ratio, distance, width, message) {
-            super();
+            super(null);
             this.link = link;
             this.ratio = ratio;
             this.distance = distance;
@@ -1335,113 +1510,19 @@ exports.UML = function(svg, gui) {
             this.schema.removeAnchors(this.anchor);
         }
 
+        set(ratio, distance, message) {
+            Memento.register(this);
+            this.ratio = ratio;
+            this.distance = distance;
+            this._message = message;
+            this.text.message(this._message);
+            this.follow();
+        }
+
         adjust(x, y) {
             Memento.register(this);
-            ({ratio:this.ratio, distance:this.distance} = this.computeParameters(x, y+FIELD_HEIGHT));
+            ({ratio:this.ratio, distance:this.distance} = this.link.computeParameters(x, y+FIELD_HEIGHT));
             this.follow();
-            this._draw();
-        }
-
-        ellipseCoord(angle, dx, dy, sign) {
-            if (angle%180===90) {
-                return {x:0, y:dy};
-            }
-            else {
-                let tan = Math.tan(angle/180*Math.PI);
-                let ex = dx * dy * Math.sqrt(1 / (dy * dy + dx * dx * tan * tan)) * Math.sign(tan) * Math.sign(sign);
-                return {
-                    x: ex,
-                    y: ex * tan * Math.sign(sign*dx)
-                };
-            }
-        }
-
-        computePosition() {
-            if (this.link.px1 && this.link.px2) {
-                let dx = this.link.px2 - this.link.px1;
-                let dy = this.link.py2 - this.link.py1;
-                if (dx === 0 && dy === 0) {
-                    return {x: this.link.px1, y: this.link.py1 - this.distance};
-                }
-                let px3 = this.link.px1 + dx * this.ratio;
-                let py3 = this.link.py1 + dy * this.ratio;
-                let dist = this.distance / Math.sqrt(dx * dx + dy * dy);
-                return {x: px3 + dy * dist, y: py3 - dx * dist};
-            }
-            else {
-                let mx = (this.link.dx1 + this.link.dx2)/2;
-                let my = (this.link.dy1 + this.link.dy2)/2;
-                let dx = (this.link.dx2 - this.link.dx1)/2;
-                let dy = (this.link.dy2 - this.link.dy1)/2;
-                let face = this.link.angle();
-                dx===0 && (dx = this.link.cx*0.75);
-                dy===0 && (dy = this.link.cy*0.75);
-                if (face===0 || face===180) {
-                    let angle = 180*this.ratio+face;
-                    let {x:ex, y:ey} = this.ellipseCoord(angle, dx, dy, Math.sign(-this.link.cy));
-                    let px = ex + Math.cos(angle / 180 * Math.PI) * this.distance * Math.sign(-this.link.cy*dx);
-                    let py = ey + Math.sin(angle / 180 * Math.PI) * this.distance;
-                    return {x: mx + px, y: my + py};
-                }
-                else {
-                    let angle = 180*this.ratio-90+face;
-                    let {x:ey, y:ex} = this.ellipseCoord(angle, dy, dx, Math.sign(-this.link.cx));
-                    let px = ex - Math.sin(angle / 180 * Math.PI) * this.distance;
-                    let py = ey + Math.cos(angle / 180 * Math.PI) * this.distance * Math.sign(this.link.cx*dy);
-                    return {x: mx + px, y: my + py};
-                }
-
-            }
-        }
-
-        computeParameters(x, y) {
-            if (this.link.px1 && this.link.px2) {
-                let dx = this.link.px2 - this.link.px1;
-                let dy = this.link.py2 - this.link.py1;
-                let t = (dx * (x - this.link.px2) + dy * (y - this.link.py2)) / (dx * dx + dy * dy);
-                let px = this.link.px2 + dx * t;
-                let py = this.link.py2 + dy * t;
-                let pdx = px - this.link.px1;
-                let pdy = py - this.link.py1;
-                let sign = pdy * (x - px) - pdx * (y - py) > 0 ? 1 : -1;
-                return {
-                    ratio: Math.sqrt((pdx * pdx + pdy * pdy) / (dx * dx + dy * dy)),
-                    distance: Math.sqrt((x - px) * (x - px) + (y - py) * (y - py)) * sign
-                };
-            }
-            else {
-                let mx = (this.link.dx1 + this.link.dx2)/2;
-                let my = (this.link.dy1 + this.link.dy2)/2;
-                let dx = (this.link.dx2 - this.link.dx1)/2;
-                let dy = (this.link.dy2 - this.link.dy1)/2;
-                let face = this.link.angle();
-                dx===0 && (dx = this.link.cx*0.75);
-                dy===0 && (dy = this.link.cy*0.75);
-                let px = x - mx;
-                let py = y - my;
-                if (face===0 || face===180) {
-                    let sign = Math.sign(-dx);
-                    let angle = Math.atan2(py*sign, px*sign)/Math.PI*180*sign*Math.sign(this.link.cy);
-                    let ratio = angle/180;
-                    let {x:ex} = this.ellipseCoord(angle, dx, dy, Math.sign(-this.link.cy));
-                    let distance = (px - ex)/Math.cos(angle / 180 * Math.PI)*sign;
-                    return {
-                        ratio:ratio,
-                        distance:distance
-                    }
-                }
-                else {
-                    let sign = Math.sign(-dy);
-                    let angle = Math.atan2(px*sign, py*sign)/Math.PI*180*sign*Math.sign(this.link.cx);
-                    let ratio = angle/180;
-                    let {x:ex} = this.ellipseCoord(angle, dy, dx, Math.sign(-this.link.cx));
-                    let distance = (py - ex)/Math.cos(angle / 180 * Math.PI)*sign;
-                    return {
-                        ratio:ratio,
-                        distance:distance
-                    }
-                }
-            }
         }
 
         memorize() {
@@ -1469,7 +1550,7 @@ exports.UML = function(svg, gui) {
         follow() {
             Memento.register(this);
             this.visible = true;
-            let point = this.computePosition();
+            let point = this.link.computePosition(this.ratio, this.distance);
             this.component.move(point.x, point.y);
             this.anchor.adjust(point.x, point.y - FIELD_HEIGHT);
             this._draw();
@@ -1486,23 +1567,100 @@ exports.UML = function(svg, gui) {
 
         spec(schema) {
             let spec = {
+                idgen : schema.idgen,
                 width : schema.component.width,
                 height : schema.component.height,
-                clazzes : schema.nodes.map(clazz=>({
-                    x:clazz.x,
-                    y:clazz.y,
-                    width:clazz.width,
-                    height:clazz.height}
-                ))
+                clazzes : schema.nodes.filter(node=>node instanceof Clazz).map(clazz=>{
+                    let nd = this.nodeSpec(clazz);
+                    nd.title=clazz.title();
+                    nd.content=clazz.content();
+                    return nd;
+                }),
+                inherits : schema.links.filter(link=>link instanceof Inherit).map(link=>this.linkSpec(link)),
+                relationships : schema.links.filter(link=>link instanceof Relationship).map(link=>{
+                    let ls = this.linkSpec(link);
+                    ls.title = this.floatingSpec(link.title);
+                    ls.beginCardinality = this.floatingSpec(link.beginCardinality);
+                    ls.endCardinality = this.floatingSpec(link.endCardinality);
+                    ls.beginTermination = this.terminationSpec(link.beginTermination, "composition", "aggregation");
+                    ls.endTermination = this.terminationSpec(link.endTermination, "arrow");
+                    return ls;
+                })
             };
             return spec;
         }
 
+        nodeSpec(node) {
+            return {
+                id:node.id,
+                x:node.x,
+                y:node.y,
+                width:node.width,
+                height:node.height
+            };
+        }
+
+        linkSpec(link) {
+            return {
+                id:link.id,
+                from:{id:link.h1.node.id, x:link.h1.x, y:link.h1.y},
+                to:{id:link.h2.node.id, x:link.h2.x, y:link.h2.y}
+            }
+        }
+
+        floatingSpec(floating) {
+            return {
+                ratio : floating.ratio,
+                distance : floating.distance,
+                message : floating._message
+            }
+        }
+
+        terminationSpec(termination, ...items) {
+            return termination.index === 0?0:items[termination.index-1]
+        }
+
         schema(desc) {
-            let schema = new Schema(desc.width, desc.height);
-            desc.nodes.forEach(descClazz=>schema.putNode(
-                new Clazz(descClazz.width, descClazz.height,descClazz.x, descClazz.y)));
+            let schema = new Schema(desc.idgen, desc.width, desc.height);
+            desc.clazzes.forEach(descClazz=>{
+                let clazz = new Clazz(descClazz.id, descClazz.width, descClazz.height,descClazz.x, descClazz.y)
+                        .title(descClazz.title).content(descClazz.content);
+                schema.putNode(clazz);
+                clazz._draw();
+            });
+            desc.inherits.forEach(descLink=>{
+                let link = this.buildLink(descLink, schema, Inherit);
+                link._draw();
+            });
+            desc.relationships.forEach(descLink=>{
+                let link = this.buildLink(descLink, schema, Relationship);
+                this.termination(link.endTermination, descLink.endTermination, "arrow");
+                this.termination(link.beginTermination, descLink.beginTermination, "composition", "aggregation");
+                this.floating(link.title, descLink.title);
+                this.floating(link.beginCardinality, descLink.beginCardinality);
+                this.floating(link.endCardinality, descLink.endCardinality);
+                link._draw();
+            });
             return schema;
+        }
+
+        buildLink(descLink, schema, Link) {
+            let fromNode = schema.nodeFromId(descLink.from.id);
+            let toNode = schema.nodeFromId(descLink.to.id);
+            let link = new Link(descLink.id);
+            schema.putLink(link);
+            link.begin(fromNode, descLink.from.x, descLink.from.y);
+            link.end(toNode, descLink.to.x, descLink.to.y);
+            return link;
+        }
+
+        termination(termination, descTermination, ...items) {
+            let index = !descTermination?0:items.findIndex(item=>item===descTermination)+1;
+            termination.set(index);
+        }
+
+        floating(floating, descFloating) {
+            floating.set(descFloating.ratio, descFloating.distance, descFloating.message);
         }
     }
 
@@ -1522,7 +1680,7 @@ exports.UML = function(svg, gui) {
 
         function install(delta) {
             let whatParent = what.component.parent;
-            let {x:initX, y:initY, angle:initAngle} = what;
+            let {x:initX, y:initY} = what;
             if (doSelect(what)) {
                 let click = true;
                 what.addEvent('mousemove', moveEvent=> {

@@ -5,28 +5,72 @@
 console.log("Game items loaded...");
 exports.GameItems = function(svg) {
 
-    class Exit {
+    class Command {
+
+        constructor(component, callback, colors) {
+            this.component = component;
+            this.callback = callback;
+            this.colors = colors;
+            this.activate();
+        }
+
+        activate() {
+            this.active = true;
+            this.component.children.forEach(child=>
+                child.color(...this.colors));
+            this.component.onClick(()=> {
+                this.callback();
+            });
+        }
+
+        desactivate() {
+            this.active = true;
+            this.component.children.forEach(child=>
+                child.color(svg.LIGHT_GREY, 4, svg.GREY));
+            this.component.onClick(null);
+        }
+    }
+
+    class Exit extends Command {
 
         constructor(exit) {
-            this.component = new svg.Translation()
-                .add(new svg.Triangle(40, 60, "W").position(20, 30).color([100, 100, 255], 4, [80, 80, 120]))
-                .add(new svg.Triangle(40, 60, "W").position(40, 30).color([100, 100, 255], 4, [80, 80, 120]));
-            this.component.onClick(()=> {
-                exit();
-            });
+            super(new svg.Translation()
+                .add(new svg.Triangle(40, 60, "W").position(20, 30))
+                .add(new svg.Triangle(40, 60, "W").position(40, 30)),
+                exit,
+                [[100, 100, 255], 4, [80, 80, 120]]);
         }
 
     }
 
-    class Push {
+    class Push extends Command {
 
         constructor(push) {
-            this.component = new svg.Translation()
-                .add(new svg.Triangle(40, 60, "E").position(40, 30).color([100, 100, 255], 4, [80, 80, 120]))
-                .add(new svg.Triangle(40, 60, "E").position(20, 30).color([100, 100, 255], 4, [80, 80, 120]));
-            this.component.onClick(()=> {
-                push();
-            });
+            super(new svg.Translation()
+                .add(new svg.Triangle(40, 60, "E").position(20, 30))
+                .add(new svg.Triangle(40, 60, "E").position(40, 30)),
+                push,
+                [[100, 100, 255], 4, [80, 80, 120]]);
+        }
+
+    }
+
+    class Next extends Command {
+
+        constructor(next) {
+            super(new svg.Translation().add(new svg.Triangle(50, 70, "E").position(25, 35)),
+                next,
+                [svg.LIGHT_GREEN, 4, svg.DARK_GREEN]);
+        }
+
+    }
+
+    class Prev extends Command {
+
+        constructor(prev) {
+            super(new svg.Translation().add(new svg.Triangle(50, 70, "W").position(25, 35)),
+                prev,
+                [svg.LIGHT_GREEN, 4, svg.DARK_GREEN]);
         }
 
     }
@@ -464,6 +508,8 @@ exports.GameItems = function(svg) {
     return {
         Exit: Exit,
         Push: Push,
+        Next : Next,
+        Prev : Prev,
         Die: Die,
         Smiley: Smiley,
         Led: Led,
