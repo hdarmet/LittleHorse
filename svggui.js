@@ -594,6 +594,11 @@ exports.Gui = function(svg, param) {
                 var y = -position * this.content.height / this.view.height + this.view.height / 2;
                 this.content.move(x, y);
             };
+            let hHandleCallback = position=> {
+                var x = -position * this.content.width / this.view.width + this.view.width / 2;
+                var y = this.content.y;
+                this.content.move(x, y);
+            };
             this.width = width;
             this.height = height;
             this.component = new svg.Translation();
@@ -603,14 +608,21 @@ exports.Gui = function(svg, param) {
             this.translate = new svg.Translation();
             this.component.add(this.view.add(this.translate)).add(this.border);
             this.vHandle = new Handle([svg.LIGHT_ORANGE, 3, svg.ORANGE], vHandleCallback);
+            this.hHandle = new Handle([svg.LIGHT_ORANGE, 3, svg.ORANGE], hHandleCallback);
             this.back = new svg.Rect(width, height).color(color, 0, []);
             this.content = new svg.Translation();
             this.wheelHandler = (event)=> {
                 if (event.deltaY>0) {
-                    this.moveContent(this.content.y+WHEEL_STEP);
+                    this.moveContent(this.content.x, this.content.y+WHEEL_STEP);
                 }
                 else if (event.deltaY<0) {
-                    this.moveContent(this.content.y-WHEEL_STEP);
+                    this.moveContent(this.content.x, this.content.y-WHEEL_STEP);
+                }
+                if (event.deltaX>0) {
+                    this.moveContent(this.content.x+WHEEL_STEP, this.content.y);
+                }
+                else if (event.deltaX<0) {
+                    this.moveContent(this.content.x-WHEEL_STEP, this.content.y);
                 }
             };
             this.translate.onMouseWheel(this.wheelHandler);
@@ -637,21 +649,36 @@ exports.Gui = function(svg, param) {
 
         _handleVisibility() {
             if (this.height>0) {
-                if (!this.handleVisible) {
-                    this.handleVisible = true;
+                if (!this.vertHandleVisible) {
+                    this.vertHandleVisible = true;
                     this.component.add(this.vHandle.component);
                 }
                 this.vHandle.vertical(this.width / 2, -this.height / 2, this.height / 2);
             }
             else {
-                if (this.handleVisible) {
-                    delete this.handleVisible;
+                if (this.vertHandleVisible) {
+                    delete this.vertHandleVisible;
                     this.component.remove(this.vHandle.component);
+                }
+            }
+            if (this.width>0) {
+                if (!this.horizHandleVisible) {
+                    this.horizHandleVisible = true;
+                    this.component.add(this.hHandle.component);
+                }
+                this.hHandle.horizontal(-this.width / 2, this.width / 2, this.height / 2);
+            }
+            else {
+                if (this.horizHandleVisible) {
+                    delete this.horizHandleVisible;
+                    this.component.remove(this.hHandle.component);
                 }
             }
         }
 
         updateHandle() {
+            this.hHandle.dimension(this.view.width, this.content.width)
+                .position((this.view.width / 2 - this.content.x) / (this.content.width) * this.view.width);
             this.vHandle.dimension(this.view.height, this.content.height)
                 .position((this.view.height / 2 - this.content.y) / (this.content.height) * this.view.height);
             return this;
@@ -668,27 +695,41 @@ exports.Gui = function(svg, param) {
         }
 
         resizeContent(width, height) {
+            let changed = false;
             if (height > this.height) {
                 this.content.height = height;
+                changed = true;
+            }
+            if (width > this.width) {
                 this.content.width = width;
-                this.back.position(width / 2, height / 2);
-                this.back.dimension(width, height);
+                changed = true;
+            }
+            if (changed) {
+                this.back.position(this.content.width / 2, this.content.height / 2);
+                this.back.dimension(this.content.width, this.content.height);
             }
             this.updateHandle();
             return this;
         }
 
-        controlPosition(y) {
+        controlPosition(x, y) {
+            if (x < this.view.width - this.content.width) {
+                x = this.view.width - this.content.width;
+            }
+            if (x > 0) {
+                x = 0;
+            }
             if (y < this.view.height - this.content.height) {
                 y = this.view.height - this.content.height;
             }
             if (y > 0) {
                 y = 0;
             }
-            return y;
+            return {x, y};
         }
 
-        moveContent(y) {
+        moveContent(x, y) {
+            let vx = x;
             let vy = y;
             let completeMovement = progress=> {
                 this.updateHandle();
@@ -698,19 +739,30 @@ exports.Gui = function(svg, param) {
             };
             if (!this.animation) {
                 this.animation = true;
-                let ly = this.controlPosition(vy);
+                let ps = this.controlPosition(vx, vy);
                 this.content.onChannel().smoothy(param.speed, param.step)
-                    .execute(completeMovement).moveTo(0, ly);
+                    .execute(completeMovement).moveTo(ps.x, ps.y);
             }
+            return this;
+        }
+
+        color(color) {
+            this.back.color(color, 0, []);
             return this;
         }
 
         processKeys(keycode) {
             if (isUpArrow(keycode)) {
-                this.moveContent(this.content.y + 100);
+                this.moveContent(this.content.x, this.content.y + 100);
             }
             else if (isDownArrow(keycode)) {
-                this.moveContent(this.content.y - 100);
+                this.moveContent(this.content.x, this.content.y - 100);
+            }
+            else if (isLeftArrow(keycode)) {
+                this.moveContent(this.content.x+100, this.content.y);
+            }
+            else if (isRightArrow(keycode)) {
+                this.moveContent(this.content.x-100, this.content.y);
             }
             else {
                 return false;
@@ -724,8 +776,47 @@ exports.Gui = function(svg, param) {
             function isDownArrow(keycode) {
                 return keycode === 40;
             }
+
+            function isLeftArrow(keycode) {
+                return keycode === 37;
+            }
+
+            function isRightArrow(keycode) {
+                return keycode === 39;
+            }
         }
 
+    }
+
+    const TEXT_MARGIN = 20;
+
+    class TextPanel extends Panel {
+
+        constructor(width, height, color) {
+            super(width, height, color);
+            this.textPane = new svg.Text().position(TEXT_MARGIN, TEXT_MARGIN).anchor("start");
+            this.add(this.textPane);
+        }
+
+        text(text) {
+            this.textPane.message(text);
+            this.refresh();
+            return this;
+        }
+
+        font(fontName, fontSize, lineSpacing) {
+            this.textPane.font(fontName, fontSize, lineSpacing);
+            this.textPane.position(TEXT_MARGIN, TEXT_MARGIN+fontSize);
+            this.refresh();
+            return this;
+        }
+
+        refresh() {
+            let bounds = this.textPane.boundingRect();
+            this.resizeContent(
+                bounds.width+TEXT_MARGIN*2,
+                bounds.height+TEXT_MARGIN*2+this.textPane.fontSize);
+        }
     }
 
     class Grid {
@@ -1383,6 +1474,7 @@ exports.Gui = function(svg, param) {
             this.fontSize = 32;
             this.text.font(this.fontName, this.fontSize);
             this.control.font(this.fontName, this.fontSize);
+            this.valid = true;
             this._draw();
         }
 
@@ -1409,10 +1501,16 @@ exports.Gui = function(svg, param) {
             if (valid) {
                 this.textMessage = message;
                 this.text.message(message);
-                this.control.fontColor(svg.BLACK);
+                if (this.valid!=valid) {
+                    this.control.fontColor(svg.BLACK);
+                    this.valid = valid;
+                }
             }
             else {
-                this.control.fontColor(svg.RED);
+                if (this.valid!=valid) {
+                    this.control.fontColor(svg.RED);
+                    this.valid = valid;
+                }
             }
             return valid;
         }
@@ -1566,7 +1664,9 @@ exports.Gui = function(svg, param) {
         }
 
         buildLabel(message, x, y, width, height) {
-            return new svg.Text(message).anchor("start").dimension(width, height);
+            return new svg.Text(message)
+                .anchor("start")
+                .dimension(width, height);
         }
 
         buildControl(message, x, y, width, height) {
@@ -1663,6 +1763,7 @@ exports.Gui = function(svg, param) {
         Frame:Frame,
         Handle:Handle,
         Panel:Panel,
+        TextPanel:TextPanel,
         Pane:Pane,
         Palette:Palette,
         Tool:Tool,

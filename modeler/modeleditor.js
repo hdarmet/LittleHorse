@@ -140,12 +140,44 @@ exports.modelEditor = function(svg) {
             super(pane);
             this.action(()=>{
                 let gen = new generator.GeneratorJPA();
+                schema.clearInfos();
                 gen.generate(
                     new Uml.SchemaBuilder().spec(schema),
                     result=>{
-                        gen.save(paneSaveLoad.fileName, result);
-                        console.log(JSON.stringify(result));
-                    });
+                        //gen.save(paneSaveLoad.fileName, result);
+                        //let text = JSON.stringify(result);
+                        new ShowGenerationPopin(result).show(drawing);
+                    },
+                    errors=>{
+                        let text = "";
+                        errors.forEach(error=>{
+                            text=text+error.toString()+"\n\n";
+                            let item = schema.itemFromId(error.ref.id);
+                            let location = item.location();
+                            let info = new Uml.Info(item, location.x, location.y,
+                                error.toString(), [svg.LIGHT_PINK, 2, svg.RED]);
+                            schema.putInfo(info);
+                            Uml.installDnD(info, frame,
+                                (info, x, y)=> {
+                                    //info.move(x, y);
+                                    return {x, y};
+                                },
+                                (info)=> {
+                                    return true;
+                                },
+                                (info, x, y)=> {
+                                    info.move(x, y);
+                                    return true;
+                                },
+                                (info)=> {
+                                    return true;
+                                }
+                            );
+                        });
+                        new ShowGenerationPopin(text).show(drawing);
+                        Memento.begin();
+                    }
+                );
                console.log("generate JPA");
             });
         }
@@ -213,7 +245,7 @@ exports.modelEditor = function(svg) {
         enableDnD(clazz) {
             Uml.installDnD(clazz, frame,
                 (clazz, x, y)=> {
-                    clazz.move(x, y);
+                    //clazz.move(x, y);
                     return {x, y};
                 },
                 (clazz)=> {
@@ -428,8 +460,28 @@ exports.modelEditor = function(svg) {
     }
 
     class EditPopin extends gui.Popin {
+
         constructor() {
             super(1000, 700);
+        }
+
+    }
+
+    class ShowGenerationPopin extends gui.Popin {
+
+        constructor(text) {
+            super(1000, 1000);
+            this.panel = new gui.TextPanel(800, 800).font("courier", 20, 26).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
+            this.title = new gui.Label(0, 0, "Generation Result").anchor('middle').font("arial", 40);
+            this.add(this.title.position(0, -450));
+            this.add(this.panel);
+            this.panel.text(text);
+            this.whenOk(()=>{this.close()});
+        }
+
+        show(...args) {
+            super.show(...args);
+            this.panel.refresh();
         }
     }
 

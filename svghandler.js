@@ -76,6 +76,19 @@ exports.SVG = function(runtime) {
         });
     }
 
+    if (!Object.prototype.count) {
+        Object.defineProperty(Object.prototype, "count", {
+            enumerable: false,
+            get: function() {
+                let count=0;
+                for (let field in this) {
+                    count++;
+                }
+                return count;
+            }
+        });
+    }
+
     if (!Object.prototype.duplicate) {
         Object.defineProperty(Object.prototype, "duplicate", {
             enumerable: false,
@@ -1455,7 +1468,7 @@ exports.SVG = function(runtime) {
 
     class Rect extends Shape {
 
-        constructor(width, height) {
+        constructor(width=0, height=0) {
             super();
             this.component = svgr.create("rect");
             this.x = 0;
@@ -2342,7 +2355,7 @@ exports.SVG = function(runtime) {
             this.fontSize = 12;
             this.lineSpacing = 24;
             this.anchorText = "middle";
-            //this.fillColor = [true];
+            this.vanchorText = "top";
             this.lines = [];
             this._draw();
         }
@@ -2377,16 +2390,20 @@ exports.SVG = function(runtime) {
             return this;
         }
 
+        vanchor(anchorText) {
+            this.vanchorText = anchorText;
+            this._draw();
+            return this;
+        }
+
         anchor(anchorText) {
-            if (anchorText==="middle") {
-                console.log(anchorText);
-            }
             this.anchorText = anchorText;
             this._draw();
             return this;
         }
 
         _draw() {
+            let margin = this.vanchorText==="middle" ? this.lines.length*this.lineSpacing/2 : 0;
             for (var l = 0; l < this.lines.length; l++) {
                 svgr.remove(this.component, this.lines[l]);
             }
@@ -2397,7 +2414,7 @@ exports.SVG = function(runtime) {
             if (this.height) {
                 baseY += - this.height/2 + this.lineSpacing/2 - this.fontSize/4;
             }
-            svgr.attr(this.component, "y", baseY);
+            svgr.attr(this.component, "y", baseY-margin);
             svgr.attr(this.component, "text-anchor", this.anchorText);
             svgr.attr(this.component, "font-family", this.fontName);
             svgr.attr(this.component, "font-size", this.fontSize);
@@ -2406,10 +2423,26 @@ exports.SVG = function(runtime) {
                 var line = svgr.create("tspan");
                 svgr.add(this.component, line);
                 svgr.attr(line, "x", this.x);
-                svgr.attr(line, "y", baseY + l * this.lineSpacing);
+                svgr.attr(line, "y", baseY + l * this.lineSpacing-margin);
                 this._format(line, lines[l]);
                 this.lines[l - 1] = line;
             }
+        }
+
+        boundingRect() {
+            let rect = svgr.boundingRect(this.component);
+            let x1 = rect.left;
+            let y1 = rect.top;
+            let x2 = rect.left + rect.width;
+            let y2 = rect.top + rect.height;
+            this.lines.forEach(line=>{
+                rect = svgr.boundingRect(line);
+                if (x1>rect.left) {x1=rect.left};
+                if (y1>rect.top) {y1=rect.top};
+                if (x2<rect.left+rect.width) {x2=rect.left+rect.width};
+                if (y2<rect.top+rect.height) {y2=rect.top+rect.height};
+            });
+            return {left:x1, top:y1, width:x2-x1, height:y2-y1};
         }
 
         _format(line, text) {
@@ -2418,7 +2451,7 @@ exports.SVG = function(runtime) {
                 let messageToShow = message;
                 let finished = false;
                 do {
-                    svgr.text(line, messageToShow);
+                    svgr.text(line, this.escape(messageToShow));
                     let bounds = this.boundingRect();
                     if (bounds.width>this.width && message.length>0) {
                         message = message.slice(0, message.length-1);
@@ -2430,8 +2463,17 @@ exports.SVG = function(runtime) {
                 } while (!finished);
             }
             else {
-                svgr.text(line, text);
+                svgr.text(line, this.escape(text));
             }
+        }
+
+        escape(text) {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/>/g, '&gt;')
+                .replace(/</g, '&lt;')
+                .replace(/ /g, '&nbsp;')
+                .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
         }
 
         globalPoint(...args) {
@@ -2502,11 +2544,20 @@ exports.SVG = function(runtime) {
             return this;
         }
 
+        dash(dashPattern) {
+            this.dashPattern = dashPattern;
+            this._draw();
+            return this;
+        }
+
         _draw() {
             svgr.attr(this.component, "x1", this.x1);
             svgr.attr(this.component, "y1", this.y1);
             svgr.attr(this.component, "x2", this.x2);
             svgr.attr(this.component, "y2", this.y2);
+            if (this.dashPattern) {
+                svgr.attr(this.component, "stroke-dasharray", this.dashPattern);
+            }
         }
 
         prepareAnimator(animator) {
@@ -2971,6 +3022,7 @@ exports.SVG = function(runtime) {
         ALMOST_RED : [240, 10, 10],
         DARK_RED : [100, 0, 0],
         LIGHT_RED : [200, 100, 100],
+        LIGHT_PINK : [250, 200, 200],
 
         ORANGE:[220, 100, 0],
         DARK_ORANGE:[170, 70, 0],

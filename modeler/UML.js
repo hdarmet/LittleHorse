@@ -17,14 +17,17 @@ exports.UML = function(svg, gui) {
             this.linkSupport = new svg.Translation();
             this.floatingSupport = new svg.Translation();
             this.anchorSupport = new svg.Translation();
+            this.infoSupport = new svg.Translation();
             this.component
                 .add(this.background)
                 .add(this.floatingSupport)
                 .add(this.nodeSupport)
                 .add(this.linkSupport)
-                .add(this.anchorSupport);
+                .add(this.anchorSupport)
+                .add(this.infoSupport);
             this.nodes = [];
             this.links = [];
+            this.infos = [];
             this.selected = null;
         }
 
@@ -42,6 +45,18 @@ exports.UML = function(svg, gui) {
 
         nodeFromPosition(x, y) {
             return this.nodes.find(clazz=>clazz.inside(x, y));
+        }
+
+        linkFromId(id) {
+            return this.links.find(link=>link.id===id);
+        }
+
+        itemFromId(id) {
+            let item = this.nodeFromId(id);
+            if (!item) {
+                item = this.linkFromId(id);
+            }
+            return item;
         }
 
         nodeMode() {
@@ -85,6 +100,28 @@ exports.UML = function(svg, gui) {
             this.linkSupport.remove(link.component);
             link.hidden();
             return this;
+        }
+
+        putInfo(info) {
+            Memento.register(this);
+            info.schema = this;
+            this.infos.push(info);
+            this.infoSupport.add(info.component);
+            info._draw();
+            info.shown();
+            return this;
+        }
+
+        removeInfo(info) {
+            Memento.register(this);
+            this.infos.remove(info);
+            this.infoSupport.remove(info.component);
+            info.hidden();
+            return this;
+        }
+
+        clearInfos() {
+            [...this.infos].forEach(info=>info.remove());
         }
 
         putAnchors(...anchors) {
@@ -141,6 +178,14 @@ exports.UML = function(svg, gui) {
             }
         }
 
+        width() {
+            return this.component.width;
+        }
+
+        height() {
+            return this.component.height;
+        }
+
         memorize() {
             return {
                 component : Memento.registerSVGTranslation(this.component),
@@ -149,20 +194,24 @@ exports.UML = function(svg, gui) {
                 nodeSupport : Memento.registerSVGTranslation(this.nodeSupport),
                 floatingSupport : Memento.registerSVGTranslation(this.floatingSupport),
                 linkSupport : Memento.registerSVGTranslation(this.linkSupport),
+                infoSupport : Memento.registerSVGTranslation(this.infoSupport),
                 nodes : Memento.registerArray(this.nodes),
                 links : Memento.registerArray(this.links),
+                infos : Memento.registerArray(this.infos)
             }
         }
 
         revert(memento) {
             Memento.revertSVGTranslation(memento.component, this.component);
-            this.width = memento.width;
-            this.height = memento.height,
+            this.component.width = memento.width;
+            this.component.height = memento.height;
             Memento.revertSVGTranslation(memento.nodeSupport, this.nodeSupport);
             Memento.revertSVGTranslation(memento.linkSupport, this.linkSupport);
             Memento.revertSVGTranslation(memento.floatingSupport, this.floatingSupport);
+            Memento.revertSVGTranslation(memento.infoSupport, this.infoSupport);
             Memento.revertArray(memento.nodes, this.nodes);
             Memento.revertArray(memento.links, this.links);
+            Memento.revertArray(memento.infos, this.infos);
         }
 
         _draw() {
@@ -180,6 +229,7 @@ exports.UML = function(svg, gui) {
         constructor(id) {
             this.id = id;
             this.events = {};
+            this.infos = [];
         }
 
         captureEvents() {
@@ -188,6 +238,22 @@ exports.UML = function(svg, gui) {
             this.addEvent("mousemove", NOP);
             this.addEvent("click", NOP);
             return this;
+        }
+
+        attachInfo(info) {
+            Memento.register(this);
+            this.infos.add(info);
+            return this;
+        }
+
+        detachInfo(info) {
+            Memento.register(this);
+            this.infos.remove(info);
+            return this;
+        }
+
+        updateInfos() {
+            this.infos.forEach(info=>info.follow(this));
         }
 
         addEvent(eventName, handler) {
@@ -205,18 +271,190 @@ exports.UML = function(svg, gui) {
         }
 
         memorize(memento) {
+            memento.infos = Memento.registerArray(this.infos);
             memento.events = Memento.registerObject(this.events);
             return memento;
         }
 
         revert(memento) {
-            this.events = memento.events;
+            Memento.revertArray(memento.infos, this.infos);
+            Memento.revertObject(memento.events, this.events);
             for (let eventName in this.events) {
                 svg.addEvent(this.component, eventName, this.events[eventName]);
             }
             this._draw();
         }
 
+    }
+
+    const INFO_MARGIN = 10;
+    const DELTA_INFO = 40;
+
+    class Info extends Item {
+
+        constructor(item, x, y, message, colors) {
+            super(null);
+            this.x = x;
+            this.y = y;
+            this.item = item;
+            this.item.attachInfo(this);
+            this.message = message;
+            this.color = colors;
+            this.background = new svg.Rect().color(...colors).opacity(0.8);
+            this.text = new svg.Text(message).color(colors[2]).font("arial", 16, 16).anchor("start").vanchor("middle");
+            this.line = new svg.Line(0, 0, 0, 0).color(...colors).dash("4,5,8,5");
+            this.closeIcon = this.buildCloseIcon().onClick(
+                ()=>this.remove());
+            this.component = new svg.Translation()
+                .add(this.background)
+                .add(this.text)
+                .add(this.line)
+                .add(this.closeIcon);
+            this.width = 0;
+            this.height = 0;
+            this.component.onClick((event)=>{});
+        }
+
+        findPosition(x, y) {
+            let rx = 0;
+            let ry = 0;
+            let dx = (this.item.width+this.width)/2+DELTA_INFO;
+            let dy = (this.item.height+this.height)/2+DELTA_INFO;
+            let pos = this.item.infos.indexOf(this)%8;
+            if (pos===0 || pos===1 || pos===2) {
+                rx = - dx;
+            }
+            else if (pos===4 || pos===5 || pos===6) {
+                rx = dx;
+            }
+            if (pos===0 || pos===6 || pos===7) {
+                ry = - dy;
+            }
+            else if (pos===2 || pos===3 || pos===4) {
+                ry =  dy;
+            }
+            if (this.item.x + rx - this.width/2 <0
+             || this.item.x + rx + this.width/2 > this.schema.width()) {
+                rx = -rx;
+            }
+            if (this.item.y + ry - this.height/2 <0
+                || this.item.y + ry + this.height/2 > this.schema.height()) {
+                ry = -ry;
+            }
+            return {x:this.item.x + rx, y:this.item.y + ry}
+        }
+
+        buildCloseIcon() {
+            return new svg.Translation().add(new svg.Rotation(45)
+                .add(new svg.Circle(8).color(svg.RED, 1, svg.DARK_RED))
+                .add(new svg.Polygon(0, 0).color(svg.WHITE, 1, svg.GREY)
+                    .add(-1, 6).add(-1, 1).add(-6, 1).add(-6, -1).add(-1, -1).add(-1, -6)
+                    .add(1, -6).add(1, -1).add(6, -1).add(6, 1).add(1, 1).add(1, 6)
+                ));
+        }
+
+        move(x, y) {
+            Memento.register(this);
+            this.x = x;
+            this.y = y;
+            this._draw();
+            this.follow();
+            return this;
+        }
+
+        dragged(x, y) {
+            this.x = x;
+            this.y = y;
+            this.follow();
+        }
+
+        remove() {
+            Memento.register(this);
+            this.item.detachInfo(this);
+            this.schema.removeInfo(this);
+            return this;
+        }
+
+        inside(x, y) {
+            return this.x-this.width/2<x && this.x+this.width/2>x && this.y-this.height/2<y && this.y+this.height/2>y;
+        }
+
+        _draw() {
+            this.component.move(this.x, this.y);
+            this.text.position(-this.width/2+INFO_MARGIN, 4);
+            this.background.dimension(this.width, this.height);
+            this.closeIcon.move(this.width/2, -this.height/2);
+        }
+
+        follow() {
+            Memento.register(this);
+            let start = {x:0, y:0};
+            let end = this.item.location();
+            let gEnd = this.schema.component.globalPoint(end);
+            let fEnd = this.component.localPoint(gEnd);
+            let s1 = svg.intersectLinePolygon(
+                start, fEnd,
+                [{x:-this.width/2, y:-this.height/2},
+                {x:this.width/2, y:-this.height/2},
+                {x:this.width/2, y:this.height/2},
+                {x:-this.width/2, y:this.height/2}]
+            );
+            let s2 = svg.intersectLinePolygon(
+                start, fEnd,
+                [{x:fEnd.x-this.item.width/2, y:fEnd.y-this.item.height/2},
+                {x:fEnd.x+this.item.width/2, y:fEnd.y-this.item.height/2},
+                {x:fEnd.x+this.item.width/2, y:fEnd.y+this.item.height/2},
+                {x:fEnd.x-this.item.width/2, y:fEnd.y+this.item.height/2}]
+            );
+            this.line.opacity(0);
+            if (!s1.empty() && !s2.empty()) {
+                let pt = this.component.globalPoint(s2[0]);
+                if (!this.background.inside(pt.x, pt.y)) {
+                    this.line.opacity(1);
+                    this.line.start(s1[0].x, s1[0].y);
+                    this.line.end(s2[0].x, s2[0].y);
+                }
+            }
+            return this;
+        }
+
+        shown() {
+            this.text.position(0, 0);
+            let bounds = this.text.boundingRect();
+            this.width = bounds.width+INFO_MARGIN*2;
+            this.height = bounds.height+INFO_MARGIN*2;
+            ({x:this.x, y:this.y} = this.findPosition(this.x, this.y));
+            this.component.move(this.x, this.y);
+            this.follow();
+            this._draw();
+        }
+
+        hidden() {
+        }
+
+        memorize() {
+            let memento = {
+                item : this.item,
+                message : this.message,
+                width : this.width,
+                height : this.height,
+                x : this.x,
+                y : this.y,
+                lineX1 : this.line.x1,
+                lineY1 : this.line.y1,
+                lineX2 : this.line.x2,
+                lineY2 : this.line.y2
+            };
+            return super.memorize(memento);
+        }
+
+        revert(memento) {
+            super.revert(memento);
+            [this.item, this.message, this.x, this.y, this.width, this.height] =
+                [memento.item, memento.message, memento.x, memento.y, memento.width, memento.height];
+            this.line.start(memento.lineX1, memento.lineY1).end(memento.lineX2, memento.lineY2);
+            this._draw();
+        }
     }
 
     class Anchor {
@@ -274,23 +512,34 @@ exports.UML = function(svg, gui) {
     }
 
     const SENSOR_RADIUS = 8;
+    const SENSOR_SIZE = 16;
     const SENSOR_OPACITY = 0.3;
+
+    function circle() {
+        return new svg.Circle(SENSOR_RADIUS).color(svg.RED).opacity(SENSOR_OPACITY);
+    }
+
+    function upTriangle() {
+        return new svg.Triangle(SENSOR_SIZE, SENSOR_SIZE, "N").color(svg.RED).opacity(SENSOR_OPACITY);
+    }
+
+    function downTriangle() {
+        return new svg.Triangle(SENSOR_SIZE, SENSOR_SIZE, "S").color(svg.RED).opacity(SENSOR_OPACITY);
+    }
 
     class Sensor extends Item {
 
-        constructor(x, y, change) {
+        constructor(x, y, change, icon=circle) {
             super(null);
             this.x = x;
             this.y = y;
             this.change = change;
-            this.component = new svg.Translation().add(
-                new svg.Circle(SENSOR_RADIUS).color(svg.RED).opacity(SENSOR_OPACITY));
+            this.component = new svg.Translation().add(icon());
             this.component.onClick((event)=>{
                 this.change();
                 Memento.begin();
             });
             this._draw();
-            //this.captureEvents();
         }
 
         shown() {
@@ -343,6 +592,10 @@ exports.UML = function(svg, gui) {
             this.anchors = {};
             this.links = [];
             this.component.onClick((event)=>{});
+        }
+
+        location() {
+            return {x:this.x, y:this.y};
         }
 
         select() {
@@ -407,6 +660,7 @@ exports.UML = function(svg, gui) {
                 });
                 this.schema.putAnchors(this.anchors.ul, this.anchors.ur, this.anchors.dl, this.anchors.dr);
             }
+            this.showSensors();
             return this;
         }
 
@@ -419,12 +673,12 @@ exports.UML = function(svg, gui) {
         }
 
         unselect() {
-            //Memento.register(this);
             this.schema.unselect(this);
             if (!this.anchors.empty()) {
                 this.schema.removeAnchors(this.anchors.ul, this.anchors.ur, this.anchors.dl, this.anchors.dr);
                 this.anchors = {};
             }
+            this.hideSensors();
             return this;
         }
 
@@ -458,8 +712,18 @@ exports.UML = function(svg, gui) {
             this.x = x;
             this.y = y;
             this.updateLinks();
+            this.updateInfos();
+            this.updateSensors();
             this._draw();
             return this;
+        }
+
+        dragged(x, y) {
+            this.x = x;
+            this.y = y;
+            this.updateLinks();
+            this.updateInfos();
+            this.updateSensors();
         }
 
         dimension(width, height) {
@@ -467,6 +731,8 @@ exports.UML = function(svg, gui) {
             this.width = width;
             this.height = height;
             this.updateLinks();
+            this.updateInfos();
+            this.updateSensors();
             this._draw();
             return this;
         }
@@ -495,6 +761,16 @@ exports.UML = function(svg, gui) {
         }
 
         hidden() {
+            this.hideSensors();
+        }
+
+        updateSensors() {
+        }
+
+        showSensors() {
+        }
+
+        hideSensors() {
         }
 
         memorize() {
@@ -503,7 +779,6 @@ exports.UML = function(svg, gui) {
                 height : this.height,
                 x : this.x,
                 y : this.y,
-                //anchors : Memento.registerObject(this.anchors),
                 links : Memento.registerArray(this.links)
             };
             return super.memorize(memento);
@@ -512,13 +787,13 @@ exports.UML = function(svg, gui) {
         revert(memento) {
             super.revert(memento);
             [this.x, this.y, this.width, this.height] = [memento.x, memento.y, memento.width, memento.height];
-            //Memento.revertObject(memento.anchors, this.anchors);
             Memento.revertArray(memento.links, this.links);
         }
     }
 
     const FIELD_MARGIN = 10;
     const FIELD_HEIGHT = 24;
+    const CLOSE_MARGIN = 15;
 
     class Clazz extends Node {
 
@@ -552,11 +827,14 @@ exports.UML = function(svg, gui) {
             }).onBlur(()=>{
                 Memento.begin();
             });
+            this.bodySupport = new svg.Translation().add(this.bodyBackground);
+            this.contentTextSupport = new svg.Translation().add(this.contentText.component);
             this.component
                 .add(this.titleBackground)
-                .add(this.bodyBackground)
+                .add(this.bodySupport)
                 .add(this.titleText.component)
-                .add(this.contentText.component);
+                .add(this.contentTextSupport);
+            this.status = "opened";
             this._resizeContent();
             this._draw();
         }
@@ -570,7 +848,9 @@ exports.UML = function(svg, gui) {
         }
 
         minimalHeight() {
-            return this.definition().length*19+FIELD_MARGIN*2+TITLE_HEIGHT;
+            return this.status==="closed" ?
+                TITLE_HEIGHT :
+                this.definition().length*19+FIELD_MARGIN*2+TITLE_HEIGHT;
         }
 
         dimension(width, height) {
@@ -580,13 +860,55 @@ exports.UML = function(svg, gui) {
             return this;
         }
 
+        hideBody() {
+            this.status="closed";
+            this._resizeContent();
+            this._draw();
+            return this;
+        }
+
+        showBody() {
+            this.status="opened";
+            if (this.height<this.minimalHeight()) {
+                this.dimension(this.width, this.minimalHeight());
+                let y = this.y;
+                if (y+this.height/2>this.schema.height()) {
+                    y=this.schema.height()-this.height/2;
+                }
+                if (y-this.height/2<0) {
+                    y=this.height/2;
+                }
+                if (y!=this.y) {
+                    this.move(this.x, y);
+                }
+            }
+            this._resizeContent();
+            this._draw();
+            return this;
+        }
+
         _resizeContent() {
-            this.titleBackground.dimension(this.width, TITLE_HEIGHT).position(0, -this.height/2+TITLE_HEIGHT/2);
-            this.bodyBackground.dimension(this.width, this.height-TITLE_HEIGHT).position(0, TITLE_HEIGHT/2);
-            this.titleText.dimension(this.width-FIELD_MARGIN*2, FIELD_HEIGHT)
-                .position(-1, -this.height/2+FIELD_HEIGHT/2+FIELD_MARGIN);
-            this.contentText.dimension(this.width-FIELD_MARGIN*2, this.height-TITLE_HEIGHT-FIELD_MARGIN*2)
-                .position(-1, TITLE_HEIGHT/2);
+            if (this.status==="opened") {
+                this.titleBackground.dimension(this.width, TITLE_HEIGHT).position(0, -this.height / 2 + TITLE_HEIGHT / 2);
+                this.bodyBackground.dimension(this.width, this.height - TITLE_HEIGHT).position(0, TITLE_HEIGHT / 2);
+                this.titleText.dimension(this.width - FIELD_MARGIN * 2, FIELD_HEIGHT)
+                    .position(-1, -this.height / 2 + TITLE_HEIGHT / 2);
+                this.contentText.dimension(this.width - FIELD_MARGIN * 2, this.height - TITLE_HEIGHT - FIELD_MARGIN * 2)
+                    .position(-1, TITLE_HEIGHT / 2);
+                if (!this.bodyBackground.parent) {
+                    this.bodySupport.add(this.bodyBackground);
+                    this.contentTextSupport.add(this.contentText.component);
+                }
+            }
+            else {
+                this.titleBackground.dimension(this.width, this.height).position(0, 0);
+                this.titleText.dimension(this.width - FIELD_MARGIN * 2, FIELD_HEIGHT)
+                    .position(-1, 0);
+                if (this.bodyBackground.parent) {
+                    this.bodySupport.remove(this.bodyBackground);
+                    this.contentTextSupport.remove(this.contentText.component);
+                }
+            }
         }
 
         _draw() {
@@ -601,6 +923,7 @@ exports.UML = function(svg, gui) {
             let memento = super.memorize();
             memento.title = this._title;
             memento.content = this._content;
+            memento.status = this.status;
             return memento;
         }
 
@@ -610,6 +933,8 @@ exports.UML = function(svg, gui) {
             this.titleText.message(this._title);
             this._content = memento.content;
             this.contentText.message(this._content);
+            this.status = memento.status;
+            this._resizeContent();
             this._draw();
         }
 
@@ -631,6 +956,38 @@ exports.UML = function(svg, gui) {
                 return this;
             }
             return this._content;
+        }
+
+        showSensors() {
+            if (!this.statusSensor) {
+                this.statusSensor =
+                    new Sensor(this.x + this.width / 2 - CLOSE_MARGIN, this.y - this.height / 2 + CLOSE_MARGIN, ()=> {
+                        console.log("Sensor selected");
+                        if (this.status==="closed") {
+                            this.showBody();
+                        }
+                        else {
+                            this.hideBody();
+                        }
+                        this.hideSensors();
+                        this.showSensors();
+                        return true;
+                    }, this.status==="closed" ? downTriangle : upTriangle);
+                this.schema.putAnchors(this.statusSensor);
+            }
+        }
+
+        hideSensors() {
+            if (this.statusSensor) {
+                this.schema.removeAnchors(this.statusSensor);
+                delete this.statusSensor;
+            }
+        }
+
+        updateSensors() {
+            if (this.statusSensor) {
+                this.statusSensor.adjust(this.x+this.width/2-CLOSE_MARGIN, this.y-this.height/2+CLOSE_MARGIN);
+            }
         }
 
     }
@@ -661,6 +1018,10 @@ exports.UML = function(svg, gui) {
             this.line = this.buildLine();
             this.component = new svg.Translation().add(this.line);
             this.component.onClick((event)=>{});
+        }
+
+        location() {
+            return {x:(this.h1.x+this.h2.x)/2, y:(this.h1.y+this.h2.y)/2};
         }
 
         buildLine() {
@@ -727,7 +1088,11 @@ exports.UML = function(svg, gui) {
             this.attach(this.h1, node, x, y);
             node.addLink(this);
             this.adjustAnchor(this.h1, this.anchors.p1);
+            this.updateInfos();
             this.computeBounds();
+            this.showSensors();
+            this.updateTerminations();
+            this.updateFloatings();
             this._draw();
             return this;
         }
@@ -739,7 +1104,11 @@ exports.UML = function(svg, gui) {
             this.h1.y = y;
             this.h1.node = null;
             this.adjustAnchor(this.h1, this.anchors.p1);
+            this.updateInfos();
             this.computeBounds();
+            this.hideSensors();
+            this.updateTerminations();
+            this.updateFloatings();
             this._draw();
             return this;
         }
@@ -749,7 +1118,11 @@ exports.UML = function(svg, gui) {
             this.attach(this.h2, node, x, y);
             node.addLink(this);
             this.adjustAnchor(this.h2, this.anchors.p2);
+            this.updateInfos();
             this.computeBounds();
+            this.showSensors();
+            this.updateTerminations();
+            this.updateFloatings();
             this._draw();
             return this;
         }
@@ -762,9 +1135,13 @@ exports.UML = function(svg, gui) {
             this.h2.node = null;
             this.adjustAnchor(this.h2, this.anchors.p2);
             if (this.h1) {
+                this.updateInfos();
                 this.computeBounds();
                 this._draw();
             }
+            this.hideSensors();
+            this.updateTerminations();
+            this.updateFloatings();
             return this;
         }
 
@@ -787,9 +1164,34 @@ exports.UML = function(svg, gui) {
             else if (node===this.h2.node) {
                 this.adjustAnchor(this.h2, this.anchors.p2);
             }
+            this.updateInfos();
             this.computeBounds();
+            this.updateSensors();
+            this.updateTerminations();
+            this.updateFloatings();
             this._draw();
             return this;
+        }
+
+        showSensors() {
+        }
+
+        hideSensors() {
+        }
+
+        updateSensors() {
+        }
+
+        selectFloatings() {
+        }
+
+        unselectFloatings() {
+        }
+
+        updateFloatings() {
+        }
+
+        updateTerminations() {
         }
 
         select() {
@@ -825,6 +1227,8 @@ exports.UML = function(svg, gui) {
                     });
                     this.schema.putAnchors(this.anchors.p1, this.anchors.p2);
                 }
+                this.showSensors();
+                this.selectFloatings();
                 return true;
             }
             return false;
@@ -837,6 +1241,8 @@ exports.UML = function(svg, gui) {
                     delete this.anchors.p1;
                     delete this.anchors.p2;
                 }
+                this.hideSensors();
+                this.unselectFloatings();
                 return true;
             }
             return false;
@@ -1073,6 +1479,7 @@ exports.UML = function(svg, gui) {
         }
 
         hidden() {
+            this.hideSensors();
         }
 
         visible() {
@@ -1210,10 +1617,10 @@ exports.UML = function(svg, gui) {
         }
 
         hidden() {
+            super.hidden();
             this.title.remove();
             this.beginCardinality.remove();
             this.endCardinality.remove();
-            this.hideSensors();
             return this;
         }
 
@@ -1227,58 +1634,16 @@ exports.UML = function(svg, gui) {
             this._draw();
         }
 
-        select() {
-            if (super.select()) {
-                this.showSensors();
-                this.title.select();
-                this.beginCardinality.select();
-                this.endCardinality.select();
-                return true;
-            }
-            return false;
+        selectFloatings() {
+            this.title.select();
+            this.beginCardinality.select();
+            this.endCardinality.select();
         }
 
-        unselect() {
-            if (super.unselect()) {
-                this.hideSensors();
-                this.title.unselect();
-                this.beginCardinality.unselect();
-                this.endCardinality.unselect();
-                return true;
-            }
-            return false;
-        }
-
-        begin(node, x, y) {
-            super.begin(node, x, y);
-            this.showSensors();
-            this.updateTerminations();
-            this.updateFloatings();
-            return this;
-        }
-
-        detachBegin(x, y) {
-            super.detachBegin(x, y);
-            this.hideSensors();
-            this.updateTerminations();
-            this.updateFloatings();
-            return this;
-        }
-
-        end(node, x, y) {
-            super.end(node, x, y);
-            this.showSensors();
-            this.updateTerminations();
-            this.updateFloatings();
-            return this;
-        }
-
-        detachEnd(x, y) {
-            super.detachEnd(x, y);
-            this.hideSensors();
-            this.updateTerminations();
-            this.updateFloatings();
-            return this;
+        unselectFloatings() {
+            this.title.unselect();
+            this.beginCardinality.unselect();
+            this.endCardinality.unselect();
         }
 
         showSensors() {
@@ -1308,14 +1673,6 @@ exports.UML = function(svg, gui) {
                 delete this.anchors.s1;
                 delete this.anchors.s2;
             }
-        }
-
-        follow(node) {
-            super.follow(node);
-            this.updateSensors();
-            this.updateTerminations();
-            this.updateFloatings();
-            return this;
         }
 
         updateSensors() {
@@ -1574,6 +1931,7 @@ exports.UML = function(svg, gui) {
                     let nd = this.nodeSpec(clazz);
                     nd.title=clazz.title();
                     nd.content=clazz.content();
+                    nd.status=clazz.status;
                     return nd;
                 }),
                 inherits : schema.links.filter(link=>link instanceof Inherit).map(link=>this.linkSpec(link)),
@@ -1625,6 +1983,7 @@ exports.UML = function(svg, gui) {
             desc.clazzes.forEach(descClazz=>{
                 let clazz = new Clazz(descClazz.id, descClazz.width, descClazz.height,descClazz.x, descClazz.y)
                         .title(descClazz.title).content(descClazz.content);
+                if (descClazz==="closed") clazz.hideBody()
                 schema.putNode(clazz);
                 clazz._draw();
             });
@@ -1639,6 +1998,7 @@ exports.UML = function(svg, gui) {
                 this.floating(link.title, descLink.title);
                 this.floating(link.beginCardinality, descLink.beginCardinality);
                 this.floating(link.endCardinality, descLink.endCardinality);
+                link.hideSensors();
                 link._draw();
             });
             return schema;
@@ -1692,6 +2052,9 @@ exports.UML = function(svg, gui) {
                         pt = {x:actualX, y:actualY};
                     }
                     glass.drag(what.component, whatParent, pt.x, pt.y);
+                    if (what.dragged) {
+                        what.dragged(actualX, actualY);
+                    }
                     click = false;
                 });
                 what.addEvent('mouseup', endEvent=> {
@@ -1728,6 +2091,7 @@ exports.UML = function(svg, gui) {
     }
 
     return {
+        Info : Info,
         Clazz : Clazz,
         Relationship : Relationship,
         Inherit : Inherit,

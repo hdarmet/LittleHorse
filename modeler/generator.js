@@ -5,6 +5,34 @@
 
 exports.Generator = function(svg, gui, url) {
 
+    class Error {
+
+        constructor(ref, ...messages) {
+            this.ref = ref;
+            this.message = messages.empty() ? "" : messages[0];
+            if (messages.length>1) {
+                for (let i=1; i<messages.length; i++) {
+                    this.message += "\n\t"+messages[i];
+                }
+            }
+        }
+
+        toString() {
+            return this.message;
+        }
+
+        item(schema) {
+            if (this.ref.type==="node") {
+                return schema.nodes.find(node=>node.id===this.ref.id);
+            }
+            else if (this.ref.type==="link") {
+                return schema.links.find(link=>link.id===this.ref.id);
+            }
+            return null;
+        }
+
+    }
+
     class RuleEngine {
 
         constructor(canvas) {
@@ -34,21 +62,49 @@ exports.Generator = function(svg, gui, url) {
                             }
                         }
                         catch (err) {
-                            this.errors.push(err);
+                            if (err instanceof Error) {
+                                this.errors.push(err);
+                            }
+                            else {
+                                throw err;
+                            }
                         }
                     })
                 })
             }
+            return this.errors.empty();
         }
 
-        showErrors() {
-            this.errors.forEach(error=>console.log(error));
+        showErrors(error) {
+            error(this.errors);
         }
+
     }
 
-    class EntityInheritsFromEntityOrMapped {
+    class Rule {
+
+        collectFields(pom, clazz) {
+            let result = [];
+            while (clazz) {
+                clazz.fields.forEach((key, field)=> {
+                    result.push({clazz:clazz, name:key, value:field});
+                });
+                if (clazz.inherit) {
+                    clazz = pom.classes[clazz.inherit.id];
+                }
+                else {
+                    clazz = null;
+                }
+            }
+            return result;
+        }
+
+    }
+
+    class EntityOrMappedInheritsFromEntityOrMapped extends Rule {
 
         constructor() {
+            super();
         }
 
         execute(pom, item, data) {
@@ -70,15 +126,120 @@ exports.Generator = function(svg, gui, url) {
                 superClass.category="mapped";
                 return true;
             }
-            throw "Super class of entity class : "+item.name+" must not be "+item.inherit.category;
+            throw new Error(
+                {type:"node", id:item.id},
+                "Super class of entity class "+item.name+" must not be "+item.inherit.category);
+        }
+
+    }
+
+    class EntityEmbeddedOrMappedLinkedToEmbedded extends Rule {
+
+        constructor() {
+            super();
+        }
+
+        execute(pom, item, data) {
+            if (data.type!=="relationship") {
+                return false;
+            }
+            if (data.from.category!=="entity" &&
+                data.from.category!=="mapped" &&
+                data.from.category!=="embeddable") {
+                return false;
+            }
+            let target = pom.classes[item.type.id];
+            if (target.category==="entity" ||
+                target.category==="embeddable") {
+                return false;
+            }
+            if (target.category==="standard") {
+                target.category="embeddable";
+                return true;
+            }
+            else if (target.category==="mapped") {
+                throw new Error(
+                    {type:"link", id:item.id},
+                    "MappedSuperclass "+target.name+" cannot be target of a relationship");
+            }
+            return false;
+        }
+
+    }
+
+    class RelationshipsTargetingPersistentClassesFromPersistentClassesArePersistent extends Rule {
+
+        constructor() {
+            super();
+        }
+
+        execute(pom, item, data) {
+            if (data.type!=="relationship") {
+                return false;
+            }
+            if (data.from.category!=="entity" &&
+                data.from.category!=="embeddable" &&
+                data.from.category!=="mapped") {
+                return false;
+            }
+            let target = pom.classes[item.type.id];
+            if (target.category==="entity") {
+                if (item.persistence!=="persistent") {
+                    item.persistence="persistent";
+                    return true;
+                }
+                return false;
+            }
+            if (target.category==="embeddable") {
+                if (item.persistence!=="embedded") {
+                    item.persistence="embedded";
+                    return true;
+                }
+                return false;
+            }
+            return false;
+        }
+
+    }
+
+    class EntitiesMustHaveOneAndOnlyOneId extends Rule {
+
+        constructor() {
+            super();
+        }
+
+        execute(pom, item, data) {
+            if (!data.type==="class") {
+                return false;
+            }
+            if (item.category!=="entity") {
+                return false;
+            }
+            let ids = [];
+            this.collectFields(pom, item).forEach(fieldSpec=>{
+                if (fieldSpec.value.key) {
+                    ids.push(fieldSpec.clazz.name+"."+fieldSpec.name);
+                }
+            });
+            if (ids.empty()) {
+                throw new Error(
+                    {type:"node", id:item.id},
+                    "Entity "+item.name+" has no id !");
+            }
+            else if (ids.length>1) {
+                throw new Error(
+                    {type:"node", id:item.id},
+                    "Entity "+item.name+" has multiple ids : ",...ids);
+            }
+            return false;
         }
 
     }
 
     class GeneratorJPA {
 
-        generate(spec, callback) {
-            let pom = {classes:{}};
+        generate(spec, success, error) {
+            let pom = {classes: {}};
             spec.clazzes
                 .forEach(clazz=>this.declareClass(pom, clazz));
             spec.inherits
@@ -87,27 +248,34 @@ exports.Generator = function(svg, gui, url) {
                 .forEach(relationship=>this.declareRelationship(pom, relationship));
             let ruleEngine = new RuleEngine();
             ruleEngine.addItems(
-                {type:"class"}, ...pom.classes.toArray());
-            pom.classes.forEach((index,clazz)=>ruleEngine.addItems(
-                {type:"relationship", from:clazz}, ...clazz.relationships.toArray()));
-            ruleEngine.addRules(new EntityInheritsFromEntityOrMapped());
-            ruleEngine.execute(pom);
-            ruleEngine.showErrors();
-            this.write(pom, callback);
+                {type: "class"}, ...pom.classes.toArray());
+            pom.classes.forEach((index, clazz)=>ruleEngine.addItems(
+                {type: "relationship", from: clazz}, ...clazz.relationships.toArray()));
+            ruleEngine.addRules(
+                new EntityOrMappedInheritsFromEntityOrMapped(),
+                new EntityEmbeddedOrMappedLinkedToEmbedded(),
+                new RelationshipsTargetingPersistentClassesFromPersistentClassesArePersistent(),
+                new EntitiesMustHaveOneAndOnlyOneId());
+            if (ruleEngine.execute(pom)) {
+                this.generatePIM(pom, success);
+            }
+            else {
+                ruleEngine.showErrors(error);
+            }
         }
 
         declareClass(pom, clazz) {
             let persistentType = value=> {
-                return this.hasPrototype(value, "entity")?"entity":"standard";
+                return this.hasPrototype(value, "entity") ? "entity" : "standard";
             };
 
             let entityName = this.value(clazz.title);
             pom.classes[clazz.id] = {
-                category : persistentType(clazz.title),
+                category: persistentType(clazz.title),
                 id: clazz.id,
                 name: entityName,
-                fields : {},
-                relationships : {}
+                fields: {},
+                relationships: {}
             };
             this.lines(clazz.content).forEach(
                 line=>this.declareField(pom.classes[clazz.id], line));
@@ -119,7 +287,7 @@ exports.Generator = function(svg, gui, url) {
                 throw "err";
             }
             entityPom.fields[field.name] = {
-                type : this.value(field.type)
+                type: this.value(field.type)
             };
             if (this.hasPrototype(line, "id")) {
                 entityPom.fields[field.name].key = true;
@@ -142,7 +310,7 @@ exports.Generator = function(svg, gui, url) {
         }
 
         declareRelationship(pom, relationship) {
-            let cardinality=value=> {
+            let cardinality = value=> {
                 switch (value.trim()) {
                     case "1":
                     case "1-1":
@@ -159,8 +327,8 @@ exports.Generator = function(svg, gui, url) {
                 return "Unknown";
             };
 
-            let inverseName=value=> {
-                let name= this.getProtoType(value, "inverse");
+            let inverseName = value=> {
+                let name = this.getProtoType(value, "inverse");
                 return name ? name : value;
             };
 
@@ -169,29 +337,35 @@ exports.Generator = function(svg, gui, url) {
             if (start && end) {
                 let name = this.value(relationship.title.message);
                 start.relationships[name] = {
-                    type : {
-                        id:end.id,
-                        name:end.name
+                    id:relationship.id,
+                    type: {
+                        id: end.id,
+                        name: end.name
                     },
-                    cardinality :
-                        cardinality(relationship.beginCardinality.message, relationship.endCardinality.message)+"To"+
-                        cardinality(relationship.endCardinality.message, relationship.beginCardinality.message),
+                    cardinality: cardinality(relationship.beginCardinality.message, relationship.endCardinality.message) + "To" +
+                    cardinality(relationship.endCardinality.message, relationship.beginCardinality.message),
                     ownership: true
                 };
-                if (relationship.endTermination!=="arrow") {
+                if (relationship.endTermination !== "arrow") {
                     let invName = inverseName(relationship.title.message);
                     end.relationships[invName] = {
-                        type : {
-                            id:start.id,
-                            name:start.name
+                        id:relationship.id,
+                        type: {
+                            id: start.id,
+                            name: start.name
                         },
-                        cardinality :
-                            cardinality(relationship.endCardinality.message, relationship.beginCardinality.message)+"To"+
-                            cardinality(relationship.beginCardinality.message, relationship.endCardinality.message),
+                        cardinality: cardinality(relationship.endCardinality.message, relationship.beginCardinality.message) + "To" +
+                        cardinality(relationship.beginCardinality.message, relationship.endCardinality.message),
                         ownership: false,
                         inverse: name
                     };
                     start.relationships[name].inverse = invName;
+                }
+                if (relationship.beginTermination === "aggregation") {
+                    start.relationships[name].category = "aggregation";
+                }
+                else if (relationship.beginTermination === "composition") {
+                    start.relationships[name].category = "composition";
                 }
             }
         }
@@ -202,27 +376,27 @@ exports.Generator = function(svg, gui, url) {
         }
 
         prototypes(value) {
-            return (value.match(/\{([^\}]*)\}/g)||[]).map(token=>/\{(.*)\}/.exec(token)[1].trim());
+            return (value.match(/\{([^\}]*)\}/g) || []).map(token=>/\{(.*)\}/.exec(token)[1].trim());
         }
 
         getProtoType(value, spec) {
             let protos = this.prototypes(value);
             let proto = protos.find(
-                value=>this.typed(value).name===spec);
+                value=>this.typed(value).name === spec);
             return proto ? this.typed(proto).type : null;
         }
 
         hasPrototype(value, spec) {
             let result = this.prototypes(value).filter(
-                value=>this.typed(value).name===spec);
-            return result.length>0;
+                value=>this.typed(value).name === spec);
+            return result.length > 0;
         }
 
         typed(value) {
             let result = /([^:]+):(.+)/.exec(value);
             return {
-                name : result ? result[1].trim() : value.trim(),
-                type : result ? result[2].trim() : null
+                name: result ? result[1].trim() : value.trim(),
+                type: result ? result[2].trim() : null
             }
         }
 
@@ -234,41 +408,44 @@ exports.Generator = function(svg, gui, url) {
         save(file, text) {
             console.log("Persist generation...");
             let requestData = {
-                method:"generate",
-                file:file+"-generation",
-                data:text
+                method: "generate",
+                file: file + "-generation",
+                data: text
             };
             svg.request(url, requestData)
-                .onSuccess((response)=>{
-                    if (response.ack==='ok') {
+                .onSuccess((response)=> {
+                    if (response.ack === 'ok') {
                         console.log("Save generation succeded");
                         new gui.WarningPopin("Generation succeeded", null, this.canvas).title("Message");
                     }
                     else {
                         console.log("Save generation failed");
-                        new gui.WarningPopin("Generation failed : "+response.err, ()=>{}, this.canvas);
+                        new gui.WarningPopin("Generation failed : " + response.err, ()=> {
+                        }, this.canvas);
                     }
                 })
-                .onFailure((errCode)=>{
+                .onFailure((errCode)=> {
                     console.log("Save generation failed");
-                    new gui.WarningPopin("Generation failed : "+errCode, ()=>{}, this.canvas)
+                    new gui.WarningPopin("Generation failed : " + errCode, ()=> {
+                    }, this.canvas)
                 });
 
         }
 
         load(file, callback) {
             let requestData = {
-                method:"pattern",
-                file:file
+                method: "pattern",
+                file: file
             };
             svg.request(url, requestData)
-                .onSuccess((response)=>{
-                    console.log("Load model :"+file+" succeeded");
+                .onSuccess((response)=> {
+                    console.log("Load model :" + file + " succeeded");
                     callback(response.data);
                 })
-                .onFailure((errCode)=>{
-                    console.log("Load model :"+file+" failed");
-                    new gui.WarningPopin("Generation failed : "+errCode, ()=>{}, this.canvas)
+                .onFailure((errCode)=> {
+                    console.log("Load model :" + file + " failed");
+                    new gui.WarningPopin("Generation failed : " + errCode, ()=> {
+                    }, this.canvas)
                 });
         }
 
@@ -281,15 +458,24 @@ exports.Generator = function(svg, gui, url) {
                 case "string" :
                     return "String";
             }
-            throw "Unknown type : "+type;
+            throw "Unknown type : " + type;
         }
 
         camelCase(name) {
-            if (name.length<=1) {
+            if (name.length <= 1) {
                 return name.toUpperCase();
             }
             else {
-                return name.charAt(0).toUpperCase()+name.slice(1);
+                return name.charAt(0).toUpperCase() + name.slice(1);
+            }
+        }
+
+        refName(name) {
+            if (name.length <= 1) {
+                return name.toLowerCase();
+            }
+            else {
+                return name.charAt(0).toLowerCase() + name.slice(1);
             }
         }
 
@@ -302,16 +488,66 @@ exports.Generator = function(svg, gui, url) {
         }
 
         processClassPersistence(clazz, root, mainClass, params) {
-            if (clazz.category==="entity") {
+            if (clazz.category === "entity") {
                 root.importsArtifact.addImport("javax.persistence.Entity");
                 mainClass.addAnnotation(new AnnotationArtifact().setName("Entity"));
                 params.doDefaultConstructor = true;
             }
-            else if (clazz.category==="mapped") {
+            else if (clazz.category === "mapped") {
                 root.importsArtifact.addImport("javax.persistence.MappedSuperclass");
                 mainClass.addAnnotation(new AnnotationArtifact().setName("MappedSuperclass"));
                 params.doDefaultConstructor = true;
             }
+            else if (clazz.category === "embeddable") {
+                root.importsArtifact.addImport("javax.persistence.Embeddable");
+                mainClass.addAnnotation(new AnnotationArtifact().setName("Embeddable"));
+                params.doDefaultConstructor = true;
+            }
+        }
+
+        processEqualsAndHashcode(mainClass, type, name) {
+            function length(type) {
+                if (type === "int") {
+                    return 32;
+                }
+                else if (type === "long") {
+                    return 64;
+                }
+                throw "Invalid key type : " + type;
+            }
+
+            let hashCodeMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setName("hashCode")
+                .setType(type)
+                .addInstructions(
+                    "final int prime = 31;",
+                    type + " result = 1;",
+                    "result = prime * result + (" + type + ") (" + name + " ^ (" + name + " >>> " + length(type) + "));",
+                    "result result;"
+                );
+            hashCodeMethod.addAnnotation("Override");
+            mainClass.addMethod(hashCodeMethod);
+
+            let equalsMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setName("equals")
+                .setType("boolean")
+                .addParameter("obj", "Object")
+                .addInstructions(
+                    "if (this == obj)",
+                    "   return true;",
+                    "if (obj == null)",
+                    "   return false;",
+                    "if (getClass() != obj.getClass())",
+                    "   return false;",
+                    type + " other = (" + type + ") obj;",
+                    "if (this." + name + " != other." + name + ")",
+                    "   return false;",
+                    "return true;"
+                );
+            equalsMethod.addAnnotation("Override");
+            mainClass.addMethod(equalsMethod);
         }
 
         processAttribute(clazz, key, field, root, mainClass, params) {
@@ -324,6 +560,7 @@ exports.Generator = function(svg, gui, url) {
                 root.importsArtifact.addImport("javax.persistence.Id");
                 attribute.addAnnotation(new AnnotationArtifact().setName("Id"));
                 attribute.addAnnotation(new AnnotationArtifact().setName("GeneratedValue"));
+                this.processEqualsAndHashcode(mainClass, attribute.type, attribute.name);
                 doSet = false;
             }
             if (field.version) {
@@ -332,22 +569,37 @@ exports.Generator = function(svg, gui, url) {
                 doSet = false;
             }
             mainClass.addAttribute(attribute);
+            this.processStandardGetter(clazz, mainClass, attribute.name, attribute.type);
+            this.processStandardSetter(clazz, mainClass, attribute.name, attribute.name, attribute.type, doSet);
+        }
+
+        processStandardGetter(clazz, mainClass, name, type) {
             let getMethod = new MethodArtifact()
                 .setPrivacy("public")
-                .setType(attribute.type)
-                .setName("get"+this.camelCase(attribute.name));
-            getMethod.addInstruction("return this."+attribute.name+";");
+                .setType(type)
+                .setName("get" + this.camelCase(name));
+            getMethod.addInstruction("return this." + name + ";");
             mainClass.addMethod(getMethod);
-            if (doSet) {
-                let setMethod = new MethodArtifact()
-                    .setPrivacy("public")
-                    .setType(clazz.name)
-                    .setName("set" + this.camelCase(attribute.name));
-                setMethod.addParameter(attribute.type, attribute.name);
-                setMethod.addInstruction("this." + attribute.name + " = "+attribute.name+";");
-                setMethod.addInstruction("return this;");
-                mainClass.addMethod(setMethod);
-            }
+        }
+
+        processListGetter(clazz, mainClass, name, type) {
+            let getMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setType("List<"+type+">")
+                .setName("get" + this.camelCase(name));
+            getMethod.addInstruction("return Collections.unmodifiableList(this." + name + ");");
+            mainClass.addMethod(getMethod);
+        }
+
+        processStandardSetter(clazz, mainClass, name, param, type) {
+            let setMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setType(clazz.name)
+                .setName("set" + this.camelCase(name));
+            setMethod.addParameter(type, param);
+            setMethod.addInstruction("this." + name + " = " + param + ";");
+            setMethod.addInstruction("return this;");
+            mainClass.addMethod(setMethod);
         }
 
         processDefaultConstructor(clazz, root, mainClass, params) {
@@ -359,41 +611,233 @@ exports.Generator = function(svg, gui, url) {
             }
         }
 
-        processSingleReference(pom, key, relationship, root, mainClass, params) {
+        processOneToOneBidirSetter(clazz, mainClass, name, invName, type) {
+            let param = this.refName(type);
+            let setMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setType(clazz.name)
+                .setName("set" + this.camelCase(name));
+            setMethod.addParameter(type, param);
+            setMethod.addInstructions(
+                "if (this." + name + "!=null) {",
+                "\tthis." + name + "." + invName + "=null;",
+                "}",
+                "if (" + param + "!=null) {",
+                "\tif (" + param + "." + invName + "!=null) {",
+                "\t\t" + param + "." + invName + "." + name + " = null;",
+                "\t}",
+                "\t" + param + "." + invName + " = this;",
+                "}",
+                "this." + name + " = " + param + ";");
+            setMethod.addInstruction("return this;");
+            mainClass.addMethod(setMethod);
+        }
+
+        processManyToOneBidirSetter(clazz, mainClass, name, invName, type) {
+            let param = this.refName(type);
+            let setMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setType(clazz.name)
+                .setName("set" + this.camelCase(name));
+            setMethod.addParameter(type, param);
+            setMethod.addInstructions(
+                "if (this." + name + "!=" + param + ") {",
+                "\tif (this." + name + "!=null) {",
+                "\t\tthis." + name + "." + invName + ".remove(this);",
+                "\t}",
+                "\tif (" + param + "!=null) {",
+                "\t\t" + param + "." + invName + ".add(this);",
+                "\t}",
+                "\tthis." + name + " = " + param + ";",
+                "}");
+            setMethod.addInstruction("return this;");
+            mainClass.addMethod(setMethod);
+        }
+
+        processRelationshipPersistentAnnotation(relationship, root, attribute) {
+            if (relationship.persistence === "persistent") {
+                root.importsArtifact.addImport("javax.persistence." + relationship.cardinality);
+                let relationshipAnnotation = new AnnotationArtifact().setName(relationship.cardinality);
+                if (!relationship.ownership) {
+                    relationshipAnnotation.addParameter("mappedBy", '"' + relationship.inverse + '"');
+                }
+                if (relationship.category==="composition" || relationship.category==="aggregation") {
+                    root.importsArtifact.addImport("javax.persistence.CascadeType");
+                    relationshipAnnotation.addParameter("cascade", 'CascadeType.ALL');
+                }
+                if (relationship.category==="composition") {
+                    relationshipAnnotation.addParameter("orphanRemoval", 'true');
+                }
+                attribute.addAnnotation(relationshipAnnotation);
+            }
+            else if (relationship.persistence === "embedded") {
+                root.importsArtifact.addImport("javax.persistence.Embedded");
+                attribute.addAnnotation(new AnnotationArtifact().setName("Embedded"));
+            }
+            // cascade=CascadeType.ALL, orphanRemoval=true
+        }
+
+        processSingleReference(pom, clazz, key, relationship, root, mainClass, params) {
             let attribute = new AttributeArtifact()
                 .setName(key)
                 .setType(relationship.type.name);
             let target = pom.classes[relationship.type.id];
-            if (target.category==="entity") {
-                root.importsArtifact.addImport("javax.persistence." + relationship.cardinality);
-                attribute.addAnnotation(new AnnotationArtifact().setName(relationship.cardinality));
-            }
-            mainClass.addAttribute(attribute);
-        }
-
-        processListOfReferences(pom, key, relationship, root, mainClass, params) {
-            root.importsArtifact.addImport("java.util.List");
-            let attribute = new AttributeArtifact()
-                .setName(key)
-                .setType("List<"+relationship.type.name+">");
-            let target = pom.classes[relationship.type.id];
-            if (target.category==="entity") {
-                root.importsArtifact.addImport("javax.persistence." + relationship.cardinality);
-                attribute.addAnnotation(new AnnotationArtifact().setName(relationship.cardinality));
-            }
-            mainClass.addAttribute(attribute);
-        }
-
-        processRelationship(pom, key, relationship, root, mainClass, params) {
-            if (relationship.cardinality==="OneToOne" || relationship.cardinality==="ManyToOne") {
-                this.processSingleReference(pom, key, relationship, root, mainClass, params);
+            this.processRelationshipPersistentAnnotation(relationship, root, attribute);
+            this.processStandardGetter(clazz, mainClass, attribute.name, attribute.type);
+            if (relationship.inverse) {
+                let invAttribute = {name:relationship.inverse, type:clazz.name};
+                if (relationship.cardinality==="OneToOne") {
+                    this.processOneToOneBidirSetter(
+                        clazz, mainClass, attribute.name, invAttribute.name, attribute.type);
+                }
+                else if (relationship.cardinality==="ManyToOne") {
+                    this.processManyToOneBidirSetter(
+                        clazz, mainClass, attribute.name, invAttribute.name, attribute.type);
+                }
             }
             else {
-                this.processListOfReferences(pom, key, relationship, root, mainClass, params);
+                this.processStandardSetter(clazz, mainClass, attribute.name, this.refName(attribute.type), attribute.type);
+            }
+            mainClass.addAttribute(attribute);
+        }
+
+        processStandardAdder(clazz, mainClass, name, type) {
+            let param = this.refName(type);
+            let addMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setType(clazz.name)
+                .setName("add" + this.camelCase(name));
+            addMethod.addParameter(type, param);
+            addMethod.addInstruction("this." + name + ".add("+param+");");
+            addMethod.addInstruction("return this;");
+            mainClass.addMethod(addMethod);
+        }
+
+        processStandardRemover(clazz, mainClass, name, type) {
+            let param = this.refName(type);
+            let addMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setType(clazz.name)
+                .setName("remove" + this.camelCase(name));
+            addMethod.addParameter(type, param);
+            addMethod.addInstruction("this." + name + ".remove("+param+");");
+            addMethod.addInstruction("return this;");
+            mainClass.addMethod(addMethod);
+        }
+
+        processOneToManyBidirAdder(clazz, mainClass, name, invName, type) {
+            let param = this.refName(type);
+            let addMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setType(clazz.name)
+                .setName("add" + this.camelCase(name));
+            addMethod.addParameter(type, param);
+            addMethod.addInstructions(
+                "if (this."+name+".indexOf("+param+")==-1) {",
+                "\tif ("+param+"."+invName+"!=null) {",
+                "\t\t"+param+"."+invName+"."+name+".remove("+param+");",
+                "\t}",
+                "\tthis."+name+".add("+param+");",
+                "\t"+param+"."+invName+" = this;",
+                "}");
+            addMethod.addInstruction("return this;");
+            mainClass.addMethod(addMethod);
+        }
+
+        processOneToManyBidirRemover(clazz, mainClass, name, invName, type) {
+            let param = this.refName(type);
+            let removeMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setType(clazz.name)
+                .setName("remove" + this.camelCase(name));
+            removeMethod.addParameter(type, param);
+            removeMethod.addInstructions(
+                "if (this."+name+".indexOf("+param+")!=-1) {",
+                "\tthis."+name+".remove("+param+");",
+                "\t"+param+"."+invName+" = null;",
+                "}");
+            removeMethod.addInstruction("return this;");
+            mainClass.addMethod(removeMethod);
+        }
+
+        processManyToManyBidirAdder(clazz, mainClass, name, invName, type) {
+            let param = this.refName(type);
+            let addMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setType(clazz.name)
+                .setName("add" + this.camelCase(name));
+            addMethod.addParameter(type, param);
+            addMethod.addInstructions(
+                "if (this."+name+".indexOf("+param+")==-1) {",
+                "\tthis."+name+".add("+param+");",
+                "\t"+name+"."+invName+".add(this);",
+                "}");
+            addMethod.addInstruction("return this;");
+            mainClass.addMethod(addMethod);
+        }
+
+        processManyToManyBidirRemover(clazz, mainClass, name, invName, type) {
+            let param = this.refName(type);
+            let removeMethod = new MethodArtifact()
+                .setPrivacy("public")
+                .setType(clazz.name)
+                .setName("remove" + this.camelCase(name));
+            removeMethod.addParameter(type, param);
+            removeMethod.addInstructions(
+                "if (this."+name+".indexOf("+param+")!=-1) {",
+                "\tthis."+name+".remove("+param+");",
+                "\t"+param+"."+invName+".remove(this);",
+                "}");
+            removeMethod.addInstruction("return this;");
+            mainClass.addMethod(removeMethod);
+        }
+
+        processListOfReferences(pom, clazz, key, relationship, root, mainClass, params) {
+            root.importsArtifact.addImport("java.util.List");
+            let type = relationship.type.name;
+            let attribute = new AttributeArtifact()
+                .setName(key)
+                .setType("List<"+type+">");
+            let target = pom.classes[relationship.type.id];
+            this.processRelationshipPersistentAnnotation(relationship, root, attribute);
+            root.importsArtifact.addImport("java.util.ArrayList");
+            mainClass.constructors.default.addInstruction(key+" = new ArrayList<"+relationship.type.name+">();");
+            mainClass.addAttribute(attribute);
+            root.importsArtifact.addImport("java.util.Collections");
+            root.importsArtifact.addImport("java.util.List");
+            this.processListGetter(clazz, mainClass, attribute.name, type);
+            if (relationship.inverse) {
+                let invAttribute = {name:relationship.inverse, type:clazz.name};
+                if (relationship.cardinality==="OneToMany") {
+                    this.processOneToManyBidirAdder(
+                        clazz, mainClass, attribute.name, invAttribute.name, type);
+                    this.processOneToManyBidirRemover(
+                        clazz, mainClass, attribute.name, invAttribute.name, type);
+                }
+                else if (relationship.cardinality==="ManyToMany") {
+                    this.processManyToManyBidirAdder(
+                        clazz, mainClass, attribute.name, invAttribute.name, type);
+                    this.processManyToManyBidirRemover(
+                        clazz, mainClass, attribute.name, invAttribute.name, type);
+                }
+            }
+            else {
+                this.processStandardAdder(clazz, mainClass, attribute.name, type);
+                this.processStandardRemover(clazz, mainClass, attribute.name, type);
+            }
+
+        }
+
+        processRelationship(pom, clazz, key, relationship, root, mainClass, params) {
+            if (relationship.cardinality==="OneToOne" || relationship.cardinality==="ManyToOne") {
+                this.processSingleReference(pom, clazz, key, relationship, root, mainClass, params);
+            }
+            else {
+                this.processListOfReferences(pom, clazz, key, relationship, root, mainClass, params);
             }
         }
 
-        write(pom, callback) {
+        generatePIM(pom, callback) {
             /*
             this.load("EntityModel", (model)=>{
                 pom.classes.forEach(clazz=>)
@@ -410,11 +854,11 @@ exports.Generator = function(svg, gui, url) {
                 });
                 this.processDefaultConstructor(clazz, root, mainClass, params);
                 clazz.relationships.forEach((key, relationship)=>{
-                    this.processRelationship(pom, key, relationship, root, mainClass, params)
+                    this.processRelationship(pom, clazz, key, relationship, root, mainClass, params)
                 });
                 root.generate(0).forEach(line=>text+=line+"\n");
             });
-            console.log(text);
+            callback(text);
         }
 
     }
@@ -523,6 +967,9 @@ exports.Generator = function(svg, gui, url) {
         }
 
         addAnnotation(annotationArtifact) {
+            if (typeof(annotationArtifact) === "string") {
+                annotationArtifact = new AnnotationArtifact().setName(annotationArtifact);
+            }
             this.annotations[annotationArtifact.name] = annotationArtifact;
             return this;
         }
@@ -562,7 +1009,7 @@ exports.Generator = function(svg, gui, url) {
                 if (interfaces.empty()) {
                     return "";
                 }
-                let result = "implements "+interfaes[0];
+                let result = "implements "+interfaces[0];
                 for (let i=1; i<interfaces.length; i++) {
                     result+=", "+interfaces[i];
                 }
@@ -604,6 +1051,7 @@ exports.Generator = function(svg, gui, url) {
         constructor() {
             super();
             this.name = "NoAnnotation";
+            this.parameters = {};
         }
 
         setName(name) {
@@ -611,11 +1059,36 @@ exports.Generator = function(svg, gui, url) {
             return this;
         }
 
+        addParameter(name, value) {
+            this.parameters[name] = value;
+            return this;
+        }
+
         generate(indent) {
             let result = [];
-            this.writeLine(result, indent, "@"+this.name);
+            let line = "@"+this.name;
+            if (!this.parameters.empty()) {
+                if (this.parameters.count===1 && this.parameters.value!==undefined) {
+                    line+="("+this.parameters.value+")"
+                }
+                else {
+                    let first = true;
+                    this.parameters.forEach((key, value)=> {
+                        if (first) {
+                            line += "(" + key + " = " + value;
+                            first = false;
+                        }
+                        else {
+                            line += ", " + key + " = " + value;
+                        }
+                    });
+                    line +=")";
+                }
+            }
+            this.writeLine(result, indent, line);
             return result;
         }
+
     }
 
     class AttributeArtifact extends Artifact {
@@ -638,6 +1111,9 @@ exports.Generator = function(svg, gui, url) {
         }
 
         addAnnotation(annotationArtifact) {
+            if (typeof(annotationArtifact) === "string") {
+                annotationArtifact = new AnnotationArtifact().setName(annotationArtifact);
+            }
             this.annotations[annotationArtifact.name] = annotationArtifact;
             return this;
         }
@@ -660,6 +1136,7 @@ exports.Generator = function(svg, gui, url) {
             this.privacy = "";
             this.parameters = [];
             this.instructions = [];
+            this.annotations = {};
         }
 
         setPrivacy(privacy) {
@@ -669,10 +1146,28 @@ exports.Generator = function(svg, gui, url) {
 
         addParameter(type, name) {
             this.parameters.push({type:type, name:name});
+            return this;
         }
 
-        addInstruction(instruction) {
-            this.instructions.push(new InstructionArtifact(instruction));
+        addAnnotation(annotationArtifact) {
+            if (typeof(annotationArtifact) === "string") {
+                annotationArtifact = new AnnotationArtifact().setName(annotationArtifact);
+            }
+            this.annotations[annotationArtifact.name] = annotationArtifact;
+            return this;
+        }
+
+        addInstruction(instructionArtifact) {
+            if (typeof(instructionArtifact) === "string") {
+                instructionArtifact = new InstructionArtifact(instructionArtifact);
+            }
+            this.instructions.push(instructionArtifact);
+            return this;
+        }
+
+        addInstructions(...instructionArtifacts) {
+            instructionArtifacts.forEach(instructionArtifact=>this.addInstruction(instructionArtifact));
+            return this;
         }
 
         generate(indent) {
@@ -692,6 +1187,9 @@ exports.Generator = function(svg, gui, url) {
             }
 
             let result = [];
+            this.annotations.forEach((key, annotationArtifact)=>{
+                this.writeLines(result, indent, annotationArtifact.generate(0));
+            });
             this.generateDeclaration(result, indent,
                 generatePrivacy(this.privacy),
                 generateParameters(this.parameters));
