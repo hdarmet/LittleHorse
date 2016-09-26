@@ -35,9 +35,8 @@ exports.Generator = function(svg, gui, url) {
 
     class RuleEngine {
 
-        constructor(canvas) {
-            this.canvas = canvas;
-            this.errors = [];
+        constructor(errors) {
+            this.errors = errors;
             this.rules = [];
             this.items = new Map();
         }
@@ -75,10 +74,6 @@ exports.Generator = function(svg, gui, url) {
             return this.errors.empty();
         }
 
-        showErrors(error) {
-            error(this.errors);
-        }
-
     }
 
     class Rule {
@@ -86,7 +81,7 @@ exports.Generator = function(svg, gui, url) {
         collectFields(pom, clazz) {
             let result = [];
             while (clazz) {
-                clazz.fields.forEach((key, field)=> {
+                clazz.fields.forEach((field, key)=> {
                     result.push({clazz:clazz, name:key, value:field});
                 });
                 if (clazz.inherit) {
@@ -127,7 +122,7 @@ exports.Generator = function(svg, gui, url) {
                 return true;
             }
             throw new Error(
-                {type:"node", id:item.id},
+                {type:"node", id:item.ids[0]},
                 "Super class of entity class "+item.name+" must not be "+item.inherit.category);
         }
 
@@ -223,12 +218,12 @@ exports.Generator = function(svg, gui, url) {
             });
             if (ids.empty()) {
                 throw new Error(
-                    {type:"node", id:item.id},
+                    {type:"node", id:item.ids[0]},
                     "Entity "+item.name+" has no id !");
             }
             else if (ids.length>1) {
                 throw new Error(
-                    {type:"node", id:item.id},
+                    {type:"node", id:item.ids[0]},
                     "Entity "+item.name+" has multiple ids : ",...ids);
             }
             return false;
@@ -240,16 +235,17 @@ exports.Generator = function(svg, gui, url) {
 
         generate(spec, success, error) {
             let pom = {classes: {}};
-            spec.clazzes
+            let errors = []
+            spec.clazzes && spec.clazzes
                 .forEach(clazz=>this.declareClass(pom, clazz));
-            spec.inherits
+            spec.inherits && spec.inherits
                 .forEach(inherit=>this.declareInherit(pom, inherit));
-            spec.relationships
+            spec.relationships && spec.relationships
                 .forEach(relationship=>this.declareRelationship(pom, relationship));
-            let ruleEngine = new RuleEngine();
+            let ruleEngine = new RuleEngine(errors);
             ruleEngine.addItems(
-                {type: "class"}, ...pom.classes.toArray());
-            pom.classes.forEach((index, clazz)=>ruleEngine.addItems(
+                {type: "class"}, ...pom.classes.toArray(), errors);
+            pom.classes.forEach(clazz=>ruleEngine.addItems(
                 {type: "relationship", from: clazz}, ...clazz.relationships.toArray()));
             ruleEngine.addRules(
                 new EntityOrMappedInheritsFromEntityOrMapped(),
@@ -257,11 +253,13 @@ exports.Generator = function(svg, gui, url) {
                 new RelationshipsTargetingPersistentClassesFromPersistentClassesArePersistent(),
                 new EntitiesMustHaveOneAndOnlyOneId());
             if (ruleEngine.execute(pom)) {
-                this.generatePIM(pom, success);
+                let result = this.generatePIM(pom, errors);
+                if (result) {
+                    success(result);
+                    return;
+                }
             }
-            else {
-                ruleEngine.showErrors(error);
-            }
+            error(errors);
         }
 
         declareClass(pom, clazz) {
@@ -270,15 +268,25 @@ exports.Generator = function(svg, gui, url) {
             };
 
             let entityName = this.value(clazz.title);
-            pom.classes[clazz.id] = {
-                category: persistentType(clazz.title),
-                id: clazz.id,
-                name: entityName,
-                fields: {},
-                relationships: {}
-            };
+            let pomClass = pom.classes.find(clazz=>clazz.name===entityName);
+            if (!pomClass) {
+                pomClass = {
+                    ids: [clazz.id],
+                    category: "standard",
+                    name: entityName,
+                    fields: {},
+                    relationships: {}
+                };
+            }
+            else {
+                pomClass.ids.add(clazz.id);
+            }
+            if (pomClass.category==="standard") {
+                pomClass.category=persistentType(clazz.title);
+            }
+            pom.classes[clazz.id] = pomClass;
             this.lines(clazz.content).forEach(
-                line=>this.declareField(pom.classes[clazz.id], line));
+                line=>this.declareField(pomClass, line));
         }
 
         declareField(entityPom, line) {
@@ -302,7 +310,7 @@ exports.Generator = function(svg, gui, url) {
             let end = pom.classes[inherit.to.id];
             if (start && end) {
                 start.inherit = {
-                    id: end.id,
+                    id: end.ids[0],
                     name: end.name
                 };
             }
@@ -339,7 +347,7 @@ exports.Generator = function(svg, gui, url) {
                 start.relationships[name] = {
                     id:relationship.id,
                     type: {
-                        id: end.id,
+                        id: end.ids[0],
                         name: end.name
                     },
                     cardinality: cardinality(relationship.beginCardinality.message, relationship.endCardinality.message) + "To" +
@@ -351,7 +359,7 @@ exports.Generator = function(svg, gui, url) {
                     end.relationships[invName] = {
                         id:relationship.id,
                         type: {
-                            id: start.id,
+                            id: start.ids[0],
                             name: start.name
                         },
                         cardinality: cardinality(relationship.endCardinality.message, relationship.beginCardinality.message) + "To" +
@@ -674,7 +682,6 @@ exports.Generator = function(svg, gui, url) {
                 root.importsArtifact.addImport("javax.persistence.Embedded");
                 attribute.addAnnotation(new AnnotationArtifact().setName("Embedded"));
             }
-            // cascade=CascadeType.ALL, orphanRemoval=true
         }
 
         processSingleReference(pom, clazz, key, relationship, root, mainClass, params) {
@@ -837,28 +844,39 @@ exports.Generator = function(svg, gui, url) {
             }
         }
 
-        generatePIM(pom, callback) {
+        generatePIM(pom, errors) {
             /*
             this.load("EntityModel", (model)=>{
                 pom.classes.forEach(clazz=>)
             });
             */
             let text = "";
-            pom.classes.forEach((index,clazz)=>{
-                let params = { doDefaultConstructor : false };
-                let root = new FileArtifact().setPackageName("com.acme.domain");
-                let mainClass = this.prepareClass(clazz, root, params);
-                this.processClassPersistence(clazz, root, mainClass, params);
-                clazz.fields.forEach((key, field)=>{
-                    this.processAttribute(clazz, key, field, root, mainClass, params)
-                });
-                this.processDefaultConstructor(clazz, root, mainClass, params);
-                clazz.relationships.forEach((key, relationship)=>{
-                    this.processRelationship(pom, clazz, key, relationship, root, mainClass, params)
-                });
-                root.generate(0).forEach(line=>text+=line+"\n");
+            pom.classes.forEach((clazz, key)=> {
+                if (clazz.ids.indexOf(Number(key)) === 0) {
+                    try {
+                        let params = {doDefaultConstructor: false};
+                        let root = new FileArtifact().setPackageName("com.acme.domain");
+                        let mainClass = this.prepareClass(clazz, root, params);
+                        this.processClassPersistence(clazz, root, mainClass, params);
+                        clazz.fields.forEach((field, key)=> {
+                            this.processAttribute(clazz, key, field, root, mainClass, params)
+                        });
+                        this.processDefaultConstructor(clazz, root, mainClass, params);
+                        clazz.relationships.forEach((relationship, key)=> {
+                            this.processRelationship(pom, clazz, key, relationship, root, mainClass, params)
+                        });
+                        root.generate(0).forEach(line=>text += line + "\n");
+                    }
+                    catch (err) {
+                        errors.push(new Error(
+                            {type:"node", id:clazz.ids[0]}, err));
+                    }
+                }
             });
-            callback(text);
+            if (errors.empty()) {
+                return text;
+            }
+            else { return false; }
         }
 
     }
@@ -1017,7 +1035,7 @@ exports.Generator = function(svg, gui, url) {
             }
 
             let result = [];
-            this.annotations.forEach((key, annotationArtifact)=>{
+            this.annotations.forEach(annotationArtifact=>{
                 this.writeLines(result, indent, annotationArtifact.generate(0));
             });
             this.writeLine(result, indent, "class "+this.className+" "+
@@ -1025,18 +1043,18 @@ exports.Generator = function(svg, gui, url) {
                 writeInterfaces(this.interfaces)+"{");
             this.writeEmptyLine(result);
             if (!this.attributes.empty()) {
-                this.attributes.forEach((key, attributeArtifact)=>{
+                this.attributes.forEach(attributeArtifact=>{
                     this.writeLines(result, indent, attributeArtifact.generate(1));
                 });
                 this.writeEmptyLine(result);
             }
             if (!this.constructors.empty()) {
-                this.constructors.forEach((key, constructorArtifact)=>{
+                this.constructors.forEach(constructorArtifact=>{
                     this.writeLines(result, indent, constructorArtifact.generate(1));
                 });
             }
             if (!this.methods.empty()) {
-                this.methods.forEach((key, methodArtifact)=>{
+                this.methods.forEach(methodArtifact=>{
                     this.writeLines(result, indent, methodArtifact.generate(1));
                 });
             }
@@ -1073,7 +1091,7 @@ exports.Generator = function(svg, gui, url) {
                 }
                 else {
                     let first = true;
-                    this.parameters.forEach((key, value)=> {
+                    this.parameters.forEach((value, key)=> {
                         if (first) {
                             line += "(" + key + " = " + value;
                             first = false;
@@ -1120,7 +1138,7 @@ exports.Generator = function(svg, gui, url) {
 
         generate(indent) {
             let result = [];
-            this.annotations.forEach((key, annotationArtifact)=>{
+            this.annotations.forEach(annotationArtifact=>{
                 this.writeLines(result, indent, annotationArtifact.generate(0));
             });
             this.writeLine(result, indent, this.type+" "+this.name+";");
@@ -1187,7 +1205,7 @@ exports.Generator = function(svg, gui, url) {
             }
 
             let result = [];
-            this.annotations.forEach((key, annotationArtifact)=>{
+            this.annotations.forEach(annotationArtifact=>{
                 this.writeLines(result, indent, annotationArtifact.generate(0));
             });
             this.generateDeclaration(result, indent,

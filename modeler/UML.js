@@ -6,6 +6,17 @@ var Memento = require("../memento").Memento;
 console.log("UML Loaded...");
 exports.UML = function(svg, gui) {
 
+    function isSubclass(subClass, superClass) {
+        let proto = subClass.prototype;
+        while (proto!=null) {
+            if (proto===superClass.prototype) {
+                return true;
+            }
+            proto = proto.__proto__;
+        }
+        return false;
+    }
+
     class Schema {
         constructor(idgen, width, height) {
             this.idgen = idgen;
@@ -257,14 +268,12 @@ exports.UML = function(svg, gui) {
         }
 
         addEvent(eventName, handler) {
-            Memento.register(this);
             svg.addEvent(this.component, eventName, handler);
             this.events[eventName] = handler;
             return this;
         }
 
         removeEvent(eventName) {
-            Memento.register(this);
             svg.removeEvent(this.component, eventName);
             delete this.events[eventName];
             return this;
@@ -576,7 +585,7 @@ exports.UML = function(svg, gui) {
 
     }
 
-    const MINIMAL_SIZE = 50;
+    const MINIMAL_SIZE = 70;
 
     class Node extends Item {
 
@@ -586,11 +595,9 @@ exports.UML = function(svg, gui) {
             this.height = height;
             this.x = x;
             this.y = y;
-            this.background = new svg.Rect(this.width, this.height).color(svg.ALMOST_WHITE, 3, svg.ALMOST_WHITE);
-            this.component = new svg.Translation()
-                .add(this.background);
             this.anchors = {};
             this.links = [];
+            this.component = new svg.Translation();
             this.component.onClick((event)=>{});
         }
 
@@ -598,9 +605,130 @@ exports.UML = function(svg, gui) {
             return {x:this.x, y:this.y};
         }
 
+        minimalWidth() {
+            return MINIMAL_SIZE;
+        }
+
+        minimalHeight() {
+            return MINIMAL_SIZE;
+        }
+
+        selected() {
+            return !this.anchors.empty();
+        }
+
         select() {
+            if (!this.selected()) {
+                this.schema.select(this);
+                this.showAnchors();
+                this.showSensors();
+                this.selectRelatedNodes();
+            }
+            return this;
+        }
+
+        unselect() {
+            if (this.selected()) {
+                this.schema.unselect(this);
+                this.hideAnchors();
+                this.hideSensors();
+                this.unselectRelatedNodes();
+            }
+            return this;
+        }
+
+        remove() {
             Memento.register(this);
-            this.schema.select(this);
+            [...this.links].forEach(link=>link.remove());
+            this.anchors.ul && this.schema.removeAnchors(
+                this.anchors.ul, this.anchors.ur,
+                this.anchors.dl, this.anchors.dr);
+            this.schema.removeNode(this);
+            return this;
+        }
+
+        inside(x, y) {
+            return this.x-this.width/2<x && this.x+this.width/2>x && this.y-this.height/2<y && this.y+this.height/2>y;
+        }
+
+        _draw() {
+            this.component.move(this.x, this.y);
+            if (!this.anchors.empty()) {
+                this.anchors.ul.adjust(this.x-this.width/2, this.y-this.height/2);
+                this.anchors.ur.adjust(this.x+this.width/2, this.y-this.height/2);
+                this.anchors.dr.adjust(this.x+this.width/2, this.y+this.height/2);
+                this.anchors.dl.adjust(this.x-this.width/2, this.y+this.height/2);
+            }
+        }
+
+        move(x, y) {
+            if (this.x!==x || this.y!==y) {
+                Memento.register(this);
+                this.x = x;
+                this.y = y;
+                this.updateLinks();
+                this.updateInfos();
+                this.updateSensors();
+                this.updateRelatedNodes();
+                this._draw();
+            }
+            return this;
+        }
+
+        dragged(x, y) {
+            if (this.x!==x || this.y!==y) {
+                Memento.register(this);
+                this.x = x;
+                this.y = y;
+                this.updateLinks();
+                this.updateInfos();
+                this.updateSensors();
+                this.updateRelatedNodes();
+            }
+        }
+
+        dimension(width, height) {
+            if (this.width!==width || this.height!==height) {
+                Memento.register(this);
+                this.width = width;
+                this.height = height;
+                this.updateLinks();
+                this.updateInfos();
+                this.updateSensors();
+                this.updateRelatedNodes();
+                this._draw();
+            }
+            return this;
+        }
+
+        addLink(link) {
+            if (!this.links.contains(link)) {
+                Memento.register(this);
+                this.links.push(link);
+            }
+            return this;
+        }
+
+        removeLink(link) {
+            if (this.links.contains(link)) {
+                Memento.register(this);
+                this.links.remove(link);
+            }
+            return this;
+        }
+
+        updateLinks() {
+            this.links.forEach(link=>link.follow(this));
+        }
+
+        shown() {
+        }
+
+        hidden() {
+            this.hideSensors();
+        }
+
+        showAnchors() {
             if (this.anchors.empty()) {
                 this.anchors.ul = new Anchor(this.x - this.width / 2, this.y - this.height / 2, (x, y)=> {
                     let dx = x - this.x + this.width / 2;
@@ -660,81 +788,167 @@ exports.UML = function(svg, gui) {
                 });
                 this.schema.putAnchors(this.anchors.ul, this.anchors.ur, this.anchors.dl, this.anchors.dr);
             }
-            this.showSensors();
-            return this;
         }
 
-        minimalWidth() {
-            return MINIMAL_SIZE;
-        }
-
-        minimalHeight() {
-            return MINIMAL_SIZE;
-        }
-
-        unselect() {
-            this.schema.unselect(this);
+        hideAnchors() {
             if (!this.anchors.empty()) {
                 this.schema.removeAnchors(this.anchors.ul, this.anchors.ur, this.anchors.dl, this.anchors.dr);
                 this.anchors = {};
             }
-            this.hideSensors();
+        }
+
+        updateSensors() {
+        }
+
+        showSensors() {
+        }
+
+        hideSensors() {
+        }
+
+        updateRelatedNodes() {
+        }
+
+        showRelatedNodes() {
+        }
+
+        hideRelatedNodes() {
+        }
+
+        selectRelatedNodes() {
+        }
+
+        unselectRelatedNodes() {
+        }
+
+        memorize() {
+            let memento = {
+                width : this.width,
+                height : this.height,
+                x : this.x,
+                y : this.y,
+                links : Memento.registerArray(this.links)
+            };
+            return super.memorize(memento);
+        }
+
+        revert(memento) {
+            super.revert(memento);
+            [this.x, this.y, this.width, this.height] = [memento.x, memento.y, memento.width, memento.height];
+            Memento.revertArray(memento.links, this.links);
+        }
+
+        adjustHandler(handler) {
+            handler.node = this;
+            handler.x = (handler.x - this.x) / this.width;
+            handler.y = (handler.y - this.y) / this.height;
+        }
+
+        pointFromHandler(handler) {
+            return {
+                x: handler.x * this.width + this.x,
+                y: handler.y * this.height + this.y
+            }
+        }
+
+        bounds() {
+            return {
+                left: this.x - this.width / 2,
+                top: this.y - this.height / 2,
+                right: this.x + this.width / 2,
+                bottom: this.y + this.height / 2
+            };
+        }
+
+        accept(NodeType) {
+            if (NodeType===Dependancy) {
+                return true;
+            }
+            return false;
+        }
+    }
+
+    class Iconic extends Item {
+
+        constructor(id, width, height, x, y) {
+            super(id);
+            this.x = x;
+            this.y = y;
+            this.links = [];
+            this.icon = this.buildIcon();
+            this.component = new svg.Translation().add(this.icon);
+            this.component.onClick((event)=>{});
+            this.isSelected = false;
+        }
+
+        location() {
+            return {x:this.x, y:this.y};
+        }
+
+        selected() {
+            return this.isSelected;
+        }
+
+        select() {
+            if (!this.selected()) {
+                this.schema.select(this);
+                this.showSensors();
+                this.selectRelatedNodes();
+                this.isSelected = true;
+            }
+            return this;
+        }
+
+        unselect() {
+            if (this.selected()) {
+                this.schema.unselect(this);
+                this.hideSensors();
+                this.unselectRelatedNodes();
+                this.isSelected = false;
+            }
             return this;
         }
 
         remove() {
             Memento.register(this);
             [...this.links].forEach(link=>link.remove());
-            this.anchors.ul && this.schema.removeAnchors(
-                this.anchors.ul, this.anchors.ur,
-                this.anchors.dl, this.anchors.dr);
             this.schema.removeNode(this);
             return this;
         }
 
         inside(x, y) {
-            return this.x-this.width/2<x && this.x+this.width/2>x && this.y-this.height/2<y && this.y+this.height/2>y;
+            return this.x-this.icon.width/2<x && this.x+this.icon.width/2>x &&
+                this.y-this.icon.height/2<y && this.y+this.icon.height/2>y;
         }
 
         _draw() {
             this.component.move(this.x, this.y);
-            this.background.dimension(this.width, this.height).position(0, 0);
-            if (!this.anchors.empty()) {
-                this.anchors.ul.adjust(this.x-this.width/2, this.y-this.height/2);
-                this.anchors.ur.adjust(this.x+this.width/2, this.y-this.height/2);
-                this.anchors.dr.adjust(this.x+this.width/2, this.y+this.height/2);
-                this.anchors.dl.adjust(this.x-this.width/2, this.y+this.height/2);
-            }
         }
 
         move(x, y) {
-            Memento.register(this);
-            this.x = x;
-            this.y = y;
-            this.updateLinks();
-            this.updateInfos();
-            this.updateSensors();
-            this._draw();
+            if (this.x!==x || this.y!==y) {
+                Memento.register(this);
+                this.x = x;
+                this.y = y;
+                this.updateLinks();
+                this.updateInfos();
+                this.updateSensors();
+                this.updateRelatedNodes();
+                this._draw();
+            }
             return this;
         }
 
         dragged(x, y) {
-            this.x = x;
-            this.y = y;
-            this.updateLinks();
-            this.updateInfos();
-            this.updateSensors();
-        }
-
-        dimension(width, height) {
-            Memento.register(this);
-            this.width = width;
-            this.height = height;
-            this.updateLinks();
-            this.updateInfos();
-            this.updateSensors();
-            this._draw();
-            return this;
+            if (this.x!==x || this.y!==y) {
+                Memento.register(this);
+                this.x = x;
+                this.y = y;
+                this.updateLinks();
+                this.updateInfos();
+                this.updateSensors();
+                this.updateRelatedNodes();
+            }
         }
 
         addLink(link) {
@@ -773,9 +987,243 @@ exports.UML = function(svg, gui) {
         hideSensors() {
         }
 
+        updateRelatedNodes() {
+        }
+
+        showRelatedNodes() {
+        }
+
+        hideRelatedNodes() {
+        }
+
+        selectRelatedNodes() {
+        }
+
+        unselectRelatedNodes() {
+        }
+
         memorize() {
             let memento = {
-                width : this.width,
+                x : this.x,
+                y : this.y,
+                links : Memento.registerArray(this.links)
+            };
+            return super.memorize(memento);
+        }
+
+        revert(memento) {
+            super.revert(memento);
+            [this.x, this.y] = [memento.x, memento.y];
+            Memento.revertArray(memento.links, this.links);
+        }
+
+        adjustHandler(handler) {
+            handler.node = this;
+            handler.x = (handler.x - this.x) / this.icon.width;
+            handler.y = (handler.y - this.y) / this.icon.height;
+        }
+
+        pointFromHandler(handler) {
+            return {
+                x: handler.x * this.icon.width + this.x,
+                y: handler.y * this.icon.height + this.y
+            }
+        }
+
+        bounds() {
+            return {
+                left: this.x - this.icon.width / 2,
+                top: this.y - this.icon.height / 2,
+                right: this.x + this.icon.width / 2,
+                bottom: this.y + this.icon.height / 2
+            };
+        }
+
+        accept(NodeType) {
+            if (NodeType===Dependancy || NodeType===Relationship) {
+                return true;
+            }
+            return false;
+        }
+    }
+
+    const LINE_SENSIVITY = 2;
+
+    class Line extends Item {
+
+        constructor(id, height, x, y) {
+            super(id);
+            this.height = height;
+            this.x = x;
+            this.y = y;
+            this.anchors = {};
+            this.links = [];
+            this.line = new svg.Line(0, 0, 0, this.height).color([], 2, svg.ALMOST_BLACK).dash("8,5,8,5");
+            this.component = new svg.Translation().add(this.line);
+            this.component.onClick((event)=>{});
+        }
+
+        location() {
+            return {x:this.x, y:this.y};
+        }
+
+        minimalHeight() {
+            let minimum = MINIMAL_SIZE;
+            this.links.forEach(link=>{
+                if (link.h1.node===this && link.h1.y>minimum) {
+                    minimum = link.h1.y;
+                }
+                if (link.h2.node===this && link.h2.y>minimum) {
+                    minimum = link.h2.y;
+                }
+            });
+            return minimum;
+        }
+
+        select() {
+            if (!this.selected()) {
+                this.showAnchors();
+                this.showSensors();
+                if (this.owner) {
+                    this.owner.select();
+                }
+            }
+            return this;
+        }
+
+        unselect() {
+            if (this.selected()) {
+                this.hideAnchors();
+                this.hideSensors();
+                if (this.owner) {
+                    this.owner.unselect();
+                }
+            }
+            return this;
+        }
+
+        remove() {
+            Memento.register(this);
+            [...this.links].forEach(link=>link.remove());
+            this.anchors.bottom && this.schema.removeAnchors(
+                this.anchors.bottom);
+            this.schema.removeNode(this);
+            return this;
+        }
+
+        inside(x, y) {
+            return this.x<=x+LINE_SENSIVITY && this.x>x-LINE_SENSIVITY && this.y<y && this.y+this.height>y;
+        }
+
+        _draw() {
+            this.component.move(this.x, this.y);
+            this.line.end(0, this.height);
+            if (this.selected()) {
+                this.anchors.bottom.adjust(this.x, this.y+this.height);
+            }
+        }
+
+        move(x, y) {
+            if (this.x!==x || this.y!==y) {
+                Memento.register(this);
+                this.x = x;
+                this.y = y;
+                this.updateLinks();
+                this.updateInfos();
+                this.updateSensors();
+                this._draw();
+            }
+            return this;
+        }
+
+        dragged(x, y) {
+            if (this.x!==x || this.y!==y) {
+                Memento.register(this);
+                this.x = x;
+                this.y = y;
+                this.updateLinks();
+                this.updateInfos();
+                this.updateSensors();
+            }
+        }
+
+        dimension(height) {
+            if (this.height!==height) {
+                Memento.register(this);
+                this.height = height;
+                this.updateLinks();
+                this.updateInfos();
+                this.updateSensors();
+                this._draw();
+            }
+            return this;
+        }
+
+        addLink(link) {
+            if (!this.links.contains(link)) {
+                Memento.register(this);
+                this.links.push(link);
+            }
+            return this;
+        }
+
+        removeLink(link) {
+            if (this.links.contains(link)) {
+                Memento.register(this);
+                this.links.remove(link);
+            }
+            return this;
+        }
+
+        updateLinks() {
+            this.links.forEach(link=>link.follow(this));
+        }
+
+        shown() {
+        }
+
+        hidden() {
+            [...this.links].forEach(link=>link.remove());
+            this.hideSensors();
+        }
+
+        selected() {
+            return !this.anchors.empty();
+        }
+
+        showAnchors() {
+            if (!this.selected()) {
+                this.anchors.bottom = new Anchor(this.x, this.y + this.height, (x, y)=> {
+                    let dheight = y - this.y;
+                    if (dheight<this.minimalHeight()) {
+                        dheight = this.minimalHeight();
+                        y = this.y + dheight;
+                    }
+                    this.dimension(dheight);
+                    return {x:this.x, y};
+                });
+                this.schema.putAnchors(this.anchors.bottom);
+            }
+        }
+
+        hideAnchors() {
+            if (this.selected()) {
+                this.schema.removeAnchors(this.anchors.bottom);
+                this.anchors = {};
+            }
+        }
+
+        updateSensors() {
+        }
+
+        showSensors() {
+        }
+
+        hideSensors() {
+        }
+
+        memorize() {
+            let memento = {
                 height : this.height,
                 x : this.x,
                 y : this.y,
@@ -786,24 +1234,70 @@ exports.UML = function(svg, gui) {
 
         revert(memento) {
             super.revert(memento);
-            [this.x, this.y, this.width, this.height] = [memento.x, memento.y, memento.width, memento.height];
+            [this.x, this.y, this.height] = [memento.x, memento.y, memento.height];
             Memento.revertArray(memento.links, this.links);
+            this._draw();
         }
+
+        adjustHandler(handler) {
+            handler.node = this;
+            handler.x = handler.x - this.x;
+            handler.y = handler.y - this.y;
+        }
+
+        pointFromHandler(handler) {
+            return {
+                x: this.x + handler.x,
+                y: this.y + handler.y
+            }
+        }
+
+        bounds() {
+            return {
+                left: this.x - 2,
+                top: this.y,
+                right: this.x + 2,
+                bottom: this.y + this.height
+            };
+        }
+
+        moveLinks(dy) {
+            this.links.forEach(link=>{
+                if (link.h1.node===this) {
+                    link.begin(link.h1.node, link.h1.x, link.h1.y+dy);
+                }
+                else if (link.h2.node===this) {
+                    link.end(link.h2.node, link.h2.x, link.h2.y+dy);
+                }
+            });
+        }
+
+        accept(NodeType) {
+            if (NodeType===Dependancy || isSubclass(NodeType, MessageLink)) {
+                return true;
+            }
+            return false;
+        }
+
     }
 
     const FIELD_MARGIN = 10;
     const FIELD_HEIGHT = 24;
     const CLOSE_MARGIN = 15;
+    const SENSOR_MARGIN = 20;
+    const DEFAULT_LINE_HEIGHT = 100;
 
-    class Clazz extends Node {
+    class ObjectOrientedNode extends Node {
 
-        constructor(id, width, height, x, y) {
+        constructor(id, width, height, x, y, defaultTitle, defaultContent) {
             super(id, width, height, x, y);
+            this.background = new svg.Rect(this.width, this.height).color(svg.ALMOST_WHITE, 3, svg.ALMOST_WHITE);
+            this.component.add(this.background);
             this.titleBackground = new svg.Rect(10, 10)
                 .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
             this.bodyBackground = new svg.Rect(10, 10)
                 .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
-            this._title = "ClassName";
+            this._title = defaultTitle;
             this.titleText = new gui.TextField(0, 0, 10, 10,
                 this._title)
                 .font("arial", 16)
@@ -815,7 +1309,7 @@ exports.UML = function(svg, gui) {
             }).onBlur(()=>{
                 Memento.begin();
             });
-            this._content = "field : type";
+            this._content = defaultContent;
             this.contentText = new gui.TextArea(0, 0, 10, 10,
                 this._content)
                 .font("arial", 16, 19)
@@ -835,12 +1329,9 @@ exports.UML = function(svg, gui) {
                 .add(this.titleText.component)
                 .add(this.contentTextSupport);
             this.status = "opened";
+            this.line = new Line(id, DEFAULT_LINE_HEIGHT, this.x, this.y+this.height/2);
             this._resizeContent();
             this._draw();
-        }
-
-        className() {
-            return this.titleText.textMessage;
         }
 
         definition() {
@@ -891,8 +1382,8 @@ exports.UML = function(svg, gui) {
             if (this.status==="opened") {
                 this.titleBackground.dimension(this.width, TITLE_HEIGHT).position(0, -this.height / 2 + TITLE_HEIGHT / 2);
                 this.bodyBackground.dimension(this.width, this.height - TITLE_HEIGHT).position(0, TITLE_HEIGHT / 2);
-                this.titleText.dimension(this.width - FIELD_MARGIN * 2, FIELD_HEIGHT)
-                    .position(-1, -this.height / 2 + TITLE_HEIGHT / 2);
+                this.titleText.dimension(this.width - FIELD_MARGIN * 2 -SENSOR_MARGIN, FIELD_HEIGHT)
+                    .position(-11, -this.height / 2 + TITLE_HEIGHT / 2);
                 this.contentText.dimension(this.width - FIELD_MARGIN * 2, this.height - TITLE_HEIGHT - FIELD_MARGIN * 2)
                     .position(-1, TITLE_HEIGHT / 2);
                 if (!this.bodyBackground.parent) {
@@ -909,10 +1400,54 @@ exports.UML = function(svg, gui) {
                     this.contentTextSupport.remove(this.contentText.component);
                 }
             }
+            this.line.move(this.x, this.y+this.height/2);
+        }
+
+        updateRelatedNodes() {
+            this.line.move(this.x, this.y + this.height / 2);
+        }
+
+        showRelatedNodes() {
+            if (!this.lineShown) {
+                Memento.register(this);
+                Memento.register(this.line);
+                this.lineShown = true;
+                this.line.owner = this;
+                this.schema.putNode(this.line);
+                if (this.selected()) {
+                    this.line.select();
+                }
+            }
+        }
+
+        hideRelatedNodes() {
+            if (this.lineShown) {
+                Memento.register(this);
+                Memento.register(this.line);
+                this.line.owner = null;
+                this.line.unselect();
+                this.lineShown = false;
+                this.schema.removeNode(this.line);
+            }
+        }
+
+        selectRelatedNodes() {
+            super.selectRelatedNodes();
+            if (this.lineShown) {
+                this.line.select(true);
+            }
+        }
+
+        unselectRelatedNodes() {
+            super.unselectRelatedNodes();
+            if (this.lineShown) {
+                this.line.unselect(true);
+            }
         }
 
         _draw() {
             super._draw();
+            this.background.dimension(this.width, this.height).position(0, 0);
             this.titleBackground._draw();
             this.bodyBackground._draw();
             this.titleText._draw();
@@ -924,6 +1459,7 @@ exports.UML = function(svg, gui) {
             memento.title = this._title;
             memento.content = this._content;
             memento.status = this.status;
+            memento.lineShown  = this.lineShown;
             return memento;
         }
 
@@ -934,6 +1470,7 @@ exports.UML = function(svg, gui) {
             this._content = memento.content;
             this.contentText.message(this._content);
             this.status = memento.status;
+            this.lineShown = memento.lineShown;
             this._resizeContent();
             this._draw();
         }
@@ -973,13 +1510,25 @@ exports.UML = function(svg, gui) {
                         this.showSensors();
                         return true;
                     }, this.status==="closed" ? downTriangle : upTriangle);
-                this.schema.putAnchors(this.statusSensor);
+                this.lineSensor =
+                        new Sensor(this.x, this.y + this.height / 2, ()=> {
+                        if (!this.lineShown) {
+                            this.showRelatedNodes();
+                        }
+                        else {
+                            this.hideRelatedNodes();
+                        }
+                        this.hideSensors();
+                        this.showSensors();
+                        return true;
+                    }, this.lineShown ? upTriangle : downTriangle);
+                this.schema.putAnchors(this.statusSensor, this.lineSensor);
             }
         }
 
         hideSensors() {
             if (this.statusSensor) {
-                this.schema.removeAnchors(this.statusSensor);
+                this.schema.removeAnchors(this.statusSensor, this.lineSensor);
                 delete this.statusSensor;
             }
         }
@@ -987,7 +1536,145 @@ exports.UML = function(svg, gui) {
         updateSensors() {
             if (this.statusSensor) {
                 this.statusSensor.adjust(this.x+this.width/2-CLOSE_MARGIN, this.y-this.height/2+CLOSE_MARGIN);
+                this.lineSensor.adjust(this.x, this.y+this.height/2);
             }
+        }
+
+        accept(NodeType) {
+            if (super.accept(NodeType)) {
+                return true;
+            }
+            if (NodeType===Relationship) {
+                return true;
+            }
+            return false;
+        }
+
+    }
+
+    class Clazz extends ObjectOrientedNode {
+
+        constructor(id, width, height, x, y) {
+            super(id, width, height, x, y, "ClassName", "field : type");
+        }
+
+        accept(NodeType) {
+            if (super.accept(NodeType)) {
+                return true;
+            }
+            if (NodeType===Inherit || NodeType===Realization) {
+                return true;
+            }
+            return false;
+        }
+
+    }
+
+    class Object extends ObjectOrientedNode {
+
+        constructor(id, width, height, x, y) {
+            super(id, width, height, x, y, "object : Type", "property = value");
+            this.titleText.decoration("underline");
+        }
+
+    }
+
+    const HEAD_HEIGHT = 25;
+
+    class Comment extends Node {
+
+        constructor(id, width, height, x, y, defaultComment) {
+            super(id, width, height, x, y);
+            this.background = new svg.Path(0, 0)
+                .color(svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE);
+            this.frame = new svg.Path(0, 0)
+                .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
+            this.fold = new svg.Path(0, 0)
+                .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
+            this._content = defaultComment;
+            this.contentText = new gui.TextArea(0, 0, 10, 10,
+                this._content)
+                .font("arial", 16, 19)
+                .color([svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE]);
+            this.contentText.editColor([svg.LIGHT_GREY, 2, svg.LIGHT_GREY]);
+            this.contentText.onInput((oldMessage, message, validity)=>{
+                Memento.register(this);
+                this._content = message;
+            }).onBlur(()=>{
+                Memento.begin();
+            });
+            this.component
+                .add(this.background)
+                .add(this.frame)
+                .add(this.fold)
+                .add(this.contentText.component);
+            this._resizeContent();
+            this._draw();
+        }
+
+        definition() {
+            return this.contentText.textMessage.split("\n");
+        }
+
+        minimalHeight() {
+            return this.definition().length*19+FIELD_MARGIN*2+HEAD_HEIGHT;
+        }
+
+        dimension(width, height) {
+            super.dimension(width, height);
+            this._resizeContent();
+            this._draw();
+            return this;
+        }
+
+        _resizeContent() {
+            function drawComment(path, width, height) {
+                path.reset().move(-width/2, -height/2)
+                    .line(width/2-HEAD_HEIGHT, -height/2)
+                    .line(width/2, -height/2+HEAD_HEIGHT)
+                    .line(width/2, height/2)
+                    .line(-width/2, height/2)
+                    .line(-width/2, -height/2);
+            }
+
+            drawComment(this.background, this.width, this.height);
+            drawComment(this.frame, this.width, this.height);
+            this.fold.reset().move(this.width/2-HEAD_HEIGHT, -this.height/2)
+                .line(this.width/2, -this.height/2+HEAD_HEIGHT)
+                .line(this.width/2-HEAD_HEIGHT, -this.height/2+HEAD_HEIGHT)
+                .line(this.width/2-HEAD_HEIGHT, -this.height/2);
+            this.contentText.dimension(this.width - FIELD_MARGIN * 2, this.height - HEAD_HEIGHT - FIELD_MARGIN * 2)
+                .position(-1, HEAD_HEIGHT / 2);
+        }
+
+        _draw() {
+            super._draw();
+            this.background._draw();
+            this.contentText._draw();
+        }
+
+        memorize() {
+            let memento = super.memorize();
+            memento.content = this._content;
+            return memento;
+        }
+
+        revert(memento) {
+            super.revert(memento);
+            this._content = memento.content;
+            this.contentText.message(this._content);
+            this._resizeContent();
+            this._draw();
+        }
+
+        content(_content) {
+            if (_content) {
+                this._content = _content;
+                this.contentText.message(this._content);
+                this._draw();
+                return this;
+            }
+            return this._content;
         }
 
     }
@@ -996,20 +1683,14 @@ exports.UML = function(svg, gui) {
 
     class Link extends Item {
 
-        constructor(id, node1, ...args) {
+        constructor(id, node1, x, y) {
             super(id);
             this.anchors = {};
-            if (node1) {
-                this.h1 = {x: args[0], y: args[1]};
+            if (node1 && node1.accept(this.constructor)) {
+                this.h1 = {x, y};
+                this.h2 = {x, y};
                 this.attach(this.h1, node1);
                 node1.addLink(this);
-                if (args[0] instanceof Node) {
-                    this.h2 = {node: args[0], x: 0, y: 0};
-                    args[0].addLink(this);
-                }
-                else {
-                    this.h2 = {x: args[0], y: args[1]};
-                }
             }
             else {
                 this.h1 = {x:0, y:0};
@@ -1058,22 +1739,18 @@ exports.UML = function(svg, gui) {
 
         attach(handler, node, x, y) {
             handler.node = node;
-            if (x) {
+            if (x !== undefined) {
                 handler.x = x;
                 handler.y = y;
             }
             else {
-                handler.x = (handler.x - handler.node.x) / handler.node.width;
-                handler.y = (handler.y - handler.node.y) / handler.node.height;
+                handler.node.adjustHandler(handler);
             }
         }
 
         point(handler) {
             if (handler.node) {
-                return {
-                    x:handler.x*handler.node.width+handler.node.x,
-                    y:handler.y*handler.node.height+handler.node.y
-                }
+                return handler.node.pointFromHandler(handler);
             }
             else return {x:handler.x, y:handler.y}
         }
@@ -1100,9 +1777,8 @@ exports.UML = function(svg, gui) {
         detachBegin(x, y) {
             Memento.register(this);
             this.h1.node && this.h1.node.removeLink(this);
-            this.h1.x = x;
-            this.h1.y = y;
             this.h1.node = null;
+            this.adjustBegin(x, y);
             this.adjustAnchor(this.h1, this.anchors.p1);
             this.updateInfos();
             this.computeBounds();
@@ -1110,7 +1786,12 @@ exports.UML = function(svg, gui) {
             this.updateTerminations();
             this.updateFloatings();
             this._draw();
-            return this;
+            return {x:this.h1.x, y:this.h1.y};
+        }
+
+        adjustBegin(x, y) {
+            this.h1.x = x;
+            this.h1.y = y;
         }
 
         end(node, x, y) {
@@ -1130,9 +1811,8 @@ exports.UML = function(svg, gui) {
         detachEnd(x, y) {
             Memento.register(this);
             this.h2.node && this.h2.node.removeLink(this);
-            this.h2.x = x;
-            this.h2.y = y;
             this.h2.node = null;
+            this.adjustEnd(x, y);
             this.adjustAnchor(this.h2, this.anchors.p2);
             if (this.h1) {
                 this.updateInfos();
@@ -1142,7 +1822,12 @@ exports.UML = function(svg, gui) {
             this.hideSensors();
             this.updateTerminations();
             this.updateFloatings();
-            return this;
+            return {x:this.h2.x, y:this.h2.y};
+        }
+
+        adjustEnd(x, y) {
+            this.h2.x = x;
+            this.h2.y = y;
         }
 
         remove() {
@@ -1158,12 +1843,7 @@ exports.UML = function(svg, gui) {
 
         follow(node) {
             Memento.register(this);
-            if (node===this.h1.node) {
-                this.adjustAnchor(this.h1, this.anchors.p1);
-            }
-            else if (node===this.h2.node) {
-                this.adjustAnchor(this.h2, this.anchors.p2);
-            }
+            this.adjustFollow(node);
             this.updateInfos();
             this.computeBounds();
             this.updateSensors();
@@ -1171,6 +1851,15 @@ exports.UML = function(svg, gui) {
             this.updateFloatings();
             this._draw();
             return this;
+        }
+
+        adjustFollow(node) {
+            if (node===this.h1.node) {
+                this.adjustAnchor(this.h1, this.anchors.p1);
+            }
+            else if (node===this.h2.node) {
+                this.adjustAnchor(this.h2, this.anchors.p2);
+            }
         }
 
         showSensors() {
@@ -1199,11 +1888,10 @@ exports.UML = function(svg, gui) {
                 if (!this.anchors.p1) {
                     let pt1 = this.point(this.h1);
                     this.anchors.p1 = new Anchor(pt1.x, pt1.y, (x, y)=> {
-                        this.detachBegin(x, y);
-                        return {x, y};
+                        return this.detachBegin(x, y);
                     }, (x, y)=> {
                         let clazz = this.schema.nodeFromPosition(x, y);
-                        if (clazz) {
+                        if (clazz && clazz.accept(this.constructor)) {
                             this.begin(clazz);
                             return true;
                         }
@@ -1213,11 +1901,10 @@ exports.UML = function(svg, gui) {
                     });
                     let pt2 = this.point(this.h2);
                     this.anchors.p2 = new Anchor(pt2.x, pt2.y, (x, y)=> {
-                        this.detachEnd(x, y);
-                        return {x, y};
+                        return this.detachEnd(x, y);
                     }, (x, y)=> {
                         let clazz = this.schema.nodeFromPosition(x, y);
-                        if (clazz) {
+                        if (clazz && clazz.accept(this.constructor)) {
                             this.end(clazz);
                             return true;
                         }
@@ -1282,11 +1969,11 @@ exports.UML = function(svg, gui) {
                 this.dx2 = pt2.x;
                 this.cx = 0;
                 if (pt1.y + pt2.y > node.y*2) {
-                    this.dy1 = this.dy2 = node.y + node.height/2;
+                    this.dy1 = this.dy2 = node.bounds().bottom;
                     this.cy = CONTROL;
                 }
                 else {
-                    this.dy1 = this.dy2 = node.y - node.height/2;
+                    this.dy1 = this.dy2 = node.bounds().top;
                     this.cy = -CONTROL;
                 }
             }
@@ -1295,23 +1982,24 @@ exports.UML = function(svg, gui) {
                 this.dy2 = pt2.y;
                 this.cy = 0;
                 if (pt1.x + pt2.x > node.x*2) {
-                    this.dx1 = this.dx2 = node.x + node.width/2;
+                    this.dx1 = this.dx2 = node.bounds().right;
                     this.cx = CONTROL;
                 }
                 else {
-                    this.dx1 = this.dx2 = node.x - node.width/2;
+                    this.dx1 = this.dx2 = node.bounds().left;
                     this.cx = -CONTROL;
                 }
             }
         }
 
         computeIntersects() {
-            function polygon(clazz) {
+            function polygon(node) {
+                let b = node.bounds();
                 return [
-                    {x:clazz.x-clazz.width/2, y:clazz.y-clazz.height/2},
-                    {x:clazz.x-clazz.width/2, y:clazz.y+clazz.height/2},
-                    {x:clazz.x+clazz.width/2, y:clazz.y+clazz.height/2},
-                    {x:clazz.x+clazz.width/2, y:clazz.y-clazz.height/2}
+                    {x: b.left, y: b.top },
+                    {x: b.left, y: b.bottom },
+                    {x: b.right, y: b.bottom },
+                    {x: b.right, y: b.top }
                 ];
             }
 
@@ -1520,6 +2208,7 @@ exports.UML = function(svg, gui) {
                 x1:this.h1.x, y1:this.h1.y, px1:this.px1, py1:this.py1, node1:this.h1.node,
                 x2:this.h2.x, y2:this.h2.y, px2:this.px2, py2:this.py2, node2:this.h2.node,
                 dx1:this.dx1, dx2:this.dx2, dy1:this.dy1, dy2:this.dy2, cx:this.cx, cy:this.cy} = memento);
+            this._draw();
         }
     }
 
@@ -1593,60 +2282,131 @@ exports.UML = function(svg, gui) {
         }
     }
 
+    function triangle() {
+        return new svg.Translation()
+            .add(new svg.Path(0, 0).line(-16, 32).line(16, 32).line(0, 0)
+                .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK));
+    }
+
+    function arrow() {
+        return new svg.Translation()
+            .add(new svg.Line(0, 0, -8, 20).color(svg.ALMOST_BLACK, 2, svg.ALMOST_BLACK))
+            .add(new svg.Line(0, 0, 8, 20).color(svg.ALMOST_BLACK, 2, svg.ALMOST_BLACK));
+    }
+
+    function plainArrow() {
+        return new svg.Translation()
+            .add(new svg.Path(0, 0).line(-8, 20).line(8, 20).line(0, 0)
+                .color(svg.ALMOST_BLACK, 1, svg.ALMOST_BLACK));
+    }
+
+    function reversedArrow() {
+        return new svg.Translation()
+            .add(new svg.Line(0, 0, -8, -20).color(svg.ALMOST_BLACK, 2, svg.ALMOST_BLACK))
+            .add(new svg.Line(0, 0, 8, -20).color(svg.ALMOST_BLACK, 2, svg.ALMOST_BLACK));
+    }
+
+    function blackLosange() {
+        return new svg.Translation()
+            .add(new svg.Path(0, 0).line(-8, -16).line(0, -32).line(8, -16).line(0, 0)
+                .color(svg.ALMOST_BLACK, 2, svg.ALMOST_BLACK));
+    }
+
+    function whiteLosange() {
+        return new svg.Translation()
+            .add(new svg.Path(0, 0).line(-8, -16).line(0, -32).line(8, -16).line(0, 0)
+                .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK));
+    }
+
     const FLOATING_DISTANCE = 20;
-    const TITLE_SIZE = 150;
+    const LABEL_SIZE = 150;
     const CARDINALITY_SIZE = 50;
 
-    class Relationship extends Link {
 
-        constructor(id, node, ...args) {
+    class SimpleLink extends Link {
+
+        constructor(id, node, termination, ...args) {
             super(id, node,...args);
-            this.title = new Floating(this, 0.5, FLOATING_DISTANCE, TITLE_SIZE, "title");
-            this.beginCardinality = new Floating(this, 0.1, FLOATING_DISTANCE, CARDINALITY_SIZE, "1?");
-            this.endCardinality = new Floating(this, 0.9, FLOATING_DISTANCE, CARDINALITY_SIZE, "2?");
-            this.beginTermination = new Termination(this, [null, this.blackLosange(), this.whiteLosange()]);
-            this.component.add(this.beginTermination.component);
-            this.endTermination = new Termination(this, [null, this.arrow()]);
+            this.label = new Floating(this, 0.5, FLOATING_DISTANCE, LABEL_SIZE, "?");
+            this.endTermination = new Termination(this, [termination()]);
             this.component.add(this.endTermination.component);
             this._draw();
         }
 
         shown() {
-            this.schema.putFloatings(this.title, this.beginCardinality, this.endCardinality);
+            super.shown();
+            this.schema.putFloatings(this.label);
             return this;
         }
 
         hidden() {
             super.hidden();
-            this.title.remove();
-            this.beginCardinality.remove();
-            this.endCardinality.remove();
+            this.label.remove();
             return this;
         }
 
-        memorize() {
-            let memento = super.memorize();
-            return memento;
-        }
-
-        revert(memento) {
-            super.revert(memento);
-            this._draw();
-        }
-
         selectFloatings() {
-            this.title.select();
-            this.beginCardinality.select();
-            this.endCardinality.select();
+            super.selectFloatings();
+            this.label.select();
         }
 
         unselectFloatings() {
-            this.title.unselect();
-            this.beginCardinality.unselect();
-            this.endCardinality.unselect();
+            super.unselectFloatings();
+            this.label.unselect();
+        }
+
+        updateFloatings() {
+            super.updateFloatings();
+            this.label && this.label.follow();
+        }
+
+        updateTerminations() {
+            super.updateTerminations();
+            if (this.px1 && this.px2) {
+                this.endTermination && this.endTermination.follow(this.px2, this.py2);
+            }
+            else {
+                this.endTermination && this.endTermination.follow(this.dx2, this.dy2);
+            }
+        }
+
+    }
+
+    class EquippedLink extends Link {
+
+        constructor(id, node, labelDefault, beginTerminaisons, endTerminaisons, ...args) {
+            super(id, node,...args);
+            this.label = new Floating(this, 0.5, FLOATING_DISTANCE, LABEL_SIZE, labelDefault);
+            this.beginTermination = new Termination(this, beginTerminaisons);
+            this.component.add(this.beginTermination.component);
+            this.endTermination = new Termination(this, endTerminaisons);
+            this.component.add(this.endTermination.component);
+        }
+
+        shown() {
+            super.shown();
+            this.schema.putFloatings(this.label);
+            return this;
+        }
+
+        hidden() {
+            super.hidden();
+            this.label.remove();
+            return this;
+        }
+
+        selectFloatings() {
+            super.selectFloatings();
+            this.label.select();
+        }
+
+        unselectFloatings() {
+            super.unselectFloatings();
+            this.label.unselect();
         }
 
         showSensors() {
+            super.showSensors();
             if (!this.anchors.s1 && (this.px1||this.dx1) && (this.px2||this.dy2)) {
                 let x1, x2, y1, y2;
                 if (this.px1 && this.px2) {
@@ -1668,6 +2428,7 @@ exports.UML = function(svg, gui) {
         }
 
         hideSensors() {
+            super.hideSensors();
             if (this.anchors.s1) {
                 this.schema.removeAnchors(this.anchors.s1, this.anchors.s2);
                 delete this.anchors.s1;
@@ -1676,6 +2437,7 @@ exports.UML = function(svg, gui) {
         }
 
         updateSensors() {
+            super.updateSensors();
             if (this.anchors.s1) {
                 if (this.px1) {
                     this.anchors.s1.adjust(this.px1, this.py1);
@@ -1695,19 +2457,12 @@ exports.UML = function(svg, gui) {
         }
 
         updateFloatings() {
-            if (this.px1 && this.px2) {
-                this.title && this.title.follow();
-                this.beginCardinality && this.beginCardinality.follow();
-                this.endCardinality && this.endCardinality.follow();
-            }
-            else {
-                this.title && this.title.follow();
-                this.beginCardinality && this.beginCardinality.follow();
-                this.endCardinality && this.endCardinality.follow();
-            }
+            super.updateFloatings();
+            this.label && this.label.follow();
         }
 
         updateTerminations() {
+            super.updateTerminations();
             if (this.px1 && this.px2) {
                 this.endTermination && this.endTermination.follow(this.px2, this.py2);
                 this.beginTermination && this.beginTermination.follow(this.px1, this.py1);
@@ -1718,96 +2473,199 @@ exports.UML = function(svg, gui) {
             }
         }
 
-        arrow() {
-            return new svg.Translation()
-                .add(new svg.Line(0, 0, -8, 20).color(svg.ALMOST_BLACK, 2, svg.ALMOST_BLACK))
-                .add(new svg.Line(0, 0, 8, 20).color(svg.ALMOST_BLACK, 2, svg.ALMOST_BLACK));
-        }
-
-        blackLosange() {
-            return new svg.Translation()
-                .add(new svg.Path(0, 0).line(-8, -16).line(0, -32).line(8, -16).line(0, 0)
-                    .color(svg.ALMOST_BLACK, 2, svg.ALMOST_BLACK));
-        }
-
-        whiteLosange() {
-            return new svg.Translation()
-                .add(new svg.Path(0, 0).line(-8, -16).line(0, -32).line(8, -16).line(0, 0)
-                    .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK));
-        }
     }
 
-    class Inherit extends Link {
+    class Relationship extends EquippedLink {
 
         constructor(id, node, ...args) {
-            super(id, node,...args);
-            this.endTermination = new Termination(this, [this.triangle()]);
-            this.component.add(this.endTermination.component);
+            super(id, node,
+                "title",
+                [null, blackLosange(), whiteLosange()],
+                [null, arrow()],
+                ...args);
+            this.beginCardinality = new Floating(this, 0.1, FLOATING_DISTANCE, CARDINALITY_SIZE, "1?");
+            this.endCardinality = new Floating(this, 0.9, FLOATING_DISTANCE, CARDINALITY_SIZE, "2?");
             this._draw();
         }
 
-        updateTerminations() {
-            if (this.px1 && this.px2) {
-                this.endTermination && this.endTermination.follow(this.px2, this.py2);
+        shown() {
+            super.shown();
+            this.schema.putFloatings(this.beginCardinality, this.endCardinality);
+            return this;
+        }
+
+        hidden() {
+            super.hidden();
+            this.beginCardinality.remove();
+            this.endCardinality.remove();
+            return this;
+        }
+
+        selectFloatings() {
+            super.selectFloatings();
+            this.beginCardinality.select();
+            this.endCardinality.select();
+        }
+
+        unselectFloatings() {
+            super.unselectFloatings();
+            this.beginCardinality.unselect();
+            this.endCardinality.unselect();
+        }
+
+        updateFloatings() {
+            super.updateFloatings();
+            this.beginCardinality && this.beginCardinality.follow();
+            this.endCardinality && this.endCardinality.follow();
+        }
+
+    }
+
+    class Inherit extends SimpleLink {
+
+        constructor(id, node, ...args) {
+            super(id, node, triangle,...args);
+        }
+
+    }
+
+    class Realization extends SimpleLink {
+
+        constructor(id, node, ...args) {
+            super(id, node, triangle,...args);
+            this.line.dash("8,5,8,5");
+        }
+
+    }
+
+    class Dependancy extends EquippedLink {
+
+        constructor(id, node, ...args) {
+            super(id, node,
+                "?",
+                [null, reversedArrow()],
+                [null, arrow()],
+                ...args);
+            this.line.dash("8,5,8,5");
+            this._draw();
+        }
+
+    }
+
+    const MESSAGE_HEIGHT_MARGIN = 40;
+
+    class MessageLink extends SimpleLink {
+
+        constructor(id, node, terminaison, ...args) {
+            super(id, node, terminaison,...args);
+        }
+
+        adjustBegin(x, y) {
+            this.h1.x = x;
+            this.h1.y = y;
+            this.h2.y = y-this.h2.node.y;
+            if (this.margin) {
+                this.h2.y+=MESSAGE_HEIGHT_MARGIN;
+            }
+            this.adjustFollow(this.h2.node);
+            this.adjustAnchor(this.h2, this.anchors.p2);
+        }
+
+        adjustEnd(x, y) {
+            this.h2.x = x;
+            let pt = this.point(this.h1);
+            if (y>pt.y+MESSAGE_HEIGHT_MARGIN) {
+                this.h2.y = pt.y + MESSAGE_HEIGHT_MARGIN;
+                this.margin = true;
             }
             else {
-                this.endTermination && this.endTermination.follow(this.dx2, this.dy2);
+                this.h2.y = pt.y;
+                delete this.margin;
             }
         }
 
-        begin(node, x, y) {
-            super.begin(node, x, y);
-            this.updateTerminations();
-            return this;
+        computeAutoBounds() {
+            let node = this.h1.node || this.h2.node;
+            let pt1 = this.point(this.h1);
+            let pt2 = this.point(this.h2);
+            this.dy1 = pt1.y;
+            this.dy2 = pt2.y;
+            this.cy = 0;
+            this.dx1 = this.dx2 = node.bounds().right;
+            this.cx = CONTROL;
         }
 
-        detachBegin(x, y) {
-            super.detachBegin(x, y);
-            this.updateTerminations();
-            return this;
-        }
-
-        end(node, x, y) {
-            super.end(node, x, y);
-            this.updateTerminations();
-            return this;
-        }
-
-        detachEnd(x, y) {
-            super.detachEnd(x, y);
-            this.updateTerminations();
-            return this;
-        }
-
-        follow(node) {
-            super.follow(node);
-            this.updateTerminations();
-            return this;
+        adjustFollow(node) {
+            let pt1 = this.point(this.h1);
+            let pt2 = this.point(this.h2);
+            this.h2.x = pt2.x;
+            this.h2.y = pt1.y;
+            if (this.margin) {
+                this.h2.y += MESSAGE_HEIGHT_MARGIN;
+            }
+            this.h2.node.adjustHandler(this.h2);
+            if (this.h2.y > this.h2.node.height) {
+                this.h2.node.dimension(this.h2.y);
+            }
+            else if (this.h2.y<0) {
+                this.h1.y-=this.h2.y;
+                this.h2.y = 0;
+                if (this.h1.node && this.h1.y > this.h1.node.height) {
+                    this.h1.node.dimension(this.h1.y);
+                }
+            }
+            this.adjustAnchor(this.h1, this.anchors.p1);
+            this.adjustAnchor(this.h2, this.anchors.p2);
         }
 
         memorize() {
             let memento = super.memorize();
+            memento.margin = this.margin;
             return memento;
         }
 
         revert(memento) {
             super.revert(memento);
+            this.margin = memento.margin;
             this._draw();
         }
-
-        _draw() {
-            super._draw();
-            if (this.endTermination && this.px2) {
-                this.endTermination._draw(this.px2, this.py2);
-            }
-        }
-
-        triangle() {
-            return new svg.Translation()
-                .add(new svg.Path(0, 0).line(-16, 32).line(16, 32).line(0, 0)
-                    .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK));
-        }
     }
+
+    class Request extends MessageLink {
+
+        constructor(id, node, ...args) {
+            super(id, node, plainArrow,...args);
+        }
+
+    }
+
+    class AsyncRequest extends MessageLink {
+
+        constructor(id, node, ...args) {
+            super(id, node, arrow,...args);
+        }
+
+    }
+
+    class Response extends MessageLink {
+
+        constructor(id, node, ...args) {
+            super(id, node, arrow,...args);
+            this.line.dash("8,5,8,5");
+        }
+
+    }
+
+    /*
+    class Taratata extends MessageLink {
+
+        constructor(id, node, ...args) {
+            super(id, node, arrow,...args);
+            //this.line.dash("8,5,8,5");
+        }
+
+    }
+*/
 
     class Floating extends Item {
 
@@ -1920,6 +2778,10 @@ exports.UML = function(svg, gui) {
 
     }
 
+    const REQUEST_LABEL = "request";
+    const RESPONSE_LABEL = "response";
+    const ASYNC_LABEL = "async";
+
     class SchemaBuilder {
 
         spec(schema) {
@@ -1927,25 +2789,70 @@ exports.UML = function(svg, gui) {
                 idgen : schema.idgen,
                 width : schema.component.width,
                 height : schema.component.height,
-                clazzes : schema.nodes.filter(node=>node instanceof Clazz).map(clazz=>{
+                clazzes : this.processArray(schema.nodes.filter(node=>node instanceof Clazz).map(clazz=>{
                     let nd = this.nodeSpec(clazz);
                     nd.title=clazz.title();
                     nd.content=clazz.content();
                     nd.status=clazz.status;
+                    nd.lineShown=clazz.lineShown;
+                    nd.lineHeight=clazz.line.height;
                     return nd;
-                }),
-                inherits : schema.links.filter(link=>link instanceof Inherit).map(link=>this.linkSpec(link)),
-                relationships : schema.links.filter(link=>link instanceof Relationship).map(link=>{
+                })),
+                objects : this.processArray(schema.nodes.filter(node=>node instanceof Object).map(object=>{
+                    let nd = this.nodeSpec(object);
+                    nd.title=object.title();
+                    nd.content=object.content();
+                    nd.status=object.status;
+                    nd.lineShown=object.lineShown;
+                    nd.lineHeight=object.line.height;
+                    return nd;
+                })),
+                comments : this.processArray(schema.nodes.filter(node=>node instanceof Comment).map(object=>{
+                    let nd = this.nodeSpec(object);
+                    nd.content=object.content();
+                    return nd;
+                })),
+                inherits : this.processArray(schema.links.filter(link=>link instanceof Inherit).map(link=>{
                     let ls = this.linkSpec(link);
-                    ls.title = this.floatingSpec(link.title);
+                    ls.comment = this.floatingSpec(link.label);
+                    return ls;
+                })),
+                relationships : this.processArray(schema.links.filter(link=>link instanceof Relationship).map(link=>{
+                    let ls = this.linkSpec(link);
+                    ls.title = this.floatingSpec(link.label);
                     ls.beginCardinality = this.floatingSpec(link.beginCardinality);
                     ls.endCardinality = this.floatingSpec(link.endCardinality);
                     ls.beginTermination = this.terminationSpec(link.beginTermination, "composition", "aggregation");
                     ls.endTermination = this.terminationSpec(link.endTermination, "arrow");
                     return ls;
-                })
+                })),
+                realizations : this.processArray(schema.links.filter(link=>link instanceof Realization).map(link=>{
+                    let ls = this.linkSpec(link);
+                    ls.comment = this.floatingSpec(link.label);
+                    return ls;
+                })),
+                dependancies : this.processArray(schema.links.filter(link=>link instanceof Dependancy).map(link=>{
+                    let ls = this.linkSpec(link);
+                    ls.comment = this.floatingSpec(link.label);
+                    ls.beginTermination = this.terminationSpec(link.beginTermination, "reversedArrow");
+                    ls.endTermination = this.terminationSpec(link.endTermination, "arrow");
+                    return ls;
+                })),
+                messages : this.processArray(schema.links.filter(link=>link instanceof MessageLink).map(link=>{
+                    let ls = this.linkSpec(link);
+                    ls.type = this.messageTypeLabel(link);
+                    ls.label = this.floatingSpec(link.label);
+                    return ls;
+                }))
             };
             return spec;
+        }
+
+        processArray(array) {
+            if (array.empty()) {
+                return undefined;
+            }
+            return array;
         }
 
         nodeSpec(node) {
@@ -1980,28 +2887,98 @@ exports.UML = function(svg, gui) {
 
         schema(desc) {
             let schema = new Schema(desc.idgen, desc.width, desc.height);
-            desc.clazzes.forEach(descClazz=>{
+            desc.clazzes && desc.clazzes.forEach(descClazz=>{
                 let clazz = new Clazz(descClazz.id, descClazz.width, descClazz.height,descClazz.x, descClazz.y)
                         .title(descClazz.title).content(descClazz.content);
-                if (descClazz==="closed") clazz.hideBody()
                 schema.putNode(clazz);
+                if (descClazz.status==="closed") clazz.hideBody();
+                if (descClazz.lineShown) {
+                    clazz.showRelatedNodes();
+                    clazz.line.dimension(descClazz.lineHeight);
+                }
                 clazz._draw();
             });
-            desc.inherits.forEach(descLink=>{
+            desc.objects && desc.objects.forEach(descObject=>{
+                let object = new Object(descObject.id, descObject.width, descObject.height,descObject.x, descObject.y)
+                    .title(descObject.title).content(descObject.content);
+                schema.putNode(object);
+                if (descObject.status==="closed") object.hideBody();
+                if (descObject.lineShown) {
+                    object.showRelatedNodes();
+                    object.line.dimension(descObject.lineHeight);
+                }
+                object._draw();
+            });
+            desc.comments && desc.comments.forEach(descComment=>{
+                let comment = new Comment(descComment.id, descComment.width, descComment.height,descComment.x, descComment.y)
+                    .content(descComment.content);
+                schema.putNode(comment);
+                comment._draw();
+            });
+            desc.inherits && desc.inherits.forEach(descLink=>{
                 let link = this.buildLink(descLink, schema, Inherit);
+                this.floating(link.label, descLink.comment);
                 link._draw();
             });
-            desc.relationships.forEach(descLink=>{
+            desc.relationships && desc.relationships.forEach(descLink=>{
                 let link = this.buildLink(descLink, schema, Relationship);
                 this.termination(link.endTermination, descLink.endTermination, "arrow");
                 this.termination(link.beginTermination, descLink.beginTermination, "composition", "aggregation");
-                this.floating(link.title, descLink.title);
+                this.floating(link.label, descLink.title);
                 this.floating(link.beginCardinality, descLink.beginCardinality);
                 this.floating(link.endCardinality, descLink.endCardinality);
                 link.hideSensors();
                 link._draw();
             });
+            desc.realizations && desc.realizations.forEach(descLink=>{
+                let link = this.buildLink(descLink, schema, Realization);
+                this.floating(link.label, descLink.comment);
+                link._draw();
+            });
+            desc.dependancies && desc.dependancies.forEach(descLink=>{
+                let link = this.buildLink(descLink, schema, Dependancy);
+                this.termination(link.endTermination, descLink.endTermination, "arrow");
+                this.termination(link.beginTermination, descLink.beginTermination, "reversedArrow");
+                this.floating(link.label, descLink.comment);
+                link.hideSensors();
+                link._draw();
+            });
+            desc.messages && desc.messages.forEach(descLink=>{
+                let link = this.buildMessage(descLink, schema);
+                this.floating(link.label, descLink.label);
+                link._draw();
+            });
             return schema;
+        }
+
+        messageType(type) {
+            if (type===REQUEST_LABEL) {
+                return Request;
+            }
+            else if (type===RESPONSE_LABEL) {
+                return Response;
+            }
+            else if (type===ASYNC_LABEL) {
+                return AsyncRequest;
+            }
+            else {
+                throw "Unknown message type : "+type;
+            }
+        }
+
+        messageTypeLabel(link) {
+            if (link instanceof Request) {
+                return REQUEST_LABEL;
+            }
+            else if (link instanceof Response) {
+                return RESPONSE_LABEL;
+            }
+            else if (link instanceof AsyncRequest) {
+                return ASYNC_LABEL;
+            }
+            else {
+                throw "Unknown message class : "+link.constructor;
+            }
         }
 
         buildLink(descLink, schema, Link) {
@@ -2014,13 +2991,26 @@ exports.UML = function(svg, gui) {
             return link;
         }
 
+        buildMessage(descLink, schema) {
+            let linkType = this.messageType(descLink.type);
+            let fromNode = schema.nodeFromId(descLink.from.id);
+            let toNode = schema.nodeFromId(descLink.to.id);
+            let link = new linkType(descLink.id);
+            schema.putLink(link);
+            link.begin(fromNode.line, descLink.from.x, descLink.from.y);
+            link.end(toNode.line, descLink.to.x, descLink.to.y);
+            return link;
+        }
+
         termination(termination, descTermination, ...items) {
             let index = !descTermination?0:items.findIndex(item=>item===descTermination)+1;
             termination.set(index);
         }
 
         floating(floating, descFloating) {
-            floating.set(descFloating.ratio, descFloating.distance, descFloating.message);
+            if (descFloating) {
+                floating.set(descFloating.ratio, descFloating.distance, descFloating.message);
+            }
         }
     }
 
@@ -2093,8 +3083,15 @@ exports.UML = function(svg, gui) {
     return {
         Info : Info,
         Clazz : Clazz,
+        Object : Object,
+        Comment : Comment,
         Relationship : Relationship,
         Inherit : Inherit,
+        Realization : Realization,
+        Dependancy : Dependancy,
+        Request : Request,
+        Response : Response,
+        AsyncRequest : AsyncRequest,
 
         Schema : Schema,
         SchemaBuilder : SchemaBuilder,

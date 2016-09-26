@@ -1474,6 +1474,9 @@ exports.Gui = function(svg, param) {
             this.fontSize = 32;
             this.text.font(this.fontName, this.fontSize);
             this.control.font(this.fontName, this.fontSize);
+            this._decoration = "none";
+            this.text.decoration(this._decoration);
+            this.control.decoration(this._decoration);
             this.valid = true;
             this._draw();
         }
@@ -1540,6 +1543,13 @@ exports.Gui = function(svg, param) {
         color(colors) {
             this._colors = colors;
             this.frame.color(...this._colors);
+            return this;
+        }
+
+        decoration(decoration) {
+            this._decoration = decoration;
+            this.text.decoration(this._decoration);
+            this.control.decoration(this._decoration);
             return this;
         }
 

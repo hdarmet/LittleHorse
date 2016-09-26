@@ -30,7 +30,7 @@ exports.targetRuntime = function() {
         },
         attr(component, name, value) {
             try {
-                if (value && value.startsWith && value.startsWith("NaN")) {
+                if (value && value.startsWith && value.startsWith("translate(NaN")) {
                     console.log("bug");
                 }
                 if (value !== undefined) {
@@ -151,12 +151,6 @@ exports.targetRuntime = function() {
             event.preventDefault();
         },
         screenSize: function(){
-        /*
-            return {
-                width: document.body.clientWidth,
-                height: document.documentElement.clientHeight
-            }
-            */
             return {
                 width: window.innerWidth,
                 height: window.innerHeight

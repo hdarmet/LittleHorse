@@ -28,12 +28,12 @@ exports.Memento = {
     },
 
     begin() {
-        console.log("begin");
         if (this.enabled) {
             while (this.previous.length>this.MAX_DO) {
                 this.previous.shift();
             }
             if (this.current && this.current.size) {
+                console.log("begin");
                 this.previous.push(this.current);
             }
             this.current = new Map();

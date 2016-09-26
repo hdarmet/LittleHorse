@@ -107,8 +107,22 @@ exports.SVG = function(runtime) {
             enumerable: false,
             value: function(lambda) {
                 for (let field in this) {
-                    lambda(field, this[field]);
+                    lambda(this[field], field, this);
                 }
+            }
+        });
+    }
+
+    if (!Object.prototype.find) {
+        Object.defineProperty(Object.prototype, "find", {
+            enumerable: false,
+            value: function(lambda) {
+                for (let field in this) {
+                    if (lambda(this[field], field, this)) {
+                        return this[field];
+                    }
+                }
+                return null;
             }
         });
     }
@@ -474,6 +488,7 @@ exports.SVG = function(runtime) {
             this.fontName = "arial";
             this.fontSize = 12;
             this._fontColor = svg.BLACK;
+            this._decoration = "none";
             this.dimension(width, height);
             this.position(x, y);
             this.messageText = "";
@@ -552,6 +567,14 @@ exports.SVG = function(runtime) {
             return this;
         }
 
+        decoration(decoration) {
+            if (this._decoration!==decoration) {
+                this._decoration = decoration;
+                this._draw();
+            }
+            return this;
+        }
+
         color(fillColor, strokeWidth, strokeColor) {
             this.fillColor = fillColor;
             this.strokeWidth = strokeWidth;
@@ -579,6 +602,7 @@ exports.SVG = function(runtime) {
                 style += "top:" + ((this.y || 0)-delta.y) + "px;";
                 style += "width:" + (this.width || 0) + "px;";
                 style += "height:" + (this.height || 0) + "px;";
+                style += "text-decoration:" + (this._decoration || "none");
                 style += "text-align:" + (this.anchorText || TextItem.CENTER) + ";";
                 style += "font-family:" + (this.fontName || "Arial") + ";";
                 style += "font-size:" + (this.fontSize || 20) + "px;";
@@ -600,6 +624,7 @@ exports.SVG = function(runtime) {
             return item.anchor(this.anchorText)
                 .font(this.fontName, this.fontSize)
                 .color(this.fillColor, this.strokeWidth, this.strokeColor)
+                .decoration(this._decoration)
                 .message(this.messageText)
                 .placeHolder(this.placeHolderText);
         }
@@ -2354,6 +2379,7 @@ exports.SVG = function(runtime) {
             this.fontName = "arial";
             this.fontSize = 12;
             this.lineSpacing = 24;
+            this._decoration = "none";
             this.anchorText = "middle";
             this.vanchorText = "top";
             this.lines = [];
@@ -2402,6 +2428,12 @@ exports.SVG = function(runtime) {
             return this;
         }
 
+        decoration(decoration) {
+            this._decoration = decoration;
+            this._draw();
+            return this;
+        }
+
         _draw() {
             let margin = this.vanchorText==="middle" ? this.lines.length*this.lineSpacing/2 : 0;
             for (var l = 0; l < this.lines.length; l++) {
@@ -2418,6 +2450,7 @@ exports.SVG = function(runtime) {
             svgr.attr(this.component, "text-anchor", this.anchorText);
             svgr.attr(this.component, "font-family", this.fontName);
             svgr.attr(this.component, "font-size", this.fontSize);
+            svgr.attr(this.component, "text-decoration", this._decoration);
             this._format(this.component, lines[0]);
             for (l = 1; l < lines.length; l++) {
                 var line = svgr.create("tspan");
@@ -2634,6 +2667,12 @@ exports.SVG = function(runtime) {
             }
         }
 
+        dash(dashPattern) {
+            this.dashPattern = dashPattern;
+            this._draw();
+            return this;
+        }
+
         reset() {
             this.drawing = "";
             this.points = [];
@@ -2671,6 +2710,9 @@ exports.SVG = function(runtime) {
         }
 
         _draw() {
+            if (this.dashPattern) {
+                svgr.attr(this.component, "stroke-dasharray", this.dashPattern);
+            }
             svgr.attr(this.component, "d", this.drawing);
         }
 
