@@ -473,7 +473,7 @@ exports.UML = function(svg, gui) {
             this.x = x;
             this.y = y;
             this.update = update;
-            this.finalize = finalize;
+            this.finalize = finalize || ((x, y)=>this.move(x, y));
             this.component = new svg.Translation().add(
                 new svg.Rect(ANCHOR_SIZE, ANCHOR_SIZE).color(svg.ALMOST_WHITE, 1, svg.ALMOST_BLACK));
             this.component.onClick((event)=>{});
@@ -868,17 +868,171 @@ exports.UML = function(svg, gui) {
         }
     }
 
-    class Iconic extends Item {
+    let TitledMixin = superClass => class extends superClass {
+        constructor(...args) {
+            super(...args);
+        }
 
-        constructor(id, width, height, x, y) {
+        createTitle(defaultTitle) {
+            this._title = defaultTitle;
+            this.titleText = new gui.TextField(0, 0, 10, 10, this._title)
+                .font("arial", 16)
+                .color([svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE]);
+            this.titleText.editColor([svg.LIGHT_GREY, 2, svg.LIGHT_GREY]);
+            this.titleText.onInput((oldMessage, message, validity)=>{
+                Memento.register(this);
+                this._title = message;
+            }).onBlur(()=>{
+                Memento.begin();
+            });
+            return this.titleText;
+        }
+
+        title(_title) {
+            if (_title) {
+                this._title = _title;
+                this.titleText.message(this._title);
+                this._draw();
+                return this;
+            }
+            return this._title;
+        }
+
+        _resizeTitle(widthMargin=0, x=-1, y=0) {
+            this.titleText.dimension(this.width - FIELD_MARGIN * 2 -widthMargin, FIELD_HEIGHT)
+                .position(x, y);
+        }
+
+        memorizeTitle(memento) {
+            memento.title = this._title;
+        }
+
+        revertTitle(memento) {
+            this._title = memento.title;
+            this.titleText.message(this._title);
+        }
+
+        _drawTitle() {
+            this.titleText._draw();
+        }
+
+        titleComponent() {
+            return this.titleText.component;
+        }
+
+    };
+
+    let LinedMixin = superClass => class extends superClass {
+
+        constructor(...args) {
+            super(...args);
+        }
+
+        buildLine() {
+            this.line = new Line(this.id, DEFAULT_LINE_HEIGHT, this.x, this.y+this.height/2);
+        }
+
+        updateRelatedNodes() {
+            this.line.move(this.x, this.y + this.height / 2);
+        }
+
+        showRelatedNodes() {
+            if (!this.lineShown) {
+                Memento.register(this);
+                Memento.register(this.line);
+                this.lineShown = true;
+                this.line.owner = this;
+                this.schema.putNode(this.line);
+                if (this.selected()) {
+                    this.line.select();
+                }
+            }
+        }
+
+        hideRelatedNodes() {
+            if (this.lineShown) {
+                Memento.register(this);
+                Memento.register(this.line);
+                this.line.owner = null;
+                this.line.unselect();
+                this.lineShown = false;
+                this.schema.removeNode(this.line);
+            }
+        }
+
+        selectRelatedNodes() {
+            if (this.lineShown) {
+                this.line.select(true);
+            }
+        }
+
+        unselectRelatedNodes() {
+            if (this.lineShown) {
+                this.line.unselect(true);
+            }
+        }
+
+        buildLineSensor() {
+            if (!this.lineSensor) {
+                console.log('add');
+                this.lineSensor =
+                    new Sensor(this.x, this.y + this.height / 2, ()=> {
+                        if (!this.lineShown) {
+                            this.showRelatedNodes();
+                        }
+                        else {
+                            this.hideRelatedNodes();
+                        }
+                        if (this.selected()) {
+                            this.hideSensors();
+                            this.showSensors();
+                        }
+                        return true;
+                    }, this.lineShown ? upTriangle : downTriangle);
+                this.schema.putAnchors(this.lineSensor);
+            }
+        }
+
+        removeLineSensor() {
+            if (this.lineSensor) {
+                console.log('remove');
+                this.schema.removeAnchors(this.lineSensor);
+                delete this.lineSensor;
+            }
+        }
+
+        _resizeLine() {
+            this.line.move(this.x, this.y+this.height/2);
+        }
+
+        memorizeLine(memento) {
+            memento.lineShown = this.lineShown;
+        }
+
+        revertLine(memento) {
+            this.lineShown = memento.lineShown;
+        }
+
+    };
+
+    class Iconic extends LinedMixin(TitledMixin(Item)) {
+
+        constructor(id, width, height, x, y, defaultTitle) {
             super(id);
             this.x = x;
             this.y = y;
+            this.width = width;
+            this.height = height;
             this.links = [];
             this.icon = this.buildIcon();
-            this.component = new svg.Translation().add(this.icon);
+            this.component = new svg.Translation().add(this.icon.move(0, -FIELD_HEIGHT/2));
             this.component.onClick((event)=>{});
             this.isSelected = false;
+            this.createTitle(defaultTitle)
+                .anchor("center");
+            this._resizeTitle(-60, -1, height/2-FIELD_HEIGHT/2);
+            this.component.add(this.titleComponent());
+            this.buildLine();
         }
 
         location() {
@@ -917,11 +1071,12 @@ exports.UML = function(svg, gui) {
         }
 
         inside(x, y) {
-            return this.x-this.icon.width/2<x && this.x+this.icon.width/2>x &&
-                this.y-this.icon.height/2<y && this.y+this.icon.height/2>y;
+            return this.x-this.width/2<x && this.x+this.width/2>x &&
+                this.y-this.height/2<y && this.y+this.height/2>y;
         }
 
         _draw() {
+            this._drawTitle();
             this.component.move(this.x, this.y);
         }
 
@@ -982,24 +1137,11 @@ exports.UML = function(svg, gui) {
         }
 
         showSensors() {
+            this.buildLineSensor();
         }
 
         hideSensors() {
-        }
-
-        updateRelatedNodes() {
-        }
-
-        showRelatedNodes() {
-        }
-
-        hideRelatedNodes() {
-        }
-
-        selectRelatedNodes() {
-        }
-
-        unselectRelatedNodes() {
+            this.removeLineSensor();
         }
 
         memorize() {
@@ -1008,34 +1150,39 @@ exports.UML = function(svg, gui) {
                 y : this.y,
                 links : Memento.registerArray(this.links)
             };
+            this.memorizeTitle(memento);
+            this.memorizeLine(memento);
             return super.memorize(memento);
         }
 
         revert(memento) {
             super.revert(memento);
             [this.x, this.y] = [memento.x, memento.y];
+            this.revertTitle(memento);
+            this.revertLine(memento);
             Memento.revertArray(memento.links, this.links);
+            this._draw();
         }
 
         adjustHandler(handler) {
             handler.node = this;
-            handler.x = (handler.x - this.x) / this.icon.width;
-            handler.y = (handler.y - this.y) / this.icon.height;
+            handler.x = (handler.x - this.x) / this.width;
+            handler.y = (handler.y - this.y) / this.height;
         }
 
         pointFromHandler(handler) {
             return {
-                x: handler.x * this.icon.width + this.x,
-                y: handler.y * this.icon.height + this.y
+                x: handler.x * this.width + this.x,
+                y: handler.y * this.height + this.y
             }
         }
 
         bounds() {
             return {
-                left: this.x - this.icon.width / 2,
-                top: this.y - this.icon.height / 2,
-                right: this.x + this.icon.width / 2,
-                bottom: this.y + this.icon.height / 2
+                left: this.x - this.width / 2,
+                top: this.y - this.height / 2,
+                right: this.x + this.width / 2,
+                bottom: this.y + this.height / 2
             };
         }
 
@@ -1045,6 +1192,68 @@ exports.UML = function(svg, gui) {
             }
             return false;
         }
+    }
+
+    class Human extends Iconic {
+
+        constructor(id, x, y) {
+            super(id, 50, 120, x, y, "User");
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Circle(15).position(0, -30).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, -15, 0, 15).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, 15, -20, 45).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, 15, 20, 45).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK))
+                .add(new svg.Line(-25, 0, 25, 0).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK));
+        }
+
+    }
+
+    class Controller extends Iconic {
+
+        constructor(id, x, y) {
+            super(id, 90, 110, x, y, "Controller");
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Circle(35).position(0, 0).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, -35, 15, -50).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, -35, 15, -20).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK));
+        }
+
+    }
+
+    class Entity extends Iconic {
+
+        constructor(id, x, y) {
+            super(id, 80, 120, x, y, "Entity");
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Circle(30).position(0, -15).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, 15, 0, 40).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK))
+                .add(new svg.Line(-30, 40, 30, 40).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK));
+        }
+
+    }
+
+    class Interface extends Iconic {
+
+        constructor(id, x, y) {
+            super(id, 100, 100, x, y, "Interface");
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Circle(30).position(15, 0).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK))
+                .add(new svg.Line(-15, 0, -40, 0).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK))
+                .add(new svg.Line(-40, -30, -40, 30).color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK));
+        }
+
     }
 
     const LINE_SENSIVITY = 2;
@@ -1193,7 +1402,7 @@ exports.UML = function(svg, gui) {
 
         showAnchors() {
             if (!this.selected()) {
-                this.anchors.bottom = new Anchor(this.x, this.y + this.height, (x, y)=> {
+                let constrain = (x, y)=> {
                     let dheight = y - this.y;
                     if (dheight<this.minimalHeight()) {
                         dheight = this.minimalHeight();
@@ -1201,7 +1410,12 @@ exports.UML = function(svg, gui) {
                     }
                     this.dimension(dheight);
                     return {x:this.x, y};
-                });
+                };
+                this.anchors.bottom = new Anchor(this.x, this.y + this.height, constrain,
+                    (x, y)=>{
+                        let pt = constrain(x, y);
+                        this.anchors.bottom.move(pt.x, pt.y);
+                    });
                 this.schema.putAnchors(this.anchors.bottom);
             }
         }
@@ -1287,7 +1501,7 @@ exports.UML = function(svg, gui) {
     const SENSOR_MARGIN = 20;
     const DEFAULT_LINE_HEIGHT = 100;
 
-    class ObjectOrientedNode extends Node {
+    class ObjectOrientedNode extends LinedMixin(TitledMixin(Node)) {
 
         constructor(id, width, height, x, y, defaultTitle, defaultContent) {
             super(id, width, height, x, y);
@@ -1297,18 +1511,7 @@ exports.UML = function(svg, gui) {
                 .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
             this.bodyBackground = new svg.Rect(10, 10)
                 .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
-            this._title = defaultTitle;
-            this.titleText = new gui.TextField(0, 0, 10, 10,
-                this._title)
-                .font("arial", 16)
-                .color([svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE]);
-            this.titleText.editColor([svg.LIGHT_GREY, 2, svg.LIGHT_GREY]);
-            this.titleText.onInput((oldMessage, message, validity)=>{
-                Memento.register(this);
-                this._title = message;
-            }).onBlur(()=>{
-                Memento.begin();
-            });
+            this.createTitle(defaultTitle);
             this._content = defaultContent;
             this.contentText = new gui.TextArea(0, 0, 10, 10,
                 this._content)
@@ -1326,10 +1529,10 @@ exports.UML = function(svg, gui) {
             this.component
                 .add(this.titleBackground)
                 .add(this.bodySupport)
-                .add(this.titleText.component)
+                .add(this.titleComponent())
                 .add(this.contentTextSupport);
             this.status = "opened";
-            this.line = new Line(id, DEFAULT_LINE_HEIGHT, this.x, this.y+this.height/2);
+            this.buildLine();
             this._resizeContent();
             this._draw();
         }
@@ -1382,8 +1585,7 @@ exports.UML = function(svg, gui) {
             if (this.status==="opened") {
                 this.titleBackground.dimension(this.width, TITLE_HEIGHT).position(0, -this.height / 2 + TITLE_HEIGHT / 2);
                 this.bodyBackground.dimension(this.width, this.height - TITLE_HEIGHT).position(0, TITLE_HEIGHT / 2);
-                this.titleText.dimension(this.width - FIELD_MARGIN * 2 -SENSOR_MARGIN, FIELD_HEIGHT)
-                    .position(-11, -this.height / 2 + TITLE_HEIGHT / 2);
+                this._resizeTitle(SENSOR_MARGIN, -11, -this.height / 2 + TITLE_HEIGHT / 2);
                 this.contentText.dimension(this.width - FIELD_MARGIN * 2, this.height - TITLE_HEIGHT - FIELD_MARGIN * 2)
                     .position(-1, TITLE_HEIGHT / 2);
                 if (!this.bodyBackground.parent) {
@@ -1393,56 +1595,13 @@ exports.UML = function(svg, gui) {
             }
             else {
                 this.titleBackground.dimension(this.width, this.height).position(0, 0);
-                this.titleText.dimension(this.width - FIELD_MARGIN * 2, FIELD_HEIGHT)
-                    .position(-1, 0);
+                this._resizeTitle();
                 if (this.bodyBackground.parent) {
                     this.bodySupport.remove(this.bodyBackground);
                     this.contentTextSupport.remove(this.contentText.component);
                 }
             }
-            this.line.move(this.x, this.y+this.height/2);
-        }
-
-        updateRelatedNodes() {
-            this.line.move(this.x, this.y + this.height / 2);
-        }
-
-        showRelatedNodes() {
-            if (!this.lineShown) {
-                Memento.register(this);
-                Memento.register(this.line);
-                this.lineShown = true;
-                this.line.owner = this;
-                this.schema.putNode(this.line);
-                if (this.selected()) {
-                    this.line.select();
-                }
-            }
-        }
-
-        hideRelatedNodes() {
-            if (this.lineShown) {
-                Memento.register(this);
-                Memento.register(this.line);
-                this.line.owner = null;
-                this.line.unselect();
-                this.lineShown = false;
-                this.schema.removeNode(this.line);
-            }
-        }
-
-        selectRelatedNodes() {
-            super.selectRelatedNodes();
-            if (this.lineShown) {
-                this.line.select(true);
-            }
-        }
-
-        unselectRelatedNodes() {
-            super.unselectRelatedNodes();
-            if (this.lineShown) {
-                this.line.unselect(true);
-            }
+            this._resizeLine();
         }
 
         _draw() {
@@ -1450,39 +1609,28 @@ exports.UML = function(svg, gui) {
             this.background.dimension(this.width, this.height).position(0, 0);
             this.titleBackground._draw();
             this.bodyBackground._draw();
-            this.titleText._draw();
+            this._drawTitle();
             this.contentText._draw();
         }
 
         memorize() {
             let memento = super.memorize();
-            memento.title = this._title;
+            this.memorizeTitle(memento);
+            this.memorizeLine(memento);
             memento.content = this._content;
             memento.status = this.status;
-            memento.lineShown  = this.lineShown;
             return memento;
         }
 
         revert(memento) {
             super.revert(memento);
-            this._title = memento.title;
-            this.titleText.message(this._title);
+            this.revertTitle(memento);
+            this.revertLine(memento)
             this._content = memento.content;
             this.contentText.message(this._content);
             this.status = memento.status;
-            this.lineShown = memento.lineShown;
             this._resizeContent();
             this._draw();
-        }
-
-        title(_title) {
-            if (_title) {
-                this._title = _title;
-                this.titleText.message(this._title);
-                this._draw();
-                return this;
-            }
-            return this._title;
         }
 
         content(_content) {
@@ -1506,31 +1654,23 @@ exports.UML = function(svg, gui) {
                         else {
                             this.hideBody();
                         }
-                        this.hideSensors();
-                        this.showSensors();
+                        if (this.selected()) {
+                            this.hideSensors();
+                            this.showSensors();
+                        }
                         return true;
                     }, this.status==="closed" ? downTriangle : upTriangle);
-                this.lineSensor =
-                        new Sensor(this.x, this.y + this.height / 2, ()=> {
-                        if (!this.lineShown) {
-                            this.showRelatedNodes();
-                        }
-                        else {
-                            this.hideRelatedNodes();
-                        }
-                        this.hideSensors();
-                        this.showSensors();
-                        return true;
-                    }, this.lineShown ? upTriangle : downTriangle);
-                this.schema.putAnchors(this.statusSensor, this.lineSensor);
+                this.schema.putAnchors(this.statusSensor);
             }
+            this.buildLineSensor();
         }
 
         hideSensors() {
             if (this.statusSensor) {
-                this.schema.removeAnchors(this.statusSensor, this.lineSensor);
+                this.schema.removeAnchors(this.statusSensor);
                 delete this.statusSensor;
             }
+            this.removeLineSensor();
         }
 
         updateSensors() {
@@ -2656,17 +2796,6 @@ exports.UML = function(svg, gui) {
 
     }
 
-    /*
-    class Taratata extends MessageLink {
-
-        constructor(id, node, ...args) {
-            super(id, node, arrow,...args);
-            //this.line.dash("8,5,8,5");
-        }
-
-    }
-*/
-
     class Floating extends Item {
 
         constructor(link, ratio, distance, width, message) {
@@ -2782,6 +2911,11 @@ exports.UML = function(svg, gui) {
     const RESPONSE_LABEL = "response";
     const ASYNC_LABEL = "async";
 
+    const HUMAN = "human";
+    const CONTROLLER = "controller";
+    const ENTITY = "entity";
+    const INTERFACE = "interface";
+
     class SchemaBuilder {
 
         spec(schema) {
@@ -2805,6 +2939,13 @@ exports.UML = function(svg, gui) {
                     nd.status=object.status;
                     nd.lineShown=object.lineShown;
                     nd.lineHeight=object.line.height;
+                    return nd;
+                })),
+                icons : this.processArray(schema.nodes.filter(node=>node instanceof Iconic).map(icon=>{
+                    let nd = this.iconSpec(icon);
+                    nd.title=icon.title();
+                    nd.lineShown=icon.lineShown;
+                    nd.lineHeight=icon.line.height;
                     return nd;
                 })),
                 comments : this.processArray(schema.nodes.filter(node=>node instanceof Comment).map(object=>{
@@ -2865,6 +3006,31 @@ exports.UML = function(svg, gui) {
             };
         }
 
+        iconSpec(node) {
+            function type(node) {
+                if (node instanceof Human) {
+                    return HUMAN;
+                }
+                if (node instanceof Controller) {
+                    return CONTROLLER;
+                }
+                if (node instanceof Entity) {
+                    return ENTITY;
+                }
+                if (node instanceof Interface) {
+                    return INTERFACE;
+                }
+                return "undefined";
+            }
+
+            return {
+                id:node.id,
+                x:node.x,
+                y:node.y,
+                type:type(node),
+            };
+        }
+
         linkSpec(link) {
             return {
                 id:link.id,
@@ -2909,6 +3075,16 @@ exports.UML = function(svg, gui) {
                 }
                 object._draw();
             });
+            desc.icons && desc.icons.forEach(descIcon=>{
+                let icon = new (this.iconType(descIcon.type))(descIcon.id, descIcon.x, descIcon.y)
+                    .title(descIcon.title);
+                schema.putNode(icon);
+                if (descIcon.lineShown) {
+                    icon.showRelatedNodes();
+                    icon.line.dimension(descIcon.lineHeight);
+                }
+                icon._draw();
+            });
             desc.comments && desc.comments.forEach(descComment=>{
                 let comment = new Comment(descComment.id, descComment.width, descComment.height,descComment.x, descComment.y)
                     .content(descComment.content);
@@ -2949,6 +3125,24 @@ exports.UML = function(svg, gui) {
                 link._draw();
             });
             return schema;
+        }
+
+        iconType(type) {
+            if (type===HUMAN) {
+                return Human;
+            }
+            else if (type===CONTROLLER) {
+                return Controller;
+            }
+            else if (type===ENTITY) {
+                return Entity;
+            }
+            else if (type===INTERFACE) {
+                return Interface;
+            }
+            else {
+                throw "Unknown message type : "+type;
+            }
         }
 
         messageType(type) {
@@ -3085,6 +3279,10 @@ exports.UML = function(svg, gui) {
         Clazz : Clazz,
         Object : Object,
         Comment : Comment,
+        Human : Human,
+        Controller : Controller,
+        Entity : Entity,
+        Interface : Interface,
         Relationship : Relationship,
         Inherit : Inherit,
         Realization : Realization,

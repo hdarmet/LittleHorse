@@ -214,14 +214,18 @@ exports.modelEditor = function(svg) {
                     currentMode = "NODE";
                     schema.nodeMode();
                 }
-                this.pane.palette.clickAction = null;
-                this.pane.palette.mouseDownAction = (schema, x, y)=> {
+                this.setAction((schema, x, y)=> {
                     let node = this.buildNode(x, y);
                     schema.putNode(node);
                     node.select(true);
                     node._draw();
-                };
+                });
             });
+        }
+
+        setAction(action) {
+            this.pane.palette.clickAction = ()=>{};
+            this.pane.palette.mouseDownAction = action;
         }
 
         buildSelectedBorder(clazz) {
@@ -281,7 +285,7 @@ exports.modelEditor = function(svg) {
                     return true;
                 },
                 (anchor, x, y)=> {
-                    anchor.move(x, y);
+                    anchor.finalize(x, y);
                     return true;
                 },
                 (anchor)=> {
@@ -428,6 +432,106 @@ exports.modelEditor = function(svg) {
                     .line(20, -20).line(20, -40)
                     .color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
                 .add(new svg.Text("comment").font("arial", 16).color(svg.ALMOST_BLACK).position(0, 0))
+        }
+
+    }
+
+    class IconicSupport extends NodeSupport {
+
+        constructor(pane, NodeConstructor) {
+            super(pane);
+            this.nodeConstructor = NodeConstructor;
+            this.makeNodesDraggable(this.nodeConstructor);
+        }
+
+        setAction(action) {
+            this.pane.palette.clickAction = action;
+            this.pane.palette.mouseDownAction = ()=>{};
+        }
+
+        buildNode(x, y) {
+            return new this.nodeConstructor(schema.idgen++, x, y);
+        }
+
+        makeNodesDraggable(NodeConstructor) {
+            let superSelect = NodeConstructor.prototype.select;
+            NodeConstructor.prototype.select = function() {
+                superSelect.call(this);
+                if (this.line.anchors.bottom) {
+                    NodeSupport.prototype.enableAnchorDnD(this.line.anchors.bottom);
+                }
+            };
+            let superUnselect = NodeConstructor.prototype.unselect;
+            NodeConstructor.prototype.unselect = function() {
+                superUnselect.call(this);
+                this.line.anchors.forEach((anchor, field)=>NodeSupport.prototype.disableAnchorDnD(anchor));
+            };
+
+        }
+
+    }
+
+    class HumanSupport extends IconicSupport {
+
+        constructor(pane) {
+            super(pane, Uml.Human);
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Circle(10).position(0, -25).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, -15, 0, 15).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, 15, -20, 35).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, 15, 20, 35).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
+                .add(new svg.Line(-25, 0, 25, 0).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK));
+        }
+
+    }
+
+    class ControllerSupport extends IconicSupport {
+
+        constructor(pane) {
+            super(pane, Uml.Controller);
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Circle(30).position(0, 5).opacity(0.1))
+                .add(new svg.Circle(30).position(0, 5).color([], 4, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, -25, 10, -35).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, -25, 10, -15).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK));
+        }
+
+    }
+
+    class EntitySupport extends IconicSupport {
+
+        constructor(pane) {
+            super(pane, Uml.Entity);
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Circle(25).position(0, -5).opacity(0.1))
+                .add(new svg.Circle(25).position(0, -5).color([], 4, svg.ALMOST_BLACK))
+                .add(new svg.Line(0, 20, 0, 35).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
+                .add(new svg.Line(-25, 35, 25, 35).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK));
+        }
+
+    }
+
+    class InterfaceSupport extends IconicSupport {
+
+        constructor(pane) {
+            super(pane, Uml.Interface);
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Circle(25).position(5, 0).opacity(0.1))
+                .add(new svg.Circle(25).position(5, 0).color([], 4, svg.ALMOST_BLACK))
+                .add(new svg.Line(-20, 0, -35, 0).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
+                .add(new svg.Line(-35, -25, -35, 25).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK));
         }
 
     }
@@ -804,6 +908,10 @@ exports.modelEditor = function(svg) {
     new ObjectSupport(paneItems);
     new ObjectWithBodyHiddenSupport(paneItems);
     new CommentSupport(paneItems);
+    new HumanSupport(paneItems);
+    new ControllerSupport(paneItems);
+    new EntitySupport(paneItems);
+    new InterfaceSupport(paneItems);
     new RelationshipSupport(paneItems);
     new InheritSupport(paneItems);
     new RealizationSupport(paneItems);

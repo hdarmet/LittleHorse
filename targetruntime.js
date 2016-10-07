@@ -30,7 +30,8 @@ exports.targetRuntime = function() {
         },
         attr(component, name, value) {
             try {
-                if (value && value.startsWith && value.startsWith("translate(NaN")) {
+                //if (value && (""+value).startsWith("NaN")) {
+                if (value!==value) {
                     console.log("bug");
                 }
                 if (value !== undefined) {
