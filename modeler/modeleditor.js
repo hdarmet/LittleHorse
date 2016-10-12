@@ -17,9 +17,9 @@ exports.modelEditor = function(svg) {
 
     var fileManager = FileManager(svg, gui);
 
-    var generator = Generator(svg, gui, "/model/edit");
-
     var Uml = UML(svg, gui);
+
+    var generator = Generator(svg, gui, "/model/edit");
 
     let currentMode;
 
@@ -134,12 +134,12 @@ exports.modelEditor = function(svg) {
 
     }
 
-    class GenerateJPASupport extends SimpleSupport {
+    class GenerateSupport extends SimpleSupport {
 
-        constructor(pane) {
+        constructor(pane, generator) {
             super(pane);
             this.action(()=>{
-                let gen = new generator.GeneratorJPA();
+                let gen = new generator();
                 schema.clearInfos();
                 gen.generate(
                     new Uml.SchemaBuilder().spec(schema),
@@ -159,7 +159,6 @@ exports.modelEditor = function(svg) {
                             schema.putInfo(info);
                             Uml.installDnD(info, frame,
                                 (info, x, y)=> {
-                                    //info.move(x, y);
                                     return {x, y};
                                 },
                                 (info)=> {
@@ -178,14 +177,35 @@ exports.modelEditor = function(svg) {
                         Memento.begin();
                     }
                 );
-               console.log("generate JPA");
             });
+        }
+
+    }
+
+    class GenerateJPASupport extends GenerateSupport {
+
+        constructor(pane) {
+            super(pane, generator.GeneratorJPA);
         }
 
         buildIcon() {
             return new svg.Translation()
                 .add(new svg.Rect(80, 80).color(svg.HORIZON, 4, svg.BLUE))
-                .add(new svg.Text("JPA").position(0,10).font("arial", 32).color(svg.BLUE))
+                .add(new svg.Text("JPA").position(0,10).font("arial", 32).color(svg.BLUE));
+        }
+
+    }
+
+    class GenerateDAOSupport extends GenerateSupport {
+
+        constructor(pane) {
+            super(pane, generator.GeneratorDAO);
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Rect(80, 80).color(svg.LIGHT_GREEN, 4, svg.DARK_GREEN))
+                .add(new svg.Text("DAO").position(0,10).font("arial", 32).color(svg.DARK_GREEN));
         }
 
     }
@@ -336,7 +356,7 @@ exports.modelEditor = function(svg) {
         }
 
         buildNode(x, y) {
-            return new Uml.Clazz(schema.idgen++, 70, 70, x-35, y-35);
+            return new Uml.Clazz(schema.idgen++, 70, 70, x-35, y-35, "ClassName", "field : type");
         }
 
         buildIcon() {
@@ -355,7 +375,7 @@ exports.modelEditor = function(svg) {
         }
 
         buildNode(x, y) {
-            let clazz = new Uml.Clazz(schema.idgen++, 70, 70, x-35, y-35);
+            let clazz = new Uml.Clazz(schema.idgen++, 70, 70, x-35, y-35, "ClassName", "");
             clazz.hideBody();
             return clazz;
         }
@@ -363,7 +383,7 @@ exports.modelEditor = function(svg) {
         buildIcon() {
             return new svg.Translation()
                 .add(new svg.Rect(80, 80).position(0, 0).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
-                .add(new svg.Text("class").font("arial", 16).color(svg.ALMOST_BLACK).position(0, 0));
+                .add(new svg.Text("class").font("arial", 16).color(svg.ALMOST_BLACK).position(0, 4));
         }
 
     }
@@ -376,7 +396,7 @@ exports.modelEditor = function(svg) {
         }
 
         buildNode(x, y) {
-            return new Uml.Object(schema.idgen++, 70, 70, x-35, y-35);
+            return new Uml.Object(schema.idgen++, 70, 70, x-35, y-35, "object : Type", "property = value");
         }
 
         buildIcon() {
@@ -396,7 +416,7 @@ exports.modelEditor = function(svg) {
         }
 
         buildNode(x, y) {
-            let object = new Uml.Object(schema.idgen++, 70, 70, x-35, y-35);
+            let object = new Uml.Object(schema.idgen++, 70, 70, x-35, y-35, "object : Type", "");
             object.hideBody();
             return object;
         }
@@ -405,7 +425,7 @@ exports.modelEditor = function(svg) {
             return new svg.Translation()
                 .add(new svg.Rect(80, 80).position(0, 0).color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
                 .add(new svg.Text("object").font("arial", 16).color(svg.ALMOST_BLACK)
-                    .position(0, 0).decoration("underline"));
+                    .position(0, 4).decoration("underline"));
         }
 
     }
@@ -431,7 +451,47 @@ exports.modelEditor = function(svg) {
                 .add(new svg.Path(20, -40).line(40, -20)
                     .line(20, -20).line(20, -40)
                     .color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
-                .add(new svg.Text("comment").font("arial", 16).color(svg.ALMOST_BLACK).position(0, 0))
+                .add(new svg.Text("comment").font("arial", 16).color(svg.ALMOST_BLACK).position(0, 4))
+        }
+
+    }
+
+    class UseCaseSupport extends NodeSupport {
+
+        constructor(pane) {
+            super(pane);
+            this.makeNodesDraggable(Uml.UseCase);
+        }
+
+        buildNode(x, y) {
+            return new Uml.UseCase(schema.idgen++, 100, 60, x-50, y-30, "Use Case");
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Ellipse(40, 25)
+                    .color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
+                .add(new svg.Text("use case").font("arial", 16).color(svg.ALMOST_BLACK).position(0, 4))
+        }
+
+    }
+
+    class AbstractUseCaseSupport extends NodeSupport {
+
+        constructor(pane) {
+            super(pane);
+            this.makeNodesDraggable(Uml.AbstractUseCase);
+        }
+
+        buildNode(x, y) {
+            return new Uml.AbstractUseCase(schema.idgen++, 100, 60, x-50, y-30, "Use Case");
+        }
+
+        buildIcon() {
+            return new svg.Translation()
+                .add(new svg.Ellipse(40, 25).dash("3,2,3,2")
+                    .color(svg.ALMOST_WHITE, 4, svg.ALMOST_BLACK))
+                .add(new svg.Text("use case").font("arial", 16).color(svg.ALMOST_BLACK).position(0, 4))
         }
 
     }
@@ -889,6 +949,7 @@ exports.modelEditor = function(svg) {
     paneSaveLoad.handlers(saveSchema, loadSchema);
 
     var paneItems = new gui.Pane(PANE_COLORS, "Items", 120);
+    var paneGenerators = new gui.Pane(PANE_COLORS, "Generators", 120);
 
     let SCHEMA_COLOR = [230, 230, 230];
 
@@ -899,7 +960,8 @@ exports.modelEditor = function(svg) {
         .key(8, deleteSelected);
     var palette = new gui.Palette(400, 1000)
         .addPane(paneSaveLoad)
-        .addPane(paneItems);
+        .addPane(paneItems)
+        .addPane(paneGenerators);
     drawing.add(palette.component);
 
     new SelectSupport(paneItems);
@@ -908,6 +970,8 @@ exports.modelEditor = function(svg) {
     new ObjectSupport(paneItems);
     new ObjectWithBodyHiddenSupport(paneItems);
     new CommentSupport(paneItems);
+    new UseCaseSupport(paneItems);
+    new AbstractUseCaseSupport(paneItems);
     new HumanSupport(paneItems);
     new ControllerSupport(paneItems);
     new EntitySupport(paneItems);
@@ -919,7 +983,9 @@ exports.modelEditor = function(svg) {
     new RequestSupport(paneItems);
     new AsyncRequestSupport(paneItems);
     new ResponseSupport(paneItems);
-    new GenerateJPASupport(paneItems);
+
+    new GenerateJPASupport(paneGenerators);
+    new GenerateDAOSupport(paneGenerators);
 
     resizeAll();
 

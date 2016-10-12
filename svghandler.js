@@ -1383,6 +1383,12 @@ exports.SVG = function(runtime) {
             return this;
         }
 
+        dash(dashPattern) {
+            this.dashPattern = dashPattern;
+            svgr.attr(this.component, "stroke-dasharray", this.dashPattern);
+            return this;
+        }
+
         opacity(opacity) {
             this._opacity = opacity;
             svgr.attr(this.component, "opacity", opacity);
@@ -2577,20 +2583,11 @@ exports.SVG = function(runtime) {
             return this;
         }
 
-        dash(dashPattern) {
-            this.dashPattern = dashPattern;
-            this._draw();
-            return this;
-        }
-
         _draw() {
             svgr.attr(this.component, "x1", this.x1);
             svgr.attr(this.component, "y1", this.y1);
             svgr.attr(this.component, "x2", this.x2);
             svgr.attr(this.component, "y2", this.y2);
-            if (this.dashPattern) {
-                svgr.attr(this.component, "stroke-dasharray", this.dashPattern);
-            }
         }
 
         prepareAnimator(animator) {
@@ -2667,12 +2664,6 @@ exports.SVG = function(runtime) {
             }
         }
 
-        dash(dashPattern) {
-            this.dashPattern = dashPattern;
-            this._draw();
-            return this;
-        }
-
         reset() {
             this.drawing = "";
             this.points = [];
@@ -2710,9 +2701,6 @@ exports.SVG = function(runtime) {
         }
 
         _draw() {
-            if (this.dashPattern) {
-                svgr.attr(this.component, "stroke-dasharray", this.dashPattern);
-            }
             svgr.attr(this.component, "d", this.drawing);
         }
 

@@ -1310,7 +1310,7 @@ exports.Gui = function(svg, param) {
             this.title = new Label(0, 0, "Confirm").anchor('middle').font("arial", 40);
             this.fileNameLabel = new Label(0, 0, message);
             this.add(this.title.position(0, -100));
-            this.add(this.fileNameLabel.anchor("middle").position(0, 0));
+            this.add(this.fileNameLabel.anchor("middle").position(0, -20).font("arial", 32, 40));
             this.whenOk(function() {
                 this.close();
                 whenOk && whenOk();
@@ -1359,10 +1359,10 @@ exports.Gui = function(svg, param) {
             return this;
         }
 
-        font(fontName, fontSize) {
+        font(fontName, fontSize, lineSpacing) {
             this.fontName = fontName;
             this.fontSize = fontSize;
-            this.text.font(fontName, fontSize);
+            this.text.font(fontName, fontSize, lineSpacing);
             return this;
         }
 

@@ -235,6 +235,241 @@ exports.UML = function(svg, gui) {
     const ANCHOR_SIZE = 10;
     const NOP = function () {};
 
+    let BoundedMixin = superClass => class extends superClass {
+        constructor(...args) {
+            super(...args);
+        }
+
+        bounds(origin) {
+            origin = origin || this;
+            return {
+                left: origin.x - this.width / 2,
+                top: origin.y - this.height / 2,
+                right: origin.x + this.width / 2,
+                bottom: origin.y + this.height / 2
+            };
+        }
+
+        polygon(origin) {
+            let b = this.bounds(origin ? origin : this);
+            return [
+                {x: b.left, y: b.top},
+                {x: b.left, y: b.bottom},
+                {x: b.right, y: b.bottom},
+                {x: b.right, y: b.top}
+            ];
+        }
+
+    };
+
+    let TitledMixin = superClass => class extends superClass {
+        constructor(...args) {
+            super(...args);
+        }
+
+        createTitle(defaultTitle) {
+            this._title = defaultTitle;
+            this.titleText = new gui.TextField(0, 0, 10, 10, this._title)
+                .font("arial", 16)
+                .color([svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE]);
+            this.titleText.editColor([svg.LIGHT_GREY, 2, svg.LIGHT_GREY]);
+            this.titleText.onInput((oldMessage, message, validity)=>{
+                Memento.register(this);
+                this._title = message;
+            }).onBlur(()=>{
+                Memento.begin();
+            });
+            return this.titleText;
+        }
+
+        title(_title) {
+            if (_title!==undefined) {
+                this._title = _title;
+                this.titleText.message(this._title);
+                this._draw();
+                return this;
+            }
+            return this._title;
+        }
+
+        _resizeTitle(width, x=-1, y=0) {
+            this.titleText.dimension((width || this.width) - FIELD_MARGIN * 2, FIELD_HEIGHT)
+                .position(x, y);
+        }
+
+        memorizeTitle(memento) {
+            memento.title = this._title;
+        }
+
+        revertTitle(memento) {
+            this._title = memento.title;
+            this.titleText.message(this._title);
+        }
+
+        _drawTitle() {
+            this.titleText._draw();
+        }
+
+        titleComponent() {
+            return this.titleText.component;
+        }
+
+    };
+
+    let ContentedMixin = superClass => class extends superClass {
+        constructor(...args) {
+            super(...args);
+        }
+
+        createContent(defaultContent) {
+            this._content = defaultContent;
+            this.contentText = new gui.TextArea(0, 0, 10, 10,
+                this._content)
+                .font("arial", 16, 19)
+                .color([svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE]);
+            this.contentText.editColor([svg.LIGHT_GREY, 2, svg.LIGHT_GREY]);
+            this.contentText.onInput((oldMessage, message, validity)=>{
+                Memento.register(this);
+                this._content = message;
+            }).onBlur(()=>{
+                Memento.begin();
+            });
+            return this.contentText;
+        }
+
+        definition() {
+            return this.contentText.textMessage.split("\n");
+        }
+
+        content(_content) {
+            if (_content!==undefined) {
+                this._content = _content;
+                this.contentText.message(this._content);
+                this._draw();
+                return this;
+            }
+            return this._content;
+        }
+
+        _resizeContent(width, height, x=-1, y=0) {
+            this.contentText.dimension(
+                    (width || this.width) - FIELD_MARGIN * 2,
+                    (height || this.height) - FIELD_MARGIN * 2)
+                .position(x, y);
+        }
+
+        memorizeContent(memento) {
+            memento.content = this._content;
+        }
+
+        revertContent(memento) {
+            this._content = memento.content;
+            this.contentText.message(this._content);
+        }
+
+        _drawContent() {
+            this.contentText._draw();
+        }
+
+        contentComponent() {
+            return this.contentText.component;
+        }
+
+    };
+
+    let LinedMixin = superClass => class extends superClass {
+
+        constructor(...args) {
+            super(...args);
+        }
+
+        buildLine() {
+            this.line = new Line(this.id, DEFAULT_LINE_HEIGHT, this.x, this.y+this.height/2);
+        }
+
+        updateRelatedNodes() {
+            this.line.move(this.x, this.y + this.height / 2);
+        }
+
+        showRelatedNodes() {
+            if (!this.lineShown) {
+                Memento.register(this);
+                Memento.register(this.line);
+                this.lineShown = true;
+                this.line.owner = this;
+                this.schema.putNode(this.line);
+                if (this.selected()) {
+                    this.line.select();
+                }
+            }
+        }
+
+        hideRelatedNodes() {
+            if (this.lineShown) {
+                Memento.register(this);
+                Memento.register(this.line);
+                this.line.owner = null;
+                this.line.unselect();
+                this.lineShown = false;
+                this.schema.removeNode(this.line);
+            }
+        }
+
+        selectRelatedNodes() {
+            if (this.lineShown) {
+                this.line.select(true);
+            }
+        }
+
+        unselectRelatedNodes() {
+            if (this.lineShown) {
+                this.line.unselect(true);
+            }
+        }
+
+        buildLineSensor() {
+            if (!this.lineSensor) {
+                console.log('add');
+                this.lineSensor =
+                    new Sensor(this.x, this.y + this.height / 2, ()=> {
+                        if (!this.lineShown) {
+                            this.showRelatedNodes();
+                        }
+                        else {
+                            this.hideRelatedNodes();
+                        }
+                        if (this.selected()) {
+                            this.hideSensors();
+                            this.showSensors();
+                        }
+                        return true;
+                    }, this.lineShown ? upTriangle : downTriangle);
+                this.schema.putAnchors(this.lineSensor);
+            }
+        }
+
+        removeLineSensor() {
+            if (this.lineSensor) {
+                console.log('remove');
+                this.schema.removeAnchors(this.lineSensor);
+                delete this.lineSensor;
+            }
+        }
+
+        _resizeLine() {
+            this.line.move(this.x, this.y+this.height/2);
+        }
+
+        memorizeLine(memento) {
+            memento.lineShown = this.lineShown;
+        }
+
+        revertLine(memento) {
+            this.lineShown = memento.lineShown;
+        }
+
+    };
+
     class Item {
 
         constructor(id) {
@@ -299,7 +534,7 @@ exports.UML = function(svg, gui) {
     const INFO_MARGIN = 10;
     const DELTA_INFO = 40;
 
-    class Info extends Item {
+    class Info extends BoundedMixin(Item) {
 
         constructor(item, x, y, message, colors) {
             super(null);
@@ -401,20 +636,8 @@ exports.UML = function(svg, gui) {
             let end = this.item.location();
             let gEnd = this.schema.component.globalPoint(end);
             let fEnd = this.component.localPoint(gEnd);
-            let s1 = svg.intersectLinePolygon(
-                start, fEnd,
-                [{x:-this.width/2, y:-this.height/2},
-                {x:this.width/2, y:-this.height/2},
-                {x:this.width/2, y:this.height/2},
-                {x:-this.width/2, y:this.height/2}]
-            );
-            let s2 = svg.intersectLinePolygon(
-                start, fEnd,
-                [{x:fEnd.x-this.item.width/2, y:fEnd.y-this.item.height/2},
-                {x:fEnd.x+this.item.width/2, y:fEnd.y-this.item.height/2},
-                {x:fEnd.x+this.item.width/2, y:fEnd.y+this.item.height/2},
-                {x:fEnd.x-this.item.width/2, y:fEnd.y+this.item.height/2}]
-            );
+            let s1 = svg.intersectLinePolygon(start, fEnd, this.polygon({x:0, y:0}));
+            let s2 = svg.intersectLinePolygon(start, fEnd, this.item.polygon(fEnd));
             this.line.opacity(0);
             if (!s1.empty() && !s2.empty()) {
                 let pt = this.component.globalPoint(s2[0]);
@@ -587,7 +810,7 @@ exports.UML = function(svg, gui) {
 
     const MINIMAL_SIZE = 70;
 
-    class Node extends Item {
+    class Node extends BoundedMixin(Item) {
 
         constructor(id, width, height, x, y) {
             super(id);
@@ -851,15 +1074,6 @@ exports.UML = function(svg, gui) {
             }
         }
 
-        bounds() {
-            return {
-                left: this.x - this.width / 2,
-                top: this.y - this.height / 2,
-                right: this.x + this.width / 2,
-                bottom: this.y + this.height / 2
-            };
-        }
-
         accept(NodeType) {
             if (NodeType===Dependancy) {
                 return true;
@@ -868,154 +1082,7 @@ exports.UML = function(svg, gui) {
         }
     }
 
-    let TitledMixin = superClass => class extends superClass {
-        constructor(...args) {
-            super(...args);
-        }
-
-        createTitle(defaultTitle) {
-            this._title = defaultTitle;
-            this.titleText = new gui.TextField(0, 0, 10, 10, this._title)
-                .font("arial", 16)
-                .color([svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE]);
-            this.titleText.editColor([svg.LIGHT_GREY, 2, svg.LIGHT_GREY]);
-            this.titleText.onInput((oldMessage, message, validity)=>{
-                Memento.register(this);
-                this._title = message;
-            }).onBlur(()=>{
-                Memento.begin();
-            });
-            return this.titleText;
-        }
-
-        title(_title) {
-            if (_title) {
-                this._title = _title;
-                this.titleText.message(this._title);
-                this._draw();
-                return this;
-            }
-            return this._title;
-        }
-
-        _resizeTitle(widthMargin=0, x=-1, y=0) {
-            this.titleText.dimension(this.width - FIELD_MARGIN * 2 -widthMargin, FIELD_HEIGHT)
-                .position(x, y);
-        }
-
-        memorizeTitle(memento) {
-            memento.title = this._title;
-        }
-
-        revertTitle(memento) {
-            this._title = memento.title;
-            this.titleText.message(this._title);
-        }
-
-        _drawTitle() {
-            this.titleText._draw();
-        }
-
-        titleComponent() {
-            return this.titleText.component;
-        }
-
-    };
-
-    let LinedMixin = superClass => class extends superClass {
-
-        constructor(...args) {
-            super(...args);
-        }
-
-        buildLine() {
-            this.line = new Line(this.id, DEFAULT_LINE_HEIGHT, this.x, this.y+this.height/2);
-        }
-
-        updateRelatedNodes() {
-            this.line.move(this.x, this.y + this.height / 2);
-        }
-
-        showRelatedNodes() {
-            if (!this.lineShown) {
-                Memento.register(this);
-                Memento.register(this.line);
-                this.lineShown = true;
-                this.line.owner = this;
-                this.schema.putNode(this.line);
-                if (this.selected()) {
-                    this.line.select();
-                }
-            }
-        }
-
-        hideRelatedNodes() {
-            if (this.lineShown) {
-                Memento.register(this);
-                Memento.register(this.line);
-                this.line.owner = null;
-                this.line.unselect();
-                this.lineShown = false;
-                this.schema.removeNode(this.line);
-            }
-        }
-
-        selectRelatedNodes() {
-            if (this.lineShown) {
-                this.line.select(true);
-            }
-        }
-
-        unselectRelatedNodes() {
-            if (this.lineShown) {
-                this.line.unselect(true);
-            }
-        }
-
-        buildLineSensor() {
-            if (!this.lineSensor) {
-                console.log('add');
-                this.lineSensor =
-                    new Sensor(this.x, this.y + this.height / 2, ()=> {
-                        if (!this.lineShown) {
-                            this.showRelatedNodes();
-                        }
-                        else {
-                            this.hideRelatedNodes();
-                        }
-                        if (this.selected()) {
-                            this.hideSensors();
-                            this.showSensors();
-                        }
-                        return true;
-                    }, this.lineShown ? upTriangle : downTriangle);
-                this.schema.putAnchors(this.lineSensor);
-            }
-        }
-
-        removeLineSensor() {
-            if (this.lineSensor) {
-                console.log('remove');
-                this.schema.removeAnchors(this.lineSensor);
-                delete this.lineSensor;
-            }
-        }
-
-        _resizeLine() {
-            this.line.move(this.x, this.y+this.height/2);
-        }
-
-        memorizeLine(memento) {
-            memento.lineShown = this.lineShown;
-        }
-
-        revertLine(memento) {
-            this.lineShown = memento.lineShown;
-        }
-
-    };
-
-    class Iconic extends LinedMixin(TitledMixin(Item)) {
+    class Iconic extends LinedMixin(TitledMixin(BoundedMixin(Item))) {
 
         constructor(id, width, height, x, y, defaultTitle) {
             super(id);
@@ -1030,7 +1097,7 @@ exports.UML = function(svg, gui) {
             this.isSelected = false;
             this.createTitle(defaultTitle)
                 .anchor("center");
-            this._resizeTitle(-60, -1, height/2-FIELD_HEIGHT/2);
+            this._resizeTitle(this.width+60, -1, height/2-FIELD_HEIGHT/2);
             this.component.add(this.titleComponent());
             this.buildLine();
         }
@@ -1177,15 +1244,6 @@ exports.UML = function(svg, gui) {
             }
         }
 
-        bounds() {
-            return {
-                left: this.x - this.width / 2,
-                top: this.y - this.height / 2,
-                right: this.x + this.width / 2,
-                bottom: this.y + this.height / 2
-            };
-        }
-
         accept(NodeType) {
             if (NodeType===Dependancy || NodeType===Relationship) {
                 return true;
@@ -1258,7 +1316,7 @@ exports.UML = function(svg, gui) {
 
     const LINE_SENSIVITY = 2;
 
-    class Line extends Item {
+    class Line extends BoundedMixin(Item) {
 
         constructor(id, height, x, y) {
             super(id);
@@ -1466,12 +1524,12 @@ exports.UML = function(svg, gui) {
             }
         }
 
-        bounds() {
+        bounds(origin) {
             return {
-                left: this.x - 2,
-                top: this.y,
-                right: this.x + 2,
-                bottom: this.y + this.height
+                left: origin.x - 2,
+                top: origin.y,
+                right: origin.x + 2,
+                bottom: origin.y + this.height
             };
         }
 
@@ -1501,7 +1559,7 @@ exports.UML = function(svg, gui) {
     const SENSOR_MARGIN = 20;
     const DEFAULT_LINE_HEIGHT = 100;
 
-    class ObjectOrientedNode extends LinedMixin(TitledMixin(Node)) {
+    class ObjectOrientedNode extends LinedMixin(TitledMixin(ContentedMixin(Node))) {
 
         constructor(id, width, height, x, y, defaultTitle, defaultContent) {
             super(id, width, height, x, y);
@@ -1512,20 +1570,9 @@ exports.UML = function(svg, gui) {
             this.bodyBackground = new svg.Rect(10, 10)
                 .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
             this.createTitle(defaultTitle);
-            this._content = defaultContent;
-            this.contentText = new gui.TextArea(0, 0, 10, 10,
-                this._content)
-                .font("arial", 16, 19)
-                .color([svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE]);
-            this.contentText.editColor([svg.LIGHT_GREY, 2, svg.LIGHT_GREY]);
-            this.contentText.onInput((oldMessage, message, validity)=>{
-                Memento.register(this);
-                this._content = message;
-            }).onBlur(()=>{
-                Memento.begin();
-            });
+            this.createContent(defaultContent);
             this.bodySupport = new svg.Translation().add(this.bodyBackground);
-            this.contentTextSupport = new svg.Translation().add(this.contentText.component);
+            this.contentTextSupport = new svg.Translation().add(this.contentComponent());
             this.component
                 .add(this.titleBackground)
                 .add(this.bodySupport)
@@ -1533,12 +1580,8 @@ exports.UML = function(svg, gui) {
                 .add(this.contentTextSupport);
             this.status = "opened";
             this.buildLine();
-            this._resizeContent();
+            this._resize();
             this._draw();
-        }
-
-        definition() {
-            return this.contentText.textMessage.split("\n");
         }
 
         minimalHeight() {
@@ -1549,14 +1592,14 @@ exports.UML = function(svg, gui) {
 
         dimension(width, height) {
             super.dimension(width, height);
-            this._resizeContent();
+            this._resize();
             this._draw();
             return this;
         }
 
         hideBody() {
             this.status="closed";
-            this._resizeContent();
+            this._resize();
             this._draw();
             return this;
         }
@@ -1576,18 +1619,17 @@ exports.UML = function(svg, gui) {
                     this.move(this.x, y);
                 }
             }
-            this._resizeContent();
+            this._resize();
             this._draw();
             return this;
         }
 
-        _resizeContent() {
+        _resize() {
             if (this.status==="opened") {
                 this.titleBackground.dimension(this.width, TITLE_HEIGHT).position(0, -this.height / 2 + TITLE_HEIGHT / 2);
                 this.bodyBackground.dimension(this.width, this.height - TITLE_HEIGHT).position(0, TITLE_HEIGHT / 2);
-                this._resizeTitle(SENSOR_MARGIN, -11, -this.height / 2 + TITLE_HEIGHT / 2);
-                this.contentText.dimension(this.width - FIELD_MARGIN * 2, this.height - TITLE_HEIGHT - FIELD_MARGIN * 2)
-                    .position(-1, TITLE_HEIGHT / 2);
+                this._resizeTitle(this.width-SENSOR_MARGIN, -11, -this.height / 2 + TITLE_HEIGHT / 2);
+                this._resizeContent(this.width, this.height - TITLE_HEIGHT, -1, TITLE_HEIGHT / 2);
                 if (!this.bodyBackground.parent) {
                     this.bodySupport.add(this.bodyBackground);
                     this.contentTextSupport.add(this.contentText.component);
@@ -1595,7 +1637,7 @@ exports.UML = function(svg, gui) {
             }
             else {
                 this.titleBackground.dimension(this.width, this.height).position(0, 0);
-                this._resizeTitle();
+                this._resizeTitle(this.width);
                 if (this.bodyBackground.parent) {
                     this.bodySupport.remove(this.bodyBackground);
                     this.contentTextSupport.remove(this.contentText.component);
@@ -1610,37 +1652,27 @@ exports.UML = function(svg, gui) {
             this.titleBackground._draw();
             this.bodyBackground._draw();
             this._drawTitle();
-            this.contentText._draw();
+            this._drawContent();
         }
 
         memorize() {
             let memento = super.memorize();
             this.memorizeTitle(memento);
+            this.memorizeContent(memento);
             this.memorizeLine(memento);
             memento.content = this._content;
-            memento.status = this.status;
             return memento;
         }
 
         revert(memento) {
             super.revert(memento);
             this.revertTitle(memento);
-            this.revertLine(memento)
-            this._content = memento.content;
+            this.revertContent(memento);
+            this.revertLine(memento);
             this.contentText.message(this._content);
             this.status = memento.status;
-            this._resizeContent();
+            this._resize();
             this._draw();
-        }
-
-        content(_content) {
-            if (_content) {
-                this._content = _content;
-                this.contentText.message(this._content);
-                this._draw();
-                return this;
-            }
-            return this._content;
         }
 
         showSensors() {
@@ -1694,8 +1726,8 @@ exports.UML = function(svg, gui) {
 
     class Clazz extends ObjectOrientedNode {
 
-        constructor(id, width, height, x, y) {
-            super(id, width, height, x, y, "ClassName", "field : type");
+        constructor(id, width, height, x, y, defaultName, defaultContent) {
+            super(id, width, height, x, y, defaultName, defaultContent);
         }
 
         accept(NodeType) {
@@ -1712,16 +1744,116 @@ exports.UML = function(svg, gui) {
 
     class Object extends ObjectOrientedNode {
 
-        constructor(id, width, height, x, y) {
-            super(id, width, height, x, y, "object : Type", "property = value");
+        constructor(id, width, height, x, y, defaultTitle, defaultContent) {
+            super(id, width, height, x, y, defaultTitle, defaultContent);
             this.titleText.decoration("underline");
+        }
+
+    }
+
+    const USATT_FACTOR = 1/Math.sqrt(2);
+
+    class BaseUseCase extends TitledMixin(Node) {
+
+        constructor(id, width, height, x, y, defaultContent) {
+            super(id, width, height, x, y);
+            this.background = new svg.Ellipse(width/2+1, height/2+1)
+                .color(svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE);
+            this.frame = new svg.Ellipse(width/2, height/2)
+                .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
+            this.createTitle(defaultContent).anchor("center");
+            this.component
+                .add(this.background)
+                .add(this.frame)
+                .add(this.titleComponent());
+            this._resize();
+            this._draw();
+        }
+
+        minimalHeight() {
+            return (19+FIELD_MARGIN*2)*Math.sqrt(2);
+        }
+
+        dimension(width, height) {
+            super.dimension(width, height);
+            this._resize();
+            this._draw();
+            return this;
+        }
+
+        _resize() {
+            this.background.radius(this.width/2+1, this.height/2+1);
+            this.frame.radius(this.width/2, this.height/2);
+            this._resizeTitle(this.width*USATT_FACTOR);
+        }
+
+        _draw() {
+            super._draw();
+            this._drawTitle();
+        }
+
+        memorize() {
+            let memento = super.memorize();
+            this.memorizeTitle(memento);
+            return memento;
+        }
+
+        revert(memento) {
+            super.revert(memento);
+            this.revertTitle(memento);
+            this._resize();
+            this._draw();
+        }
+
+        polygon(origin) {
+            origin = origin || this;
+            let result = [];
+            let count = Math.floor(Math.sqrt(this.width*this.width+this.height*this.height)/10);
+            if (count<12) {
+                count=12;
+            }
+            for (let i=0; i<count; i++) {
+                let angle = 2*Math.PI*i/count;
+                result.push({
+                    x:origin.x+Math.cos(angle)*(this.width/2+2),
+                    y:origin.y+Math.sin(angle)*(this.height/2+2)
+                })
+            }
+            return result;
+        }
+
+        accept(NodeType) {
+            if (super.accept(NodeType)) {
+                return true;
+            }
+            if (NodeType===Relationship || NodeType===Inherit || NodeType===Realization) {
+                return true;
+            }
+            return false;
+        }
+
+    }
+
+    class UseCase extends BaseUseCase {
+
+        constructor(...args) {
+            super(...args);
+        }
+
+    }
+
+    class AbstractUseCase extends BaseUseCase {
+
+        constructor(...args) {
+            super(...args);
+            this.frame.dash("8,5,8,5");
         }
 
     }
 
     const HEAD_HEIGHT = 25;
 
-    class Comment extends Node {
+    class Comment extends ContentedMixin(Node) {
 
         constructor(id, width, height, x, y, defaultComment) {
             super(id, width, height, x, y);
@@ -1731,29 +1863,14 @@ exports.UML = function(svg, gui) {
                 .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
             this.fold = new svg.Path(0, 0)
                 .color(svg.ALMOST_WHITE, 2, svg.ALMOST_BLACK);
-            this._content = defaultComment;
-            this.contentText = new gui.TextArea(0, 0, 10, 10,
-                this._content)
-                .font("arial", 16, 19)
-                .color([svg.ALMOST_WHITE, 2, svg.ALMOST_WHITE]);
-            this.contentText.editColor([svg.LIGHT_GREY, 2, svg.LIGHT_GREY]);
-            this.contentText.onInput((oldMessage, message, validity)=>{
-                Memento.register(this);
-                this._content = message;
-            }).onBlur(()=>{
-                Memento.begin();
-            });
+            this.createContent(defaultComment);
             this.component
                 .add(this.background)
                 .add(this.frame)
                 .add(this.fold)
-                .add(this.contentText.component);
-            this._resizeContent();
+                .add(this.contentComponent());
+            this._resize();
             this._draw();
-        }
-
-        definition() {
-            return this.contentText.textMessage.split("\n");
         }
 
         minimalHeight() {
@@ -1762,59 +1879,46 @@ exports.UML = function(svg, gui) {
 
         dimension(width, height) {
             super.dimension(width, height);
-            this._resizeContent();
+            this._resize();
             this._draw();
             return this;
         }
 
-        _resizeContent() {
-            function drawComment(path, width, height) {
-                path.reset().move(-width/2, -height/2)
-                    .line(width/2-HEAD_HEIGHT, -height/2)
-                    .line(width/2, -height/2+HEAD_HEIGHT)
-                    .line(width/2, height/2)
-                    .line(-width/2, height/2)
-                    .line(-width/2, -height/2);
+        _resize() {
+            function drawComment(path, width, height, margin=0) {
+                path.reset().move(-width/2-margin, -height/2-margin)
+                    .line(width/2+margin-HEAD_HEIGHT, -height/2-margin)
+                    .line(width/2+margin, -height/2-margin+HEAD_HEIGHT)
+                    .line(width/2+margin, height/2+margin)
+                    .line(-width/2-margin, height/2+margin)
+                    .line(-width/2-margin, -height/2-margin);
             }
 
-            drawComment(this.background, this.width, this.height);
+            drawComment(this.background, this.width, this.height, 1);
             drawComment(this.frame, this.width, this.height);
             this.fold.reset().move(this.width/2-HEAD_HEIGHT, -this.height/2)
                 .line(this.width/2, -this.height/2+HEAD_HEIGHT)
                 .line(this.width/2-HEAD_HEIGHT, -this.height/2+HEAD_HEIGHT)
                 .line(this.width/2-HEAD_HEIGHT, -this.height/2);
-            this.contentText.dimension(this.width - FIELD_MARGIN * 2, this.height - HEAD_HEIGHT - FIELD_MARGIN * 2)
-                .position(-1, HEAD_HEIGHT / 2);
+            this._resizeContent(this.height - HEAD_HEIGHT, -1, HEAD_HEIGHT / 2);
         }
 
         _draw() {
             super._draw();
-            this.background._draw();
-            this.contentText._draw();
+            this._drawContent();
         }
 
         memorize() {
             let memento = super.memorize();
-            memento.content = this._content;
+            this.memorizeContent(memento);
             return memento;
         }
 
         revert(memento) {
             super.revert(memento);
-            this._content = memento.content;
-            this.contentText.message(this._content);
-            this._resizeContent();
+            this.revertContent(memento);
+            this._resize();
             this._draw();
-        }
-
-        content(_content) {
-            if (_content) {
-                this._content = _content;
-                this.contentText.message(this._content);
-                this._draw();
-                return this;
-            }
-            return this._content;
         }
 
     }
@@ -2133,19 +2237,10 @@ exports.UML = function(svg, gui) {
         }
 
         computeIntersects() {
-            function polygon(node) {
-                let b = node.bounds();
-                return [
-                    {x: b.left, y: b.top },
-                    {x: b.left, y: b.bottom },
-                    {x: b.right, y: b.bottom },
-                    {x: b.right, y: b.top }
-                ];
-            }
 
             if (this.h1.node) {
                 let intersects = svg.intersectLinePolygon(
-                    this.point(this.h1), this.point(this.h2), polygon(this.h1.node));
+                    this.point(this.h1), this.point(this.h2), this.h1.node.polygon());
                 if (!intersects.empty()) {
                     ({x: this.px1, y: this.py1} = intersects[0]);
                 }
@@ -2160,7 +2255,7 @@ exports.UML = function(svg, gui) {
             }
             if (this.h2.node) {
                 let intersects = svg.intersectLinePolygon(
-                    this.point(this.h1), this.point(this.h2), polygon(this.h2.node));
+                    this.point(this.h1), this.point(this.h2), this.h2.node.polygon());
                 if (!intersects.empty()) {
                     ({x: this.px2, y: this.py2} = intersects[0]);
                 }
@@ -2911,6 +3006,9 @@ exports.UML = function(svg, gui) {
     const RESPONSE_LABEL = "response";
     const ASYNC_LABEL = "async";
 
+    const USE_CASE = "use-case";
+    const ABSTRACT_USE_CASE = "abstract-use_case";
+
     const HUMAN = "human";
     const CONTROLLER = "controller";
     const ENTITY = "entity";
@@ -2946,6 +3044,11 @@ exports.UML = function(svg, gui) {
                     nd.title=icon.title();
                     nd.lineShown=icon.lineShown;
                     nd.lineHeight=icon.line.height;
+                    return nd;
+                })),
+                useCases : this.processArray(schema.nodes.filter(node=>node instanceof BaseUseCase).map(useCase=>{
+                    let nd = this.useCaseSpec(useCase);
+                    nd.title=useCase.title();
                     return nd;
                 })),
                 comments : this.processArray(schema.nodes.filter(node=>node instanceof Comment).map(object=>{
@@ -3027,7 +3130,28 @@ exports.UML = function(svg, gui) {
                 id:node.id,
                 x:node.x,
                 y:node.y,
-                type:type(node),
+                type:type(node)
+            };
+        }
+
+        useCaseSpec(useCase) {
+            function type(useCase) {
+                if (useCase instanceof UseCase) {
+                    return USE_CASE;
+                }
+                if (useCase instanceof AbstractUseCase) {
+                    return ABSTRACT_USE_CASE;
+                }
+                return "undefined";
+            }
+
+            return {
+                id:useCase.id,
+                width:useCase.width,
+                height:useCase.height,
+                x:useCase.x,
+                y:useCase.y,
+                type:type(useCase)
             };
         }
 
@@ -3084,6 +3208,15 @@ exports.UML = function(svg, gui) {
                     icon.line.dimension(descIcon.lineHeight);
                 }
                 icon._draw();
+            });
+            desc.useCases && desc.useCases.forEach(descUseCase=>{
+                let useCase = new (this.useCaseType(descUseCase.type))
+                    (descUseCase.id,
+                        descUseCase.width, descUseCase.height,
+                        descUseCase.x, descUseCase.y,
+                        descUseCase.title);
+                schema.putNode(useCase);
+                useCase._draw();
             });
             desc.comments && desc.comments.forEach(descComment=>{
                 let comment = new Comment(descComment.id, descComment.width, descComment.height,descComment.x, descComment.y)
@@ -3157,6 +3290,18 @@ exports.UML = function(svg, gui) {
             }
             else {
                 throw "Unknown message type : "+type;
+            }
+        }
+
+        useCaseType(type) {
+            if (type===USE_CASE) {
+                return UseCase;
+            }
+            else if (type===ABSTRACT_USE_CASE) {
+                return AbstractUseCase;
+            }
+            else {
+                throw "Unknown use case type : "+type;
             }
         }
 
@@ -3283,6 +3428,8 @@ exports.UML = function(svg, gui) {
         Controller : Controller,
         Entity : Entity,
         Interface : Interface,
+        UseCase : UseCase,
+        AbstractUseCase : AbstractUseCase,
         Relationship : Relationship,
         Inherit : Inherit,
         Realization : Realization,
