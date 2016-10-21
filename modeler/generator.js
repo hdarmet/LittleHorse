@@ -143,7 +143,7 @@ exports.Generator = function(svg, gui, url) {
                 data.from.category!=="embeddable") {
                 return false;
             }
-            let target = /*pom.classes[*/item.type/*.id]*/;
+            let target = item.type;
             if (target.category==="entity" ||
                 target.category==="embeddable") {
                 return false;
@@ -177,7 +177,7 @@ exports.Generator = function(svg, gui, url) {
                 data.from.category!=="mapped") {
                 return false;
             }
-            let target = /*pom.classes[*/item.type/*.id]*/;
+            let target = item.type;
             if (target.category==="entity") {
                 if (item.persistence!=="persistent") {
                     item.persistence="persistent";
@@ -225,6 +225,26 @@ exports.Generator = function(svg, gui, url) {
                 throw new Error(
                     {type:"node", id:item.ids[0]},
                     "Entity "+item.name+" has multiple ids : ",...ids);
+            }
+            return false;
+        }
+
+    }
+
+    class ClassesWithRelationshipsMustHaveADefaultConstructor extends Rule {
+
+        constructor(...cardinalities) {
+            super();
+            this.cardinalities = cardinalities;
+        }
+
+        execute(pom, item, data) {
+            if (data.type!=="relationship") {
+                return false;
+            }
+            if (this.cardinalities.contains(item.cardinality) && !data.from.defaultConstructor) {
+                data.from.defaultConstructor = true;
+                return true;
             }
             return false;
         }
@@ -303,19 +323,35 @@ exports.Generator = function(svg, gui, url) {
             return lines ? lines : [];
         }
 
-        prototypes(value) {
+        stereotypes(value) {
+            return (value.match(/<<([^\>]*)>>/g) || []).map(token=>/<<(.*)>>/.exec(token)[1].trim());
+        }
+
+        getStereotype(value, spec) {
+            let stereos = this.stereotypes(value);
+            let stereo = stereos.find(
+                value=>this.typed(value).name === spec);
+            return stereo ? this.typed(stereo).type : null;
+        }
+
+        hasStereotype(value, spec) {
+            let result = this.stereotypes(value).filter(
+                value=>this.typed(value).name === spec);
+            return result.length > 0;
+        }
+
+        constraints(value) {
             return (value.match(/\{([^\}]*)\}/g) || []).map(token=>/\{(.*)\}/.exec(token)[1].trim());
         }
 
-        getProtoType(value, spec) {
-            let protos = this.prototypes(value);
-            let proto = protos.find(
-                value=>this.typed(value).name === spec);
-            return proto ? this.typed(proto).type : null;
+        getConstraint(value, spec) {
+            let consts = this.constraints(value);
+            let constraint = consts.find(value=>this.typed(value).name===spec);
+            return constraint ? this.typed(constraint).type : null;
         }
 
-        hasPrototype(value, spec) {
-            let result = this.prototypes(value).filter(
+        hasConstraint(value, spec) {
+            let result = this.constraints(value).filter(
                 value=>this.typed(value).name === spec);
             return result.length > 0;
         }
@@ -337,7 +373,7 @@ exports.Generator = function(svg, gui, url) {
         }
 
         value(value) {
-            let tokens = value.match(/(?:\{[^\}]*\})*([^\{\}]+)/);
+            let tokens = value.match(/(?:\{[^\}]*\})*(?:<<[^\>]*>>)*(?:\{[^\}]*\})*([^\{\}><]+)/);
             return tokens ? tokens[1].trim() : null;
         }
 
@@ -359,6 +395,22 @@ exports.Generator = function(svg, gui, url) {
             }
         }
 
+        cardinality(value) {
+            switch (value.trim()) {
+                case "1":
+                case "1-1":
+                case "0-1":
+                    return "One";
+                case "N":
+                case "1-N":
+                case "0-N":
+                case "*":
+                case "1-*":
+                case "0-*":
+                    return "Many";
+            }
+            return "Unknown";
+        }
     }
 
     let JavaPIMMixin = superClass => class extends superClass {
@@ -379,7 +431,7 @@ exports.Generator = function(svg, gui, url) {
             throw "Unknown type : " + type;
         }
 
-        prepareClass(clazz, root, params) {
+        prepareClass(clazz, root) {
             let mainClass = root.classArtifact.setClassName(clazz.name);
             if (clazz.inherit) {
                 mainClass.setSuperClass(clazz.inherit.name);
@@ -416,8 +468,8 @@ exports.Generator = function(svg, gui, url) {
             mainClass.addMethod(setMethod);
         }
 
-        processDefaultConstructor(clazz, root, mainClass, params) {
-            if (params.doDefaultConstructor) {
+        processDefaultConstructor(clazz, root, mainClass) {
+            if (clazz.defaultConstructor) {
                 let defaultConstructor = new ConstructorArtifact()
                     .setPrivacy("public")
                     .setName(clazz.name);
@@ -485,12 +537,14 @@ exports.Generator = function(svg, gui, url) {
                 new EntityOrMappedInheritsFromEntityOrMapped(),
                 new EntityEmbeddedOrMappedLinkedToEmbedded(),
                 new RelationshipsTargetingPersistentClassesFromPersistentClassesArePersistent(),
-                new EntitiesMustHaveOneAndOnlyOneId());
+                new EntitiesMustHaveOneAndOnlyOneId(),
+                new ClassesWithRelationshipsMustHaveADefaultConstructor("OneToMany", "ManyToMany")
+            );
         }
 
         declarePersistentClass(pom, clazz, errors) {
             let persistentType = value=> {
-                return this.hasPrototype(value, "entity") ? "entity" : "standard";
+                return this.hasStereotype(value, "entity") ? "entity" : "standard";
             };
 
             let entityName = this.value(clazz.title);
@@ -499,6 +553,7 @@ exports.Generator = function(svg, gui, url) {
                 pomClass = {
                     ids: [clazz.id],
                     category: "standard",
+                    defaultConstructor : false,
                     name: entityName,
                     fields: {},
                     relationships: {}
@@ -527,10 +582,10 @@ exports.Generator = function(svg, gui, url) {
                     name: field.name,
                     type: this.value(field.type)
                 };
-                if (this.hasPrototype(line, "id")) {
+                if (this.hasStereotype(line, "id")) {
                     entityPom.fields[field.name].key = true;
                 }
-                if (this.hasPrototype(line, "version")) {
+                if (this.hasStereotype(line, "version")) {
                     entityPom.fields[field.name].version = true;
                 }
             }
@@ -546,25 +601,9 @@ exports.Generator = function(svg, gui, url) {
         }
 
         declarePersistentRelationship(pom, relationship, errors) {
-            let cardinality = value=> {
-                switch (value.trim()) {
-                    case "1":
-                    case "1-1":
-                    case "0-1":
-                        return "One";
-                    case "N":
-                    case "1-N":
-                    case "0-N":
-                    case "*":
-                    case "1-*":
-                    case "0-*":
-                        return "Many";
-                }
-                return "Unknown";
-            };
 
             let inverseName = value=> {
-                let name = this.getProtoType(value, "inverse");
+                let name = this.getConstraint(value, "inverse");
                 return name ? name : value;
             };
 
@@ -575,8 +614,9 @@ exports.Generator = function(svg, gui, url) {
                 start.relationships[name] = {
                     id:relationship.id,
                     type: end,
-                    cardinality: cardinality(relationship.beginCardinality.message, relationship.endCardinality.message) + "To" +
-                    cardinality(relationship.endCardinality.message, relationship.beginCardinality.message),
+                    cardinality:
+                        this.cardinality(relationship.beginCardinality.message) + "To" +
+                        this.cardinality(relationship.endCardinality.message),
                     ownership: true
                 };
                 if (relationship.endTermination !== "arrow") {
@@ -584,8 +624,9 @@ exports.Generator = function(svg, gui, url) {
                     end.relationships[invName] = {
                         id:relationship.id,
                         type: start,
-                        cardinality: cardinality(relationship.endCardinality.message, relationship.beginCardinality.message) + "To" +
-                        cardinality(relationship.beginCardinality.message, relationship.endCardinality.message),
+                        cardinality:
+                            this.cardinality(relationship.endCardinality.message) + "To" +
+                            this.cardinality(relationship.beginCardinality.message),
                         ownership: false,
                         inverse: name
                     };
@@ -623,21 +664,18 @@ exports.Generator = function(svg, gui, url) {
             this.prepareRuleEngineForJPA(ruleEngine, pom);
         }
 
-        processClassPersistence(clazz, root, mainClass, params) {
+        processClassPersistence(clazz, root, mainClass) {
             if (clazz.category === "entity") {
                 root.importsArtifact.addImport("javax.persistence.Entity");
                 mainClass.addAnnotation(new AnnotationArtifact().setName("Entity"));
-                params.doDefaultConstructor = true;
             }
             else if (clazz.category === "mapped") {
                 root.importsArtifact.addImport("javax.persistence.MappedSuperclass");
                 mainClass.addAnnotation(new AnnotationArtifact().setName("MappedSuperclass"));
-                params.doDefaultConstructor = true;
             }
             else if (clazz.category === "embeddable") {
                 root.importsArtifact.addImport("javax.persistence.Embeddable");
                 mainClass.addAnnotation(new AnnotationArtifact().setName("Embeddable"));
-                params.doDefaultConstructor = true;
             }
         }
 
@@ -686,7 +724,7 @@ exports.Generator = function(svg, gui, url) {
             mainClass.addMethod(equalsMethod);
         }
 
-        processPersistentAttribute(clazz, key, field, root, mainClass, params) {
+        processPersistentAttribute(clazz, key, field, root, mainClass) {
             let attribute = this.processStandardAttribute(key, field, mainClass);
             let doSet = true;
             if (field.key) {
@@ -771,11 +809,11 @@ exports.Generator = function(svg, gui, url) {
             }
         }
 
-        processSingleReference(pom, clazz, key, relationship, root, mainClass, params) {
+        processSingleReference(pom, clazz, key, relationship, root, mainClass) {
             let attribute = new AttributeArtifact()
                 .setName(key)
                 .setType(relationship.type.name);
-            let target = /*pom.classes[*/relationship.type/*.id]*/;
+            let target = relationship.type;
             this.processRelationshipPersistentAnnotation(relationship, root, attribute);
             this.processStandardGetter(clazz, mainClass, attribute.name, attribute.type);
             if (relationship.inverse) {
@@ -862,13 +900,13 @@ exports.Generator = function(svg, gui, url) {
             mainClass.addMethod(removeMethod);
         }
 
-        processListOfReferences(pom, clazz, key, relationship, root, mainClass, params) {
+        processListOfReferences(pom, clazz, key, relationship, root, mainClass) {
             root.importsArtifact.addImport("java.util.List");
             let type = relationship.type.name;
             let attribute = new AttributeArtifact()
                 .setName(key)
                 .setType("List<"+type+">");
-            let target = /*pom.classes[*/relationship.type/*.id]*/;
+            let target = relationship.type;
             this.processRelationshipPersistentAnnotation(relationship, root, attribute);
             root.importsArtifact.addImport("java.util.ArrayList");
             mainClass.constructors.default.addInstruction(key+" = new ArrayList<"+relationship.type.name+">();");
@@ -898,12 +936,12 @@ exports.Generator = function(svg, gui, url) {
 
         }
 
-        processRelationship(pom, clazz, key, relationship, root, mainClass, params) {
+        processRelationship(pom, clazz, key, relationship, root, mainClass) {
             if (relationship.cardinality==="OneToOne" || relationship.cardinality==="ManyToOne") {
-                this.processSingleReference(pom, clazz, key, relationship, root, mainClass, params);
+                this.processSingleReference(pom, clazz, key, relationship, root, mainClass);
             }
             else {
-                this.processListOfReferences(pom, clazz, key, relationship, root, mainClass, params);
+                this.processListOfReferences(pom, clazz, key, relationship, root, mainClass);
             }
         }
 
@@ -917,16 +955,15 @@ exports.Generator = function(svg, gui, url) {
             pom.classes.forEach((clazz, key)=> {
                 if (clazz.ids.indexOf(Number(key)) === 0) {
                     try {
-                        let params = {doDefaultConstructor: false};
                         let root = new FileArtifact().setPackageName("com.acme.domain");
-                        let mainClass = this.prepareClass(clazz, root, params);
-                        this.processClassPersistence(clazz, root, mainClass, params);
+                        let mainClass = this.prepareClass(clazz, root);
+                        this.processClassPersistence(clazz, root, mainClass);
+                        this.processDefaultConstructor(clazz, root, mainClass);
                         clazz.fields.forEach((field, key)=> {
-                            this.processPersistentAttribute(clazz, key, field, root, mainClass, params)
+                            this.processPersistentAttribute(clazz, key, field, root, mainClass)
                         });
-                        this.processDefaultConstructor(clazz, root, mainClass, params);
                         clazz.relationships.forEach((relationship, key)=> {
-                            this.processRelationship(pom, clazz, key, relationship, root, mainClass, params)
+                            this.processRelationship(pom, clazz, key, relationship, root, mainClass)
                         });
                         root.generate(0).forEach(line=>text += line + "\n");
                     }
@@ -956,22 +993,32 @@ exports.Generator = function(svg, gui, url) {
                 pom.dtos = {};
                 spec.objects && spec.objects
                     .forEach(object=>this.declareDTOClass(pom, object, spec, errors));
+                spec.relationships && spec.relationships
+                    .filter(relationship=>pom.dtos[relationship.from.id]!==undefined)
+                    .forEach(relationship=>this.declareDTORelationship(pom, relationship, spec, errors));
             }
         }
 
         prepareRuleEngine(ruleEngine, pom) {
             this.prepareRuleEngineForJPA(ruleEngine, pom);
+            ruleEngine.addItems(
+                {type: "class"}, ...pom.dtos.toArray(), ruleEngine.errors);
+            pom.dtos.forEach(clazz=>ruleEngine.addItems(
+                {type: "relationship", from: clazz}, ...clazz.relationships.toArray()));
+            ruleEngine.addRules(
+                new ClassesWithRelationshipsMustHaveADefaultConstructor("Many")
+            );
         }
 
         declareDTOClass(pom, object, spec, errors) {
-            let objectSpec = this.value(object.title);
-            let {name:className, type:classType} = this.typed(objectSpec);
-            if (classType==="DTO") {
+
+            let initPomDtoClass = className=>{
                 let pomDtoClass = pom.dtos.find(clazz=>clazz.name===className);
                 if (!pomDtoClass) {
                     pomDtoClass = {
                         ids: [object.id],
                         name: className,
+                        defaultConstructor: false,
                         fields: {},
                         relationships: {},
                         dependancies: {}
@@ -981,9 +1028,72 @@ exports.Generator = function(svg, gui, url) {
                     pomDtoClass.ids.add(object.id);
                 }
                 pom.dtos[object.id] = pomDtoClass;
+                return pomDtoClass;
+            };
+
+            let objectSpec = this.value(object.title);
+            let {name:className, type:classType} = this.typed(objectSpec);
+            if (classType==="DTO") {
+                let pomDtoClass = initPomDtoClass(className);
                 this.declareDependancies(pomDtoClass, spec, pom.classes);
                 this.lines(object.content).forEach(
                     line=>this.declareDtoField(pomDtoClass, line, errors));
+            }
+        }
+
+        declareDTORelationship(pom, relationship, spec, errors) {
+            var link = this.valued(this.value(relationship.title.message));
+            if (!link.name) {
+                errors.push(new Error({type:"link", id:relationship.id}, "Relationship has no name !"));
+            }
+            else if (!link.value) {
+                errors.push(new Error({type:"link", id:relationship.id}, "Relationship "+link.name+" has no path !"));
+            }
+            let dtoPom = pom.dtos[relationship.from.id];
+            let path=link.value.split('.');
+            let target = this.findClass(path, dtoPom, dtoPom.dependancies);
+            dtoPom.relationships[link.name] = {
+                parent: dtoPom,
+                name: link.name,
+                cardinality: this.cardinality(relationship.endCardinality.message),
+                path: path,
+                target: target,
+                type: pom.dtos[relationship.to.id]
+            };
+        }
+
+        processSingleReference(pom, clazz, key, relationship, root, mainClass) {
+            let attribute = new AttributeArtifact()
+                .setName(key)
+                .setType(relationship.type.name);
+            let target = relationship.type;
+            this.processStandardGetter(clazz, mainClass, attribute.name, attribute.type);
+            this.processStandardSetter(clazz, mainClass, attribute.name, this.refName(attribute.type), attribute.type);
+            mainClass.addAttribute(attribute);
+        }
+
+        processListOfReferences(pom, clazz, key, relationship, root, mainClass) {
+            root.importsArtifact.addImport("java.util.List");
+            let type = relationship.type.name;
+            let attribute = new AttributeArtifact()
+                .setName(key)
+                .setType("List<"+type+">");
+            let target = relationship.type;
+            root.importsArtifact.addImport("java.util.ArrayList");
+            mainClass.constructors.default.addInstruction(key+" = new ArrayList<"+relationship.type.name+">();");
+            mainClass.addAttribute(attribute);
+            root.importsArtifact.addImport("java.util.Collections");
+            root.importsArtifact.addImport("java.util.List");
+            this.processStandardGetter(clazz, mainClass, attribute.name, attribute.type);
+            this.processStandardSetter(clazz, mainClass, attribute.name, this.refName(attribute.type), attribute.type);
+        }
+
+        processRelationship(pom, clazz, key, relationship, root, mainClass) {
+            if (relationship.cardinality==="One") {
+                this.processSingleReference(pom, clazz, key, relationship, root, mainClass);
+            }
+            else {
+                this.processListOfReferences(pom, clazz, key, relationship, root, mainClass);
             }
         }
 
@@ -999,6 +1109,9 @@ exports.Generator = function(svg, gui, url) {
             path.forEach(segment=>{
                 target = start[segment];
                 if (!target) return null;
+                if (target.type) {
+                    target = target.type;
+                }
                 start = target.relationships;
             });
             return target;
@@ -1006,22 +1119,76 @@ exports.Generator = function(svg, gui, url) {
 
         getFields(pomClass) {
             function assignFields(fields, clazz) {
-                Object.assign(fields, clazz.fields);
                 if (clazz.inherit) {
                     assignFields(fields, clazz.inherit);
                 }
+                Object.assign(fields, clazz.fields);
                 return fields;
             }
             return assignFields({}, pomClass);
         }
 
         findField(path, target, start) {
+            path = [...path];
             let fieldPath = path.pop();
             let targetClass = this.findClass(path, target, start);
             return !targetClass ? null : this.getFields(targetClass)[fieldPath];
         }
 
+        findFields(path, target, start) {
+            path = [...path];
+            let fieldPath = path.pop();
+            let targetClass = this.findClass(path, target, start);
+            return !targetClass ? null : this.getFields(targetClass);
+        }
+
         declareDtoField(dtoPom, line, errors) {
+
+            let processWildcardAttribute = field=> {
+                let path = field.value.split('.');
+                let targets = this.findFields(path, dtoPom, dtoPom.dependancies);
+                if (!targets) {
+                    errors.push(new Error({
+                        type: "node",
+                        id: dtoPom.ids[0]
+                    }, "Field path for " + field.name + " is invalid !"));
+                }
+                path.pop();
+                targets.forEach(target=>{
+                    let fieldName = field.name.indexOf("*")===0 ?
+                        field.name.replace("*", this.refName(target.name)) :
+                        field.name.replace("*", this.camelCase(target.name));
+                    dtoPom.fields[fieldName] = {
+                        parent: dtoPom,
+                        name: fieldName,
+                        path : path,
+                        target: target,
+                        type: target.type
+                    };
+                });
+            };
+
+            let processBasicAttribute = field=> {
+                let path = field.value.split('.');
+                let target = this.findField(field.value.split('.'), dtoPom, dtoPom.dependancies);
+                if (!target) {
+                    errors.push(new Error({
+                        type: "node",
+                        id: dtoPom.ids[0]
+                    }, "Field path for " + field.name + " is invalid !"));
+                }
+                else {
+                    path.pop();
+                    dtoPom.fields[field.name] = {
+                        parent: dtoPom,
+                        name: field.name,
+                        path: path,
+                        target: target,
+                        type: target.type
+                    };
+                }
+            };
+
             var field = this.valued(this.value(line));
             if (!field.name) {
                 errors.push(new Error({type:"node", id:dtoPom.ids[0]}, "Field has no name !"));
@@ -1030,17 +1197,11 @@ exports.Generator = function(svg, gui, url) {
                 errors.push(new Error({type:"node", id:dtoPom.ids[0]}, "Field "+field.name+" has no path !"));
             }
             else {
-                let target = this.findField(field.value.split('.'), dtoPom, dtoPom.dependancies);
-                if (!target) {
-                    errors.push(new Error({type:"node", id:dtoPom.ids[0]}, "Field path of "+field.name+" is invalid !"));
+                if (field.name.indexOf("*") > -1) {
+                    processWildcardAttribute(field);
                 }
                 else {
-                    dtoPom.fields[field.name] = {
-                        parent: dtoPom,
-                        name: field.name,
-                        target: target,
-                        type: target.type
-                    };
+                    processBasicAttribute(field);
                 }
             }
         }
@@ -1050,20 +1211,17 @@ exports.Generator = function(svg, gui, url) {
             pom.dtos.forEach((clazz, key)=> {
                 if (clazz.ids.indexOf(Number(key)) === 0) {
                     try {
-                        let params = {doDefaultConstructor: false};
                         let root = new FileArtifact().setPackageName("com.acme.dtos");
-                        let mainClass = this.prepareClass(clazz, root, params);
+                        let mainClass = this.prepareClass(clazz, root);
+                        this.processDefaultConstructor(clazz, root, mainClass);
                         clazz.fields.forEach((field, key)=> {
                             let attribute = this.processStandardAttribute(key, field, mainClass);
                             this.processStandardGetter(clazz, mainClass, attribute.name, attribute.type);
                             this.processStandardSetter(clazz, mainClass, attribute.name, attribute.name, attribute.type, true);
                         });
-                        this.processDefaultConstructor(clazz, root, mainClass, params);
-/*
                         clazz.relationships.forEach((relationship, key)=> {
-                            this.processRelationship(pom, clazz, key, relationship, root, mainClass, params)
+                            this.processRelationship(pom, clazz, key, relationship, root, mainClass)
                         });
-                        */
                         root.generate(0).forEach(line=>text += line + "\n");
                     }
                     catch (err) {

@@ -560,10 +560,12 @@ exports.UML = function(svg, gui) {
         }
 
         findPosition(x, y) {
+            let itemDim = this.item.dimension();
+            let itemLoc = this.item.location();
             let rx = 0;
             let ry = 0;
-            let dx = (this.item.width+this.width)/2+DELTA_INFO;
-            let dy = (this.item.height+this.height)/2+DELTA_INFO;
+            let dx = ((itemDim.width)+this.width)/2+DELTA_INFO;
+            let dy = ((itemDim.height)+this.height)/2+DELTA_INFO;
             let pos = this.item.infos.indexOf(this)%8;
             if (pos===0 || pos===1 || pos===2) {
                 rx = - dx;
@@ -577,15 +579,15 @@ exports.UML = function(svg, gui) {
             else if (pos===2 || pos===3 || pos===4) {
                 ry =  dy;
             }
-            if (this.item.x + rx - this.width/2 <0
-             || this.item.x + rx + this.width/2 > this.schema.width()) {
+            if (itemLoc.x + rx - this.width/2 <0
+             || itemLoc.x + rx + this.width/2 > this.schema.width()) {
                 rx = -rx;
             }
-            if (this.item.y + ry - this.height/2 <0
-                || this.item.y + ry + this.height/2 > this.schema.height()) {
+            if (itemLoc.y + ry - this.height/2 <0
+             || itemLoc.y + ry + this.height/2 > this.schema.height()) {
                 ry = -ry;
             }
-            return {x:this.item.x + rx, y:this.item.y + ry}
+            return {x:itemLoc.x + rx, y:itemLoc.y + ry}
         }
 
         buildCloseIcon() {
@@ -637,7 +639,9 @@ exports.UML = function(svg, gui) {
             let gEnd = this.schema.component.globalPoint(end);
             let fEnd = this.component.localPoint(gEnd);
             let s1 = svg.intersectLinePolygon(start, fEnd, this.polygon({x:0, y:0}));
-            let s2 = svg.intersectLinePolygon(start, fEnd, this.item.polygon(fEnd));
+            let s2 = this.item instanceof Link ?
+                [fEnd] :
+                svg.intersectLinePolygon(start, fEnd, this.item.polygon(fEnd));
             this.line.opacity(0);
             if (!s1.empty() && !s2.empty()) {
                 let pt = this.component.globalPoint(s2[0]);
@@ -911,17 +915,20 @@ exports.UML = function(svg, gui) {
         }
 
         dimension(width, height) {
-            if (this.width!==width || this.height!==height) {
-                Memento.register(this);
-                this.width = width;
-                this.height = height;
-                this.updateLinks();
-                this.updateInfos();
-                this.updateSensors();
-                this.updateRelatedNodes();
-                this._draw();
+            if (width!=undefined) {
+                if (this.width !== width || this.height !== height) {
+                    Memento.register(this);
+                    this.width = width;
+                    this.height = height;
+                    this.updateLinks();
+                    this.updateInfos();
+                    this.updateSensors();
+                    this.updateRelatedNodes();
+                    this._draw();
+                }
+                return this;
             }
-            return this;
+            return {width:this.width, height:this.height};
         }
 
         addLink(link) {
@@ -1946,7 +1953,27 @@ exports.UML = function(svg, gui) {
         }
 
         location() {
-            return {x:(this.h1.x+this.h2.x)/2, y:(this.h1.y+this.h2.y)/2};
+            let p1 = this.point(this.h1);
+            let p2 = this.point(this.h2);
+            return {x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2};
+        }
+
+        dimension() {
+            let p1 = this.point(this.h1);
+            let p2 = this.point(this.h2);
+            let width = Math.abs(p2.x - p1.x);
+            let height = Math.abs(p2.y - p1.y);
+            return {width, height};
+        }
+
+        polygon() {
+            let p1 = this.point(this.h1);
+            let p2 = this.point(this.h2);
+            return [
+                {x:p1.x, y:p1.y},
+                {x:p2.x, y:p2.y},
+                {x:p1.x, y:p1.y}
+            ];
         }
 
         buildLine() {
@@ -2410,7 +2437,7 @@ exports.UML = function(svg, gui) {
         }
 
         memorize() {
-            let memento = {};
+            let memento = super.memorize({});
             if (this.h1) {
                 memento.x1 = this.h1.x;
                 memento.y1 = this.h1.y;
@@ -3361,7 +3388,9 @@ exports.UML = function(svg, gui) {
             if (what.component.parent===glass.scale) {
                 console.log("Already on glass !");
             }
-            install(what.component.parent.localPoint(event.x, event.y));
+            else {
+                install(what.component.parent.localPoint(event.x, event.y));
+            }
         });
         if (beginDrag) {
             install({x:what.x, y:what.y});
