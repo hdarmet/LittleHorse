@@ -220,7 +220,7 @@ exports.mapEditor = function(svg) {
                     return true;
                 },
                 (item)=> {
-                    item.hex.map.select(item);
+                    item.hex.owningMap.select(item);
                     return true;
                 },
                 (item)=> {
@@ -271,7 +271,7 @@ exports.mapEditor = function(svg) {
                         hexComposite.highlight(true);
                     }
                     else {
-                        comp.hex.map.select(comp);
+                        comp.hex.owningMap.select(comp);
                     }
                     return true;
                 },
@@ -397,7 +397,7 @@ exports.mapEditor = function(svg) {
                             .show(drawing);
                     }
                     else {
-                        unit.hex.map.select(unit);
+                        unit.hex.owningMap.select(unit);
                         if (unit.nextUnit) {
                             let nextUnit = unit.nextUnit;
                             let hex = unit.hex;

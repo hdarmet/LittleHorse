@@ -180,7 +180,7 @@ exports.play = function(svg) {
         }
 
         context(map, impulse, command, rule) {
-            this.map = map;
+            this.owningMap = map;
             this.impulse = impulse;
             this.command = command;
             this.rule = rule;
@@ -198,7 +198,7 @@ exports.play = function(svg) {
 
         prepareMoves() {
             this.startMoves = new Map();
-            this.map.forEachUnit(unit=>this.startMoves.set(unit, unit.hex));
+            this.owningMap.forEachUnit(unit=>this.startMoves.set(unit, unit.hex));
         }
 
         mergeZones(unit, zoneBuilder, ...args) {
@@ -226,7 +226,7 @@ exports.play = function(svg) {
                     zone.set(hex, movementFactor);
                     //console.log(hex.x+" "+hex.y);
                     for (let dir of ["ne", "e", "se", "sw", "w", "nw"]) {
-                        let move = this.rule.movement(this.map, unit, startHex, movementFactor, hex, dir);
+                        let move = this.rule.movement(this.owningMap, unit, startHex, movementFactor, hex, dir);
                         if (move.auth) {
                             process(hex[dir], move.ma);
                         }
@@ -279,7 +279,7 @@ exports.play = function(svg) {
         }
 
         proposeFighting() {
-            if (this.rule.getFight(this.map)) {
+            if (this.rule.getFight(this.owningMap)) {
                 if (this.command.status===HIDDEN) {
                     this.command.show();
                 }
@@ -293,7 +293,7 @@ exports.play = function(svg) {
 
         enableDnDForMove(player) {
             player.teams.forEach(team=>{
-                this.map.forEachUnit(unit=>{
+                this.owningMap.forEachUnit(unit=>{
                     if (unit.type===team.unit.type) {
                         this.enableDnDForMoveOnAUnit(unit);
                     }
@@ -332,8 +332,8 @@ exports.play = function(svg) {
                     let zone = this.getMoveZone(unit);
                     if (zone.has(hex)) {
                         hex.putUnit(unit.move(0, 0));
-                        this.map.unselectAll();
-                        this.map.unhighlightAll();
+                        this.owningMap.unselectAll();
+                        this.owningMap.unhighlightAll();
                         this.proposeFighting();
                         hideMoveZone();
                         return true;
@@ -350,12 +350,12 @@ exports.play = function(svg) {
                 (unit)=> {
                     hideMoveZone();
                     if (unit.selected) {
-                        this.rule.friendSelected(this.map, unit, false);
+                        this.rule.friendSelected(this.owningMap, unit, false);
                         this.proposeFighting();
                     }
                     else {
                         if (this.startMoves.get(unit)===unit.hex) {
-                            this.rule.friendSelected(this.map, unit, true);
+                            this.rule.friendSelected(this.owningMap, unit, true);
                             this.proposeFighting();
                         }
                     }
@@ -371,7 +371,7 @@ exports.play = function(svg) {
 
         enableClickableForCombat(player) {
             player.teams.forEach(team=>{
-                this.map.forEachUnit(unit=>{
+                this.owningMap.forEachUnit(unit=>{
                     if (unit.type===team.unit.type) {
                         this.enableClickableForCombatOnAUnit(unit);
                     }
@@ -384,12 +384,12 @@ exports.play = function(svg) {
             hexM.installClickableOnHexes(unit,
                 (unit)=> {
                     if (unit.selected) {
-                        this.rule.friendSelected(this.map, unit, false);
+                        this.rule.friendSelected(this.owningMap, unit, false);
                         this.proposeFighting();
                     }
                     else {
                         if (this.startMoves.get(unit)===unit.hex) {
-                            this.rule.friendSelected(this.map, unit, true);
+                            this.rule.friendSelected(this.owningMap, unit, true);
                             this.proposeFighting();
                         }
                     }
@@ -401,7 +401,7 @@ exports.play = function(svg) {
 
         enableClickableForTarget(player) {
             player.teams.forEach(team=>{
-                this.map.forEachUnit(unit=>{
+                this.owningMap.forEachUnit(unit=>{
                     if (unit.type===team.unit.type) {
                         this.enableClickableForTargetOnOneUnit(unit);
                     }
@@ -413,11 +413,11 @@ exports.play = function(svg) {
             hexM.installClickableOnHexes(unit,
                 (unit)=> {
                     if (unit.selected) {
-                        this.rule.foeSelected(this.map, unit, false);
+                        this.rule.foeSelected(this.owningMap, unit, false);
                         this.proposeFighting();
                     }
                     else {
-                        this.rule.foeSelected(this.map, unit, true);
+                        this.rule.foeSelected(this.owningMap, unit, true);
                         this.proposeFighting();
                     }
                     this.putUnitOnTop(unit);
@@ -433,27 +433,27 @@ exports.play = function(svg) {
                     return true;
                 },
                 (unit, x, y)=> {
-                    this.map.eliminatedBox.removeUnit(unit);
-                    if (x<-this.map.eliminatedBox.width/2+unit.width/2) {
-                        x=-this.map.eliminatedBox.width/2+unit.width/2;
+                    this.owningMap.eliminatedBox.removeUnit(unit);
+                    if (x<-this.owningMap.eliminatedBox.width/2+unit.width/2) {
+                        x=-this.owningMap.eliminatedBox.width/2+unit.width/2;
                     }
-                    if (x>this.map.eliminatedBox.width/2-unit.width/2) {
-                        x=this.map.eliminatedBox.width/2-unit.width/2;
+                    if (x>this.owningMap.eliminatedBox.width/2-unit.width/2) {
+                        x=this.owningMap.eliminatedBox.width/2-unit.width/2;
                     }
-                    if (y<-this.map.eliminatedBox.height/3+unit.height/2) {
-                        y=-this.map.eliminatedBox.height/3+unit.height/2;
+                    if (y<-this.owningMap.eliminatedBox.height/3+unit.height/2) {
+                        y=-this.owningMap.eliminatedBox.height/3+unit.height/2;
                     }
-                    if (y>this.map.eliminatedBox.height/2-unit.height/2) {
-                        y=this.map.eliminatedBox.height/2-unit.height/2;
+                    if (y>this.owningMap.eliminatedBox.height/2-unit.height/2) {
+                        y=this.owningMap.eliminatedBox.height/2-unit.height/2;
                     }
                     unit.component.smoothy(param.speed, param.step).moveTo(x, y);
                     svg.animate(param.speed, ()=>unit.move(x, y));
-                    this.map.eliminatedBox.addUnit(unit);
+                    this.owningMap.eliminatedBox.addUnit(unit);
                     return true;
                 },
                 (unit)=> {
-                    this.map.eliminatedBox.removeUnit(unit);
-                    this.map.eliminatedBox.addUnit(unit);
+                    this.owningMap.eliminatedBox.removeUnit(unit);
+                    this.owningMap.eliminatedBox.addUnit(unit);
                     return true;
                 }
             );
@@ -634,7 +634,7 @@ exports.play = function(svg) {
         }
 
         disableForTeam(team) {
-            this.map.forEachUnit(unit=>{
+            this.owningMap.forEachUnit(unit=>{
                 if (unit.type===team.unit.type) {
                     this.disable(unit);
                 }
@@ -652,9 +652,9 @@ exports.play = function(svg) {
                 global = unit.component.parent.globalPoint(unit.x, unit.y);
                 unit.hex.removeUnit(unit);
             }
-            let local = this.map.eliminatedBox.content.localPoint(global);
+            let local = this.owningMap.eliminatedBox.content.localPoint(global);
             this.enableDnDOnEliminatedBox(unit);
-            this.map.eliminatedBox.addUnit(unit.move(local.x, local.y));
+            this.owningMap.eliminatedBox.addUnit(unit.move(local.x, local.y));
             unit.component.smoothy(param.speed, param.step).moveTo(0, 0);
             unit.rotation.smoothy(param.speed, param.step).rotateTo(0);
             svg.animate(param.speed, ()=>unit.move(0, 0));
@@ -699,7 +699,7 @@ exports.play = function(svg) {
         }
 
         context(map, impulse, manipulator, rule, friendPlayer, foePlayer) {
-            this.map = map;
+            this.owningMap = map;
             this.impulse = impulse;
             this.manipulator = manipulator;
             this.rule = rule;
@@ -799,17 +799,17 @@ exports.play = function(svg) {
             this.die.roll();
             svg.animate(param.speed, ()=>{
                 let dieValue = this.die.value;
-                let result = this.rule.resolveFight(this.map, this.friendPlayer, dieValue);
+                let result = this.rule.resolveFight(this.owningMap, this.friendPlayer, dieValue);
                 new CRTPopin(result, dieValue).show(drawing);
             });
         }
 
         processResult(result) {
             console.log("fight:"+result.ratio+" "+result.result);
-            let friends = this.rule.friendsFighting(this.map, this.friendPlayer);
-            let foes = this.rule.foesFighting(this.map, this.friendPlayer);
-            this.map.unselectAll();
-            this.map.unhighlightAll();
+            let friends = this.rule.friendsFighting(this.owningMap, this.friendPlayer);
+            let foes = this.rule.foesFighting(this.owningMap, this.friendPlayer);
+            this.owningMap.unselectAll();
+            this.owningMap.unhighlightAll();
             this.turn();
             if (result.result==="AE") {
                 this.eliminate(friends);
@@ -880,8 +880,8 @@ exports.play = function(svg) {
 
         closeFight() {
             svg.animate(param.speed, ()=>{
-                this.map.unselectAll();
-                this.map.unhighlightAll();
+                this.owningMap.unselectAll();
+                this.owningMap.unhighlightAll();
                 this.hide();
                 Memento.enable();
                 Memento.clear();
@@ -898,7 +898,7 @@ exports.play = function(svg) {
             svg.animate(param.speed, ()=>{
                 units.forEach(unit=>{
                     if (!discard.contains(unit)) {
-                        this.map.highlight(unit);
+                        this.owningMap.highlight(unit);
                         this.manipulator.enableDnDForAdvance(unit, units, hexes);
                     }
                 });
@@ -913,7 +913,7 @@ exports.play = function(svg) {
                     this.manipulator.eliminate(unit);
                 }
                 else {
-                    this.map.select(unit, false);
+                    this.owningMap.select(unit, false);
                     this.manipulator.enableDnDForRetreatOrDie(unit, units, range, ()=> {
                         if (this.allUnitsHaveMovedOrDied(units)) {
                             continued();
@@ -927,7 +927,7 @@ exports.play = function(svg) {
 
         chooseLosses(units, strength, continued) {
             units.forEach(unit=>{
-                this.map.select(unit, false);
+                this.owningMap.select(unit, false);
                 this.manipulator.enableDnDForLosses(unit, strength, ()=> {
                     continued();
                 });
@@ -944,7 +944,7 @@ exports.play = function(svg) {
     class Impulse {
 
         constructor(map, manipulator, command, rule, friendPlayer, foePlayer) {
-            this.map = map;
+            this.owningMap = map;
             this.manipulator = manipulator;
             this.command = command;
             this.rule = rule;

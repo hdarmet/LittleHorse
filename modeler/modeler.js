@@ -2,6 +2,7 @@
  * Created by HDA3014 on 24/01/2016.
  */
 
+require("../enhancer.js").Enhance();
 var SVG = require("../svghandler.js").SVG;
 var targetRuntime = require("../targetruntime.js").targetRuntime;
 var modelEditor = require("./modeleditor.js").modelEditor;

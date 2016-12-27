@@ -5,6 +5,7 @@ let assert = require('assert');
 let testUtils = require('./testutils');
 //let targetRuntime = require('../targetRuntime').targetRuntime;
 let mockRuntime = require('../runtimemock').mockRuntime;
+require('../enhancer').Enhance();
 let SVG = require('../svghandler').SVG;
 
 let playAzar = require("../azar/azar").playAzar;
@@ -54,7 +55,7 @@ describe('Azar', function() {
         assert.equal(heweraldChance.text, "?");
         wilfried.event("click", {});
         rollDice(6, 6, 6);
-        assert.equal(wilfriedChance.text, "Azar !");
+        assert.equal(wilfriedChance.text, "Azar&nbsp;!");
         assert.equal(heweraldChance.text, "?");
         done();
     });
@@ -77,7 +78,7 @@ describe('Azar', function() {
         assert.equal(heweraldChance.text, "XII");
         wilfried.event("click", {});
         rollDice(1, 1, 1);
-        assert.equal(wilfriedChance.text, "Reazar !");
+        assert.equal(wilfriedChance.text, "Reazar&nbsp;!");
         assert.equal(heweraldChance.text, "XII");
         done();
     });
@@ -100,7 +101,7 @@ describe('Azar', function() {
         assert.equal(heweraldChance.text, "XII");
         wilfried.event("click", {});
         rollDice(3, 3, 6);
-        assert.equal(wilfriedChance.text, "Same chance");
+        assert.equal(wilfriedChance.text, "Same&nbsp;chance");
         assert.equal(heweraldChance.text, "XII");
         done();
     });
@@ -127,7 +128,7 @@ describe('Azar', function() {
         assert.equal(heweraldChance.text, "XII");
         runtime.advance();
         rollDice(4, 4, 3);
-        assert.equal(wilfriedChance.text, "XI : Chance !");
+        assert.equal(wilfriedChance.text, "XI&nbsp;:&nbsp;Chance&nbsp;!");
         assert.equal(heweraldChance.text, "XII");
         done();
     });
@@ -155,7 +156,7 @@ describe('Azar', function() {
         runtime.advance();
         rollDice(4, 5, 3);
         assert.equal(wilfriedChance.text, "XI");
-        assert.equal(heweraldChance.text, "XII : Chance !");
+        assert.equal(heweraldChance.text,"XII&nbsp;:&nbsp;Chance&nbsp;!");
         done();
     });
 
@@ -198,7 +199,7 @@ describe('Azar', function() {
         runtime.advance();
         rollDice(4, 5, 3);
         assert.equal(wilfriedChance.text, "XI");
-        assert.equal(heweraldChance.text, "XII : Chance !");
+        assert.equal(heweraldChance.text, "XII&nbsp;:&nbsp;Chance&nbsp;!");
         done();
     });
 

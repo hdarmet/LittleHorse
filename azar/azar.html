@@ -10,6 +10,7 @@
     <script src="../module.js"></script>
     <script src="../runtimemock.js"></script>
     <script src="../targetruntime.js"></script>
+    <script src="../enhancer.js"></script>
     <script src="../svghandler.js"></script>
     <script src="../gameitems.js"></script>
     <script src="../scenario.js"></script>
@@ -17,6 +18,7 @@
 
     <script>
         let targetRuntime = require("../targetruntime").targetRuntime;
+        require("../enhancer").Enhance();
         let SVG = require("../svghandler").SVG;
         let play = require("azar").playAzar;
         play(

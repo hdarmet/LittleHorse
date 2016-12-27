@@ -136,6 +136,5 @@ describe('Little games', function() {
             assert.equal(hex.inside(50, -100), false);
         });
 
-
     });
 });

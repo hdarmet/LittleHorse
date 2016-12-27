@@ -159,7 +159,7 @@ exports.Hex = function(svg) {
 
         addPlayer(player) {
             Memento.register(this);
-            player.map = this;
+            player.owningMap = this;
             this.players.add(player);
             this.playerSupport.add(player.component);
             this._updateSize();
@@ -225,7 +225,7 @@ exports.Hex = function(svg) {
             if (this.hexCallback) {
                 hex.addGlass(this.hexCallback);
             }
-            hex.map = this;
+            hex.owningMap = this;
             this.hexes.push(hex);
             this.hexSupport.add(hex.component);
             this.itemSupport.add(hex.itemSupport);
@@ -2659,7 +2659,7 @@ exports.Hex = function(svg) {
             team.player = this;
             this.teamSupport.add(team.component);
             this._updateSize();
-            this.map._updateSize();
+            this.owningMap._updateSize();
         }
 
         removeTeam(team) {
@@ -2670,7 +2670,7 @@ exports.Hex = function(svg) {
                 team.player = null;
             }
             this._updateSize();
-            this.map._updateSize();
+            this.owningMap._updateSize();
         }
 
         _updateSize() {
@@ -2705,7 +2705,7 @@ exports.Hex = function(svg) {
             Memento.revertArray(memento.teams, this.teams);
             Memento.revertSVGTranslation(memento.teamSupport, this.teamSupport);
             this._updateSize();
-            this.map._updateSize();
+            this.owningMap._updateSize();
         }
 
     }
@@ -3185,8 +3185,8 @@ exports.Hex = function(svg) {
                             let finalX = Math.round(initX + depl.x - delta.x);
                             let finalY = Math.round(initY + depl.y - delta.y);
                             let global = whatParent.globalPoint(finalX, finalY);
-                            let onMap = what.hex.map.component.localPoint(global);
-                            let newHex = what.hex.map.getHexFromPoint(onMap);
+                            let onMap = what.hex.owningMap.component.localPoint(global);
+                            let newHex = what.hex.owningMap.getHexFromPoint(onMap);
                             glass.drop(what.component, whatParent, finalX, finalY);
                             if (newHex === what.hex) {
                                 if (!doMove(what, finalX, finalY)) {
