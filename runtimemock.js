@@ -46,14 +46,16 @@ exports.mockRuntime = function() {
         }
 
         toString() {
-            return JSON.stringify(this, function(key, value) {return key==="parent" || key==="children" ? undefined : value;});
+            return JSON.stringify(this, function(key, value) {
+                return key==="parent" || key==="handler" || key==="children" ? undefined : value;});
         }
     }
 
     return {
         listeners: {},
-        createDOM(tag) {
+        createDOM(tag, handler) {
             let elem = new Element(tag, idGenerator++);
+            elem.handler = handler;
             if (tag === 'textarea') {
                 elem.enter = text=> {
                     elem.value = text;
@@ -66,8 +68,9 @@ exports.mockRuntime = function() {
             }
             return elem;
         },
-        create(tag) {
+        create(tag, handler) {
             var elem = new Element(tag, idGenerator++);
+            elem.handler = handler;
             elem.setBoundingClientRect = (width, height)=> {
                 elem.bbWidth = width;
                 elem.bbHeight = height;
@@ -280,6 +283,16 @@ exports.mockRuntime = function() {
             timeout.handler();
             return this;
         },
+        advanceAll() {
+            let all = [...timeouts];
+            while (!all.empty()) {
+                var timeout = timeouts.shift();
+                all.remove(timeout);
+                time = timeout.time;
+                timeout.handler();
+            }
+            return this;
+        },
         advanceTo(timeoutId) {
             for (var i=0; i<timeouts.length && timeouts[i].id!==timeoutId; i++);
             if (i<timeouts.length) {
@@ -294,7 +307,9 @@ exports.mockRuntime = function() {
             return timeouts.length===0;
         },
         json(component) {
-            return JSON.stringify(component, function(key, value) {return key==="parent" ? undefined : value;});
+            return JSON.stringify(component, function(key, value) {
+                return key==="parent" || key==="handler" ? undefined : value;
+            });
         },
         random() {
             let value = randoms.shift();

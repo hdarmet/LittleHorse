@@ -136,5 +136,12 @@ describe('Little games', function() {
             assert.equal(hex.inside(50, -100), false);
         });
 
+        if("creates a Drawing inside another Drawing") {
+            var inside = new svg.Hexagon(100, "H");
+            var drawing = new svg.Drawing(1000, 500);
+            drawing.add(inside);
+            inspect(inside.component, {tag:'svg'});
+        }
+
     });
 });

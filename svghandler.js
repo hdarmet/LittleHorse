@@ -5,7 +5,6 @@
 console.log("SVGHandler loaded...");
 
 exports.SVG = function(runtime) {
-
     var svgr = runtime;
 
     function print(points) {
@@ -163,7 +162,7 @@ exports.SVG = function(runtime) {
     class Screen extends DomElement {
         constructor(width, height){
             super();
-            this.component = svgr.createDOM("div");
+            this.component = svgr.createDOM("div", this);
             this.children = [];
             this.dimension(width, height);
         }
@@ -234,7 +233,7 @@ exports.SVG = function(runtime) {
 
         constructor(width, height){
             super();
-            this.component = svgr.createDOM("div");
+            this.component = svgr.createDOM("div", this);
             this.move(0, 0);
             this.dimension(width, height);
             this.children = [];
@@ -476,7 +475,7 @@ exports.SVG = function(runtime) {
     class TextArea extends TextItem {
 
         constructor(x, y, width, height){
-            super(x, y, width, height, svgr.createDOM("textarea"));
+            super(x, y, width, height, svgr.createDOM("textarea", this));
             this.scroll(TextArea.CLIPPED);
             let self = this;
             svgr.addEvent(this.component, "keydown", (event)=>{
@@ -525,7 +524,7 @@ exports.SVG = function(runtime) {
     class TextField extends TextItem {
 
         constructor(x, y, width, height){
-            super(x, y, width, height, svgr.createDOM("input"));
+            super(x, y, width, height, svgr.createDOM("input", this));
             this.type(TextField.TEXT);
         }
 
@@ -557,7 +556,7 @@ exports.SVG = function(runtime) {
             this.x = 0;
             this.y = 0;
             this._active = true;
-            this.component = svgr.create("svg");
+            this.component = svgr.create("svg", this);
             svgr.attrNS(this.component, 'xlink', 'http://www.w3.org/1999/xlink');
             this.dimension(width, height);
         }
@@ -706,7 +705,7 @@ exports.SVG = function(runtime) {
             super();
             this.children = [];
             this._active = true;
-            this.component = svgr.create("g");
+            this.component = svgr.create("g", this);
         }
 
         active(flag) {
@@ -1338,7 +1337,7 @@ exports.SVG = function(runtime) {
 
         constructor(width=0, height=0) {
             super();
-            this.component = svgr.create("rect");
+            this.component = svgr.create("rect", this);
             this.x = 0;
             this.y = 0;
             this.width = width;
@@ -1414,7 +1413,7 @@ exports.SVG = function(runtime) {
 
         constructor(radius) {
             super();
-            this.component = svgr.create("circle");
+            this.component = svgr.create("circle", this);
             this.x = 0;
             this.y = 0;
             this.r = radius;
@@ -1468,7 +1467,7 @@ exports.SVG = function(runtime) {
     class Ellipse extends Shape {
         constructor(radiusX, radiusY) {
             super();
-            this.component = svgr.create("ellipse");
+            this.component = svgr.create("ellipse", this);
             this.x = 0;
             this.y = 0;
             this.rx = radiusX;
@@ -1527,7 +1526,7 @@ exports.SVG = function(runtime) {
 
         constructor(width, height, direction) {
             super();
-            this.component = svgr.create("polygon");
+            this.component = svgr.create("polygon", this);
             this.x = 0;
             this.y = 0;
             this.width = width;
@@ -1615,7 +1614,7 @@ exports.SVG = function(runtime) {
 
         constructor(width, height, headRatio, direction) {
             super();
-            this.component = svgr.create("path");
+            this.component = svgr.create("path", this);
             this.x = 0;
             this.y = 0;
             this.width = width;
@@ -1736,7 +1735,7 @@ exports.SVG = function(runtime) {
 
         constructor(x=0, y=0) {
             super();
-            this.component = svgr.create("polygon");
+            this.component = svgr.create("polygon", this);
             this.x = x;
             this.y = y;
             this.points = [];
@@ -1819,7 +1818,7 @@ exports.SVG = function(runtime) {
 
         constructor(baseWidth, headWidth, headHeight) {
             super();
-            this.component = svgr.create("polygon");
+            this.component = svgr.create("polygon", this);
             this.baseWidth = baseWidth;
             this.headWidth = headWidth;
             this.headHeight = headHeight;
@@ -1880,7 +1879,7 @@ exports.SVG = function(runtime) {
     class Hexagon extends Shape {
         constructor(baseWidth, direction) {
             super();
-            this.component = svgr.create("polygon");
+            this.component = svgr.create("polygon", this);
             this.x = 0;
             this.y = 0;
             this.baseWidth = baseWidth;
@@ -1968,7 +1967,7 @@ exports.SVG = function(runtime) {
 
         constructor(width, height, thickness, direction) {
             super();
-            this.component = svgr.create("path");
+            this.component = svgr.create("path", this);
             this.x = 0;
             this.y = 0;
             this.width = width;
@@ -2136,7 +2135,7 @@ exports.SVG = function(runtime) {
 
         constructor(width, height, thickness) {
             super();
-            this.component = svgr.create("path");
+            this.component = svgr.create("path", this);
             this.x = 0;
             this.y = 0;
             this.width = width;
@@ -2215,7 +2214,7 @@ exports.SVG = function(runtime) {
 
         constructor(message) {
             super();
-            this.component = svgr.create("text");
+            this.component = svgr.create("text", this);
             this.messageText = message!==undefined ? "" + message : "";
             this.x = 0;
             this.y = 0;
@@ -2296,7 +2295,7 @@ exports.SVG = function(runtime) {
             svgr.attr(this.component, "text-decoration", this._decoration);
             this._format(this.component, lines[0]);
             for (l = 1; l < lines.length; l++) {
-                var line = svgr.create("tspan");
+                var line = svgr.create("tspan", this);
                 svgr.add(this.component, line);
                 svgr.attr(line, "x", this.x);
                 svgr.attr(line, "y", baseY + l * this.lineSpacing-margin);
@@ -2398,7 +2397,7 @@ exports.SVG = function(runtime) {
 
         constructor(x1, y1, x2, y2) {
             super();
-            this.component = svgr.create("line");
+            this.component = svgr.create("line", this);
             this.x1 = x1;
             this.y1 = y1;
             this.x2 = x2;
@@ -2490,7 +2489,7 @@ exports.SVG = function(runtime) {
 
         constructor(x, y) {
             super();
-            this.component = svgr.create("path");
+            this.component = svgr.create("path", this);
             if (x === undefined) {
                 this.drawing = "";
                 this.points = [];
@@ -2569,7 +2568,7 @@ exports.SVG = function(runtime) {
 
         constructor(url) {
             super();
-            this.component = svgr.create("image");
+            this.component = svgr.create("image", this);
             this.src = url;
             this.x = 0;
             this.y = 0;

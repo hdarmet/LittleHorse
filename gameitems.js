@@ -334,24 +334,24 @@ exports.GameItems = function(svg) {
             this.addOption("Resume game", ()=> {
                 this.canvas.hide();
                 this.game.resume();
-            }, 150, 120, 340, 80);
+            }, 150, 120, 340, 80, "ResumeOption");
             this.addOption("New game", ()=> {
                 this.canvas.hide();
                 this.createGame();
-            }, 510, 120, 340, 80);
+            }, 510, 120, 340, 80, "NewGameOption");
             this.setParameters("Parameters", 500, 580);
         }
 
         setTitle(title) {
-            this.title = new svg.Translation()
+            this.title = new svg.Translation().mark("Title")
                 .add(new svg.Rect(700, 120).color([200, 100, 100], 5, [255, 50, 50]))
                 .add(new svg.Text(title).color([255, 50, 50]).position(0, 20).font("Arial", 80));
             this.canvas.add(this.title.move(500, 150))
         }
 
-        addOption(label, todo, x, y, width, height) {
-            this.options.push(new svg.Translation()
-                .add(new svg.Rect(width, height).color([100, 200, 100], 5, [50, 255, 50])/*.clickable()*/)
+        addOption(label, todo, x, y, width, height, id) {
+            this.options.push(new svg.Translation().mark(id)
+                .add(new svg.Rect(width, height).color([100, 200, 100], 5, [50, 255, 50]))
                 .add(new svg.Text(label).color([50, 255, 50]).position(0, Math.round(height * .2)).font("Arial", Math.round(height * .6))/*.clickable()*/));
             this.options[this.options.length - 1].onClick(todo);
             this.canvas.add(this.options[this.options.length - 1].move(x + width / 2, 150 + y));

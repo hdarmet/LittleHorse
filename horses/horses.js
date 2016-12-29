@@ -12,11 +12,11 @@ exports.play = function(svg, param) {
     class Game {
 
         constructor(exit) {
-            this.canvas = new svg.Drawing(1200, 1000).show("content");
+            this.canvas = new svg.Drawing(1200, 1000).show("content").mark("Game");
             this.players = [];
             this.die = new gameItems.Die(param);
             this.add(this.die.component.move(30, 30));
-            this.add(new gameItems.Exit(exit).component.move(30, 120));
+            this.add(new gameItems.Exit(exit).component.move(30, 120).mark("Exit"));
             this.board = new Board(this);
             this.add(this.board.component.move(100, 0));
         }
@@ -87,17 +87,20 @@ exports.play = function(svg, param) {
     class Square {
 
         constructor(game, x, y, index, fillColor, strokeColor) {
-            this.component = new svg.Circle(25).position(x * 60 + 30, y * 60 + 30).color(fillColor, 4, strokeColor);
+            this.component = new svg.Circle(25).position(x * 60 + 30, y * 60 + 30)
+                .color(fillColor, 4, strokeColor)
+                .mark("Square-"+index);
             this.slot = {x: x, y: y, index: index};
         }
+
     }
 
     class Stable {
 
-        constructor(game, x, y, fillColor, strokeColor) {
-            var frame = new svg.Rect(350, 350).position(175, 175).color(fillColor, 5, strokeColor);
-            this.text = new svg.Text("").position(175, 250).color(strokeColor).font("Arial", 150);
-            this.component = new svg.Translation(x * 60 + 5, y * 60 + 5).add(frame).add(this.text);
+        constructor(game, x, y, fillColor, strokeColor, team) {
+            var frame = new svg.Rect(350, 350).position(175, 175).color(fillColor, 5, strokeColor).mark("frame");
+            this.text = new svg.Text("").position(175, 250).color(strokeColor).font("Arial", 150).mark("label");
+            this.component = new svg.Translation(x * 60 + 5, y * 60 + 5).add(frame).add(this.text).mark("Stable-"+team);
             this.slots = [{x: x + 2, y: y + 2}, {x: x + 3, y: y + 3}, {x: x + 3, y: y + 2}, {x: x + 2, y: y + 3}];
             this.finalSlots = [{x: x, y: y}, {x: x + 1, y: y}, {x: x + 2, y: y}, {x: x + 3, y: y}];
         }
@@ -127,9 +130,10 @@ exports.play = function(svg, param) {
 
     class Scale {
 
-        constructor(game, x, y, value, fillColor, strokeColor, angle) {
-            this.component = new svg.Translation(x * 60, y * 60).add(new svg.Rect(50, 50).position(30, 30).color(fillColor, 5, strokeColor));
-            var text = new svg.Text(value).position(0, 15).color(strokeColor).font("Arial", 48);
+        constructor(game, x, y, value, fillColor, strokeColor, angle, team) {
+            this.component = new svg.Translation(x * 60, y * 60).mark("Scale-"+team+value).add(
+                new svg.Rect(50, 50).position(30, 30).color(fillColor, 5, strokeColor).mark("frame"));
+            var text = new svg.Text(value).position(0, 15).color(strokeColor).font("Arial", 48).mark("value");
             this.component.add(new svg.Translation(30, 30).add(new svg.Rotation(angle).add(text)));
             this.slot = {x: x, y: y, index: value};
         }
@@ -139,7 +143,12 @@ exports.play = function(svg, param) {
     class Center {
 
         constructor(game) {
-            this.component = new svg.Translation(7 * 60, 7 * 60).add(new svg.Polygon(0, 0).add([[2, 58], [30, 30], [58, 58]]).color([0, 200, 0])).add(new svg.Polygon(0, 0).add([[2, 2], [30, 30], [2, 58]]).color([240, 204, 0])).add(new svg.Polygon(0, 0).add([[2, 2], [30, 30], [58, 2]]).color([0, 180, 180])).add(new svg.Polygon(0, 0).add([[58, 2], [30, 30], [58, 58]]).color([240, 120, 120]));
+            this.component = new svg.Translation(7 * 60, 7 * 60)
+                .add(new svg.Polygon(0, 0).add([[2, 58], [30, 30], [58, 58]]).color([0, 200, 0]).mark("G"))
+                .add(new svg.Polygon(0, 0).add([[2, 2], [30, 30], [2, 58]]).color([240, 204, 0]).mark("Y"))
+                .add(new svg.Polygon(0, 0).add([[2, 2], [30, 30], [58, 2]]).color([0, 180, 180]).mark("B"))
+                .add(new svg.Polygon(0, 0).add([[58, 2], [30, 30], [58, 58]]).color([240, 120, 120]).mark("R"))
+                .mark("Center");
         }
 
     }
@@ -147,6 +156,7 @@ exports.play = function(svg, param) {
     class Board {
 
         constructor(game) {
+
             let createSquares=(x, y, fillColor, strokeColor, dx1, dy1, dx2, dy2)=> {
                 var result = {
                     end: new Square(game, x, y, this.squares.length, fillColor, strokeColor),
@@ -156,35 +166,37 @@ exports.play = function(svg, param) {
                 this.squares.push(result.begin);
                 this.component.add(result.begin.component).add(result.end.component);
                 for (let i = 1; i <= 6; i++) {
-                    var square = new Square(game, x + dx2 + i * dx1, y + dy2 + i * dy1, this.squares.length, fillColor, strokeColor);
+                    var square = new Square(game, x + dx2 + i * dx1, y + dy2 + i * dy1,
+                        this.squares.length, fillColor, strokeColor);
                     this.squares.push(square);
                     this.component.add(square.component);
                 }
                 for (let i = 1; i <= 6; i++) {
-                    square = new Square(game, x + dx2 + 6 * dx1 + i * dx2, y + dy2 + 6 * dy1 + i * dy2, this.squares.length, fillColor, strokeColor);
+                    square = new Square(game, x + dx2 + 6 * dx1 + i * dx2, y + dy2 + 6 * dy1 + i * dy2,
+                        this.squares.length, fillColor, strokeColor);
                     this.squares.push(square);
                     this.component.add(square.component);
                 }
                 return result;
             };
 
-            let createScales= (x, y, fillColor, strokeColor, dx, dy, angle)=> {
+            let createScales= (x, y, fillColor, strokeColor, dx, dy, angle, team)=> {
                 var scales = [];
                 for (var i = 1; i <= 6; i++) {
-                    var scale = new Scale(game, x + (i - 1) * dx, y + (i - 1) * dy, i, fillColor, strokeColor, angle);
+                    var scale = new Scale(game, x + (i - 1) * dx, y + (i - 1) * dy, i, fillColor, strokeColor, angle, team);
                     scales.push(scale);
                     this.component.add(scale.component);
                 }
                 return scales;
             };
 
-            let createStable=(x, y, fillColor, strokeColor)=> {
-                var stable = new Stable(game, x, y, fillColor, strokeColor);
+            let createStable=(x, y, fillColor, strokeColor, team)=> {
+                var stable = new Stable(game, x, y, fillColor, strokeColor, team);
                 this.component.add(stable.component);
                 return stable;
             };
 
-            this.component = new svg.Translation(0, 0);
+            this.component = new svg.Translation(0, 0).mark("Board");
             this.squares = [];
             this.entries = {};
             this.scales = {};
@@ -195,15 +207,15 @@ exports.play = function(svg, param) {
             this.entries.blue = createSquares(7, 0, [0, 200, 200], [0, 100, 255], 0, 1, 1, 0);
             this.entries.red = createSquares(14, 7, [255, 100, 100], [255, 0, 0], -1, 0, 0, 1);
 
-            this.scales.green = createScales(7, 13, [0, 200, 0], [0, 100, 0], 0, -1, 0);
-            this.scales.yellow = createScales(1, 7, [240, 204, 0], [220, 100, 0], 1, 0, 90);
-            this.scales.blue = createScales(7, 1, [0, 180, 180], [0, 80, 240], 0, 1, 180);
-            this.scales.red = createScales(13, 7, [240, 120, 120], [240, 0, 0], -1, 0, 270);
+            this.scales.green = createScales(7, 13, [0, 200, 0], [0, 100, 0], 0, -1, 0, "G");
+            this.scales.yellow = createScales(1, 7, [240, 204, 0], [220, 100, 0], 1, 0, 90, "Y");
+            this.scales.blue = createScales(7, 1, [0, 180, 180], [0, 80, 240], 0, 1, 180, "B");
+            this.scales.red = createScales(13, 7, [240, 120, 120], [240, 0, 0], -1, 0, 270, "R");
 
-            this.stables.green = createStable(0, 9, [0, 200, 0], [0, 100, 0]);
-            this.stables.yellow = createStable(0, 0, [240, 204, 0], [220, 100, 0]);
-            this.stables.blue = createStable(9, 0, [0, 180, 180], [0, 80, 240]);
-            this.stables.red = createStable(9, 9, [240, 120, 120], [240, 0, 0]);
+            this.stables.green = createStable(0, 9, [0, 200, 0], [0, 100, 0], "G");
+            this.stables.yellow = createStable(0, 0, [240, 204, 0], [220, 100, 0], "Y");
+            this.stables.blue = createStable(9, 0, [0, 180, 180], [0, 80, 240], "B");
+            this.stables.red = createStable(9, 9, [240, 120, 120], [240, 0, 0], "R");
 
             this.component.add(new Center(game).component);
         }
@@ -212,14 +224,16 @@ exports.play = function(svg, param) {
     class Horse {
 
         constructor(game, playerName, id, fillColor, strokeColor) {
-            this.horse = new svg.Translation(0, 0);
+            this.horse = new svg.Translation(0, 0).mark("Horse-"+playerName+id);
             this.status = "InStable";
             this.name = playerName;
             this.id = id;
             this.fillColor = fillColor;
             this.strokeColor = strokeColor;
-            this.head = new svg.Polygon(0, 0).add([[5, 20], [30, 5], [30, 35]]).color(fillColor, 4, strokeColor)/*.clickable()*/;
-            this.corpse = new svg.Polygon(0, 0).add([[15, 55], [30, 5], [45, 55]]).color(fillColor, 4, strokeColor)/*.clickable()*/;
+            this.head = new svg.Polygon(0, 0).add([[5, 20], [30, 5], [30, 35]])
+                .color(fillColor, 4, strokeColor).mark("head");
+            this.corpse = new svg.Polygon(0, 0).add([[15, 55], [30, 5], [45, 55]])
+                .color(fillColor, 4, strokeColor).mark("corpse");
             this.horse.add(this.head).add(this.corpse);
             this.component = new svg.Translation().add(this.horse);
             this.setPosition(game.board.stables[this.name].getFreeSlot());
@@ -621,6 +635,7 @@ exports.play = function(svg, param) {
 
     var game;
     var menu = new gameItems.Menu("Little Horses", param);
+    menu.canvas.mark("Menu");
     menu.optionsList("Speed", [
         {value:1, text:"1"},
         {value:2, text:"2"},
