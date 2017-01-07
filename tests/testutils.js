@@ -23,13 +23,16 @@ function retrieve(element, path) {
     return element;
 }
 
-function inspect(object, model) {
-    for (key in model) {
-        if (typeof(object[key])==="object") {
-            inspect(object[key], model[key]);
-        }
-        else {
-            assert.equal(object[key], model[key]);
+function inspect(object, model, exclude={}) {
+    assert.ok(!object.isElement || object!==model);
+    for (let key in model) {
+        if (exclude[key]===undefined) {
+            if (typeof(object[key]) === "object") {
+                inspect(object[key], model[key], exclude);
+            }
+            else {
+                assert.equal(object[key], model[key], "Field : '"+key+"':"+object[key]+" = "+model[key]);
+            }
         }
     }
 }

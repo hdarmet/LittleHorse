@@ -1563,7 +1563,6 @@ exports.Gui = function(svg, param) {
             function buildClip(component, control) {
                 if (component instanceof svg.Drawing && component.parent!=null) {
                     let clip = new svg.Clip(component);
-                    console.log(clip.x+" "+clip.y+" "+clip.width+" "+clip.height);
                     clip.add(control);
                     control = clip;
                 }

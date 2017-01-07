@@ -19,6 +19,7 @@ exports.mockRuntime = function() {
             this.tag = tag;
             this.children = [];
             this.listeners = {};
+            this.isElement = true;
         }
 
         getElement(id) {
@@ -84,25 +85,24 @@ exports.mockRuntime = function() {
                     }
                 }
                 if (tag === 'rect') {
-                        return {left: elem.x, top: elem.y, width: elem.width, height: elem.height};
+                    return {left: elem.x, top: elem.y, width: elem.width, height: elem.height};
                 }
                 else if (tag === 'svg') {
-                        return {left: 0, top: 0, width: elem.width, height: elem.height};
+                    return {left: 0, top: 0, width: elem.width, height: elem.height};
                 }
                 else if (tag === 'circle') {
-                        return {left: -elem.r, top: -elem.r, width: elem.r * 2, height: elem.r * 2};
+                    return {left: -elem.r, top: -elem.r, width: elem.r * 2, height: elem.r * 2};
                 }
                 else if (tag === 'ellipse') {
-                        return {left: -elem.rx, top: -elem.ry, width: elem.rx * 2, height: elem.ry * 2};
+                    return {left: -elem.rx, top: -elem.ry, width: elem.rx * 2, height: elem.ry * 2};
                 }
-                else if (tag === 'text') {
-                        return {
-                            left: elem.x, top: elem.y,
-                            width: elem.fontSize*2,
-                            height: elem.text.length*elem.fontSize // marche ?
-                            //height: elem.messageText.length*elem.fontSize
-
-                        };
+                else if (tag === 'text' || tag === 'tspan') {
+                    let fontSize = elem.fontSize?elem.fontSize:12;
+                    return {
+                        left: elem.x, top: elem.y,
+                        height: fontSize*2,
+                        width: elem.text.length*fontSize/2 // marche ?
+                    };
                 }
                 else if (tag === 'path') {
                     let maxx = null;

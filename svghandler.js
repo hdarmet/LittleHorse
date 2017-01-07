@@ -134,6 +134,11 @@ exports.SVG = function(runtime) {
             return this;
         }
 
+        onReshape(handler) {
+            this.reshapeHandler = handler;
+            return this;
+        }
+
         globalAngle() {
             return this.parent ? this.parent.globalAngle() : 0;
         }
@@ -146,7 +151,272 @@ exports.SVG = function(runtime) {
     class SvgElement extends Element {
 
         constructor() {
-            super()
+            super();
+            this._active = true;
+        }
+
+        active(flag = true) {
+            this._active = flag;
+            return this;
+        }
+
+        opacity(opacity) {
+            this._opacity = opacity;
+            svgr.attr(this.component, "opacity", opacity);
+            return this;
+        }
+
+        duplicate(shape) {
+            shape.opacity(this._opacity);
+            return shape;
+        }
+
+        prepareColorAnimation(animator) {
+            animator.color = (sfillColor, efillColor, sstroke, estroke, sstrokeColor, estrokeColor)=> {
+
+                let concat = (fillColor, stroke, strokeColor)=> {
+                    var color = fillNone ? [] : [fillColor[0], fillColor[1], fillColor[2]];
+                    if (!strokeNone) {
+                        color.push(stroke, strokeColor[0], strokeColor[1], strokeColor[2]);
+                    }
+                    return color;
+                };
+
+                let colorIdx = 0;
+
+                let getFillColor = color=> {
+                    if (fillNone) {
+                        colorIdx = 0;
+                        return [];
+                    }
+                    else {
+                        colorIdx = 3;
+                        return [Math.round(color[0]), Math.round(color[1]), Math.round(color[2])];
+                    }
+                };
+
+                let getStroke = color=> {
+                    if (strokeNone) {
+                        return undefined;
+                    }
+                    else {
+                        return color[colorIdx++];
+                    }
+                };
+
+                let getStrokeColor= color=> {
+                    if (strokeNone) {
+                        return undefined;
+                    }
+                    else {
+                        return [Math.round(color[colorIdx]), Math.round(color[colorIdx + 1]), Math.round(color[colorIdx + 2])];
+                    }
+                };
+
+                var fillNone = !sfillColor || !sfillColor.length;
+                var strokeNone = !sstroke || !sstrokeColor || !sstrokeColor.length;
+                var scolor = concat(sfillColor, sstroke, sstrokeColor);
+                var ecolor = concat(efillColor, estroke, estrokeColor);
+                animator.process(scolor, ecolor, color=>
+                    this.color(getFillColor(color), getStroke(color), getStrokeColor(color)));
+                return animator;
+            };
+
+            animator.colorTo = (efillColor, estroke, estrokeColor)=> {
+                return animator.color(this.fillColor, efillColor, this.strokeWidth, estroke, this.strokeColor, estrokeColor);
+            };
+        }
+
+        prepareOpacityAnimation(animator) {
+            animator.opacity = (sfactor, efactor)=> {
+                animator.process([sfactor], [efactor],
+                    factor=> this.opacity(factor[0]));
+                return animator;
+            };
+
+            animator.opacityTo = efactor=> {
+                animator.process([this._opacity], [efactor], factor=> this.opacity(factor[0]));
+                return animator;
+            }
+        }
+
+        prepareResizeAnimation(animator) {
+            animator.resize = (swidth, sheight, ewidth, eheight)=> {
+                animator.process([swidth, sheight], [ewidth, eheight], coords=> this.dimension(coords[0], coords[1]));
+                return animator;
+            };
+            animator.resizeTo = (ewidth, eheight)=> {
+                animator.process([this.width, this.height], [ewidth, eheight], coords=>
+                    this.dimension(coords[0], coords[1]));
+                return animator;
+            }
+        }
+
+        preparePositionAnimation(animator) {
+            animator.move = (sx, sy, ex, ey)=> {
+                animator.process([sx, sy], [ex, ey], coords=> this.position(coords[0], coords[1]));
+                return animator;
+            };
+            animator.moveTo = (ex, ey)=> {
+                animator.process([this.x, this.y], [ex, ey], coords=>
+                    this.position(coords[0], coords[1]));
+                return animator;
+            }
+        }
+
+        prepareMoveAnimation(animator) {
+            animator.move = (sx, sy, ex, ey)=> {
+                animator.process([sx, sy], [ex, ey], coords => this.move(coords[0], coords[1]));
+                return animator;
+            };
+            animator.moveTo = (ex, ey)=> {
+                animator.process([this.x, this.y], [ex, ey], coords => this.move(coords[0], coords[1]));
+                return animator;
+            }
+        }
+
+        prepareRotateAnimation(animator) {
+            animator.rotate = (sangle, eangle)=> {
+                animator.process([sangle], [eangle], angle => this.rotate(angle[0]));
+                return animator;
+            };
+            animator.rotateTo = eangle=> {
+                animator.process([this.angle], [eangle], angle=> this.rotate(angle[0]));
+                return animator;
+            }
+        }
+
+        prepareScalingAnimation(animator) {
+            animator.scale = (sfactor, efactor)=> {
+                animator.process([sfactor], [efactor], factor=> this.scale(factor[0]));
+                return animator;
+            };
+            animator.scaleTo = efactor => {
+                animator.process([this.factor], [efactor], factor=> this.scale(factor[0]));
+                return animator;
+            }
+        }
+
+        prepareLineAnimation(animator) {
+            animator.move = (sx1, sy1, sx2, sy2, ex1, ey1, ex2, ey2)=> {
+                animator.process([sx1, sy1, sx2, sy2], [ex1, ey1, ex2, ey2], coords=>
+                    this.start(coords[0], coords[1]).end(coords[2], coords[3]));
+                return animator;
+            };
+            animator.moveTo = (ex1, ey1, ex2, ey2)=> {
+                animator.process([this.x1, this.y1, this.x2, this.y2], [ex1, ey1, ex2, ey2], coords=>
+                    this.start(coords[0], coords[1]).end(coords[2], coords[3]));
+                return animator;
+            };
+            animator.start = (sx1, sy1, ex1, ey1)=> {
+                animator.process([sx1, sy1], [ex1, ey1], coords=>this.start(coords[0], coords[1]));
+                return animator;
+            };
+            animator.startTo = (ex1, ey1)=> {
+                animator.process([this.x1, this.y1], [ex1, ey1], coords=> this.start(coords[0], coords[1]));
+                return animator;
+            };
+            animator.end = (sx1, sy1, ex1, ey1)=> {
+                animator.process([sx1, sy1], [ex1, ey1], coords=> this.end(coords[0], coords[1]));
+                return animator;
+            };
+            animator.endTo = (ex1, ey1)=> {
+                animator.process([this.x2, this.y2], [ex1, ey1], coords=> this.end(coords[0], coords[1]));
+                return animator;
+            }
+        }
+
+        smoothy(speed, step) {
+            return new Animator(this).smoothy(speed, step);
+        }
+
+        steppy(speed, stepCount) {
+            return new Animator(this).steppy(speed, stepCount);
+        }
+
+        onChannel(channelInfo) {
+            return new Animator(this).onChannel(channelInfo);
+        }
+
+        onClick(handler) {
+            if (handler) {
+                svgr.addEvent(this.component, "click", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "click");
+            }
+
+            return this;
+        }
+
+        onRightClick(handler) {
+            if (handler) {
+                svgr.addEvent(this.component, "contextmenu", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "contextmenu");
+            }
+            return this;
+        }
+
+        onMouseDown(handler) {
+            if (handler) {
+                svgr.addEvent(this.component, "mousedown", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "mousedown");
+            }
+            return this;
+        }
+
+        onMouseMove(handler) {
+            if (handler) {
+                svgr.addEvent(this.component, "mousemove", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "mousemove");
+            }
+            return this;
+        }
+
+        onMouseUp(handler) {
+            if (handler) {
+                svgr.addEvent(this.component, "mouseup", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "mouseup");
+            }
+            return this;
+        }
+
+        onMouseEnter(handler) {
+            if (handler) {
+                svgr.addEvent(this.component, "mouseenter", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "mouseenter");
+            }
+            return this;
+        }
+
+        onMouseOut(handler) {
+            if (handler) {
+                svgr.addEvent(this.component, "mouseout", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "mouseout");
+            }
+            return this;
+        }
+
+        onMouseWheel(handler) {
+            if (handler) {
+                svgr.addEvent(this.component, "wheel", handler);
+            }
+            else {
+                svgr.removeEvent(this.component, "wheel");
+            }
+            return this;
         }
 
     }
@@ -209,7 +479,7 @@ exports.SVG = function(runtime) {
             style += "top:" + 0 + "px;";
             style += "width:" + this.width + "px;";
             style += "height:" + this.height + "px;";
-            style += "position: absolute;";
+            style += "position:absolute;";
             svgr.attr(this.component, "style", style);
             this.children.forEach(child=>child._draw && child._draw());
         }
@@ -317,17 +587,16 @@ exports.SVG = function(runtime) {
 
     class TextItem extends DomElement {
 
-        constructor(x, y, width, height, component){
-            super();
+        init(x, y, width, height, component, messageText){
             this.component = component;
             this.anchorText = TextItem.CENTER;
             this.fontName = "arial";
             this.fontSize = 12;
-            this._fontColor = svg.BLACK;
+            this._fontColor = [0, 0, 0];
             this._decoration = "none";
             this.dimension(width, height);
             this.position(x, y);
-            this.messageText = "";
+            this.messageText = messageText;
             this.placeHolderText = "";
             svgr.addEvent(component, "input", ()=>{
                 this.messageText = svgr.value(component);
@@ -438,18 +707,21 @@ exports.SVG = function(runtime) {
                 style += "top:" + ((this.y || 0)-delta.y) + "px;";
                 style += "width:" + (this.width || 0) + "px;";
                 style += "height:" + (this.height || 0) + "px;";
-                style += "text-decoration:" + (this._decoration || "none");
+                style += "text-decoration:" + (this._decoration || "none")+";";
                 style += "text-align:" + (this.anchorText || TextItem.CENTER) + ";";
                 style += "font-family:" + (this.fontName || "Arial") + ";";
                 style += "font-size:" + (this.fontSize || 20) + "px;";
                 if (this.lineSpacing) {
                     style += "line-height:" + this.lineSpacing + "px;";
                 }
-                style += "background-color:" + ((this.fillColor && this.fillColor.length) ? "rgb(" + this.fillColor.join(",") + ");" : "transparent;");
-                style += "border:" + (this.strokeWidth || 0) + "px solid " + ((this.strokeColor && this.strokeColor.length) ? "rgb(" + this.strokeColor.join(",") + ");" : "transparent;") + ";";
+                style += "background-color:" + ((this.fillColor && this.fillColor.length) ?
+                    "rgb(" + this.fillColor.join(",") + ");" : "transparent;");
+                style += "border:" + (this.strokeWidth || 0) + "px solid " + ((this.strokeColor && this.strokeColor.length) ?
+                    "rgb(" + this.strokeColor.join(",") + ");" : "transparent;");
                 style += "margin:" + -(this.strokeWidth || 0) + "px;";
-                style += "outline: none; pointer-events: initial;";
-                style += "color:" + ((this._fontColor && this._fontColor.length) ? "rgb(" + this._fontColor.join(",") + ");" : "transparent;");
+                style += "outline:none;pointer-events:initial;";
+                style += "color:" + ((this._fontColor && this._fontColor.length) ?
+                    "rgb(" + this._fontColor.join(",") + ");" : "transparent;");
                 svgr.attr(this.component, "style", style);
                 svgr.value(this.component, this.messageText || '');
                 svgr.attr(this.component, "placeholder", this.placeHolderText || '');
@@ -458,7 +730,8 @@ exports.SVG = function(runtime) {
 
         duplicate(item) {
             return item.anchor(this.anchorText)
-                .font(this.fontName, this.fontSize)
+                .font(this.fontName, this.fontSize, this.lineSpacing)
+                .fontColor(this._fontColor)
                 .color(this.fillColor, this.strokeWidth, this.strokeColor)
                 .decoration(this._decoration)
                 .message(this.messageText)
@@ -474,10 +747,10 @@ exports.SVG = function(runtime) {
 
     class TextArea extends TextItem {
 
-        constructor(x, y, width, height){
-            super(x, y, width, height, svgr.createDOM("textarea", this));
+        constructor(x, y, width, height, message=""){
+            super();
+            this.init(x, y, width, height, svgr.createDOM("textarea", this), message);
             this.scroll(TextArea.CLIPPED);
-            let self = this;
             svgr.addEvent(this.component, "keydown", (event)=>{
                 event.processed  = true;
                 if (event.keyCode===13) {
@@ -489,14 +762,6 @@ exports.SVG = function(runtime) {
             });
         }
 
-        font(fontName, fontSize, lineSpacing) {
-            this.fontName = fontName;
-            this.fontSize = fontSize;
-            this.lineSpacing = lineSpacing;
-            this._draw();
-            return this;
-        }
-
         scroll(mode){
             this.mode = mode;
             this._draw();
@@ -506,7 +771,7 @@ exports.SVG = function(runtime) {
         _draw(){
             var style = "overflow:" + (this.mode || TextArea.CLIPPED) +";";
             style += "resize:none;";
-            style += "position: absolute;";
+            style += "position:absolute;";
             super._draw(style);
         }
 
@@ -523,8 +788,9 @@ exports.SVG = function(runtime) {
 
     class TextField extends TextItem {
 
-        constructor(x, y, width, height){
-            super(x, y, width, height, svgr.createDOM("input", this));
+        constructor(x, y, width, height, message=""){
+            super();
+            this.init(x, y, width, height, svgr.createDOM("input", this), message);
             this.type(TextField.TEXT);
         }
 
@@ -540,8 +806,7 @@ exports.SVG = function(runtime) {
         }
 
         duplicate() {
-            return super.duplicate(new TextField(this.x, this.y, this.width, this.height))
-                .scroll(this.mode);
+            return super.duplicate(new TextField(this.x, this.y, this.width, this.height));
         }
     }
 
@@ -555,15 +820,9 @@ exports.SVG = function(runtime) {
             this.children = [];
             this.x = 0;
             this.y = 0;
-            this._active = true;
             this.component = svgr.create("svg", this);
             svgr.attrNS(this.component, 'xlink', 'http://www.w3.org/1999/xlink');
             this.dimension(width, height);
-        }
-
-        active(flag) {
-            this._active = flag || flag === undefined;
-            return this;
         }
 
         dimension(width, height) {
@@ -612,29 +871,9 @@ exports.SVG = function(runtime) {
             return this;
         }
 
-        smoothy(speed, step) {
-            return new Animator(this).smoothy(speed, step);
-        }
-
-        steppy(speed, stepCount) {
-            return new Animator(this).steppy(speed, stepCount);
-        }
-
-        onChannel(channelInfo) {
-            return new Animator(this).onChannel(channelInfo);
-        }
-
         prepareAnimator(animator) {
-            animator.resize = (swidth, sheight, ewidth, eheight)=> {
-                animator.process([swidth, sheight], [ewidth, eheight], coords=> this.dimension(coords[0], coords[1]));
-                return animator;
-            };
-            var self = this;
-            animator.resizeTo = (ewidth, eheight)=> {
-                animator.process([self.width, self.height], [ewidth, eheight], coords=>
-                    this.dimension(coords[0], coords[1]));
-                return animator;
-            }
+            this.prepareResizeAnimation(animator);
+            this.preparePositionAnimation(animator);
         }
 
         globalPoint(...args) {
@@ -704,13 +943,7 @@ exports.SVG = function(runtime) {
         constructor() {
             super();
             this.children = [];
-            this._active = true;
             this.component = svgr.create("g", this);
-        }
-
-        active(flag) {
-            this._active = flag || flag === undefined;
-            return this;
         }
 
         center() {
@@ -756,129 +989,22 @@ exports.SVG = function(runtime) {
             return this;
         }
 
-        opacity(opacity) {
-            this._opacity = opacity;
-            svgr.attr(this.component, "opacity", opacity);
-            return this;
-        }
-
-        smoothy(speed, step) {
-            return new Animator(this).smoothy(speed, step);
-        }
-
-        steppy(speed, stepCount) {
-            return new Animator(this).steppy(speed, stepCount);
-        }
-
-        onChannel(channelInfo) {
-            return new Animator(this).onChannel(channelInfo);
-        }
-
-        onClick(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "click", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "click");
-            }
-            return this;
-        }
-
-        onRightClick(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "contextmenu", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "contextmenu");
-            }
-            return this;
-        }
-
-        onMouseDown(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "mousedown", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "mousedown");
-            }
-            return this;
-        }
-
-        onMouseMove(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "mousemove", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "mousemove");
-            }
-            return this;
-        }
-
-        onMouseUp(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "mouseup", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "mouseup");
-            }
-            return this;
-        }
-
-        onMouseEnter(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "mouseenter", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "mouseenter");
-            }
-            return this;
-        }
-
-        onMouseOut(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "mouseout", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "mouseout");
-            }
-            return this;
-        }
-
-        onMouseWheel(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "wheel", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "wheel");
-            }
-            return this;
-        }
-
         color(fillColor, stroke, strokeColor) {
             this.accept(new Visitor("color", fillColor, stroke, strokeColor));
             return this;
         }
 
         prepareAnimator(animator) {
-            animator.opacity = (sopacity, eopacity)=> {
-                animator.process([sopacity], [eopacity], coords=> this.opacity(coords[0]));
-                return animator;
-            };
-            animator.opacityTo = eopacity=> {
-                animator.process([self.opacity], [eopacity], coords=> this.opacity(coords[0]));
-                return animator;
-            }
+            this.prepareOpacityAnimation(animator);
         }
 
         getTarget(x, y) {
-            if (this._active) {
-                if (!this._opacity || this._opacity > 0) {
-                    for (var i = this.children.length - 1; i >= 0; i--) {
-                        if (!this.children[i].dummy) {
-                            var target = this.children[i].getTarget(x, y);
-                            if (target) {
-                                return target;
-                            }
+            if (this._active && (this._opacity===undefined || this._opacity > 0)) {
+                for (var i = this.children.length - 1; i >= 0; i--) {
+                    if (!this.children[i].dummy) {
+                        var target = this.children[i].getTarget(x, y);
+                        if (target) {
+                            return target;
                         }
                     }
                 }
@@ -949,7 +1075,13 @@ exports.SVG = function(runtime) {
         }
 
         duplicate() {
-            let clone = super.duplicate(new Ordered(this.children.length));
+            let clone = new Ordered(this.children.length);
+            clone.active(this._active);
+            for (let layer=0; layer<this.children.length; layer++) {
+                if (!this.get(layer).dummy) {
+                    clone.set(layer, this.get(layer).duplicate());
+                }
+            }
             return clone;
         }
     }
@@ -969,35 +1101,20 @@ exports.SVG = function(runtime) {
         };
 
         prepareAnimator(animator) {
-            Handler.prototype.prepareAnimator.call(this, animator);
-            animator.move = (sx, sy, ex, ey)=> {
-                animator.process([sx, sy], [ex, ey], coords => this.move(coords[0], coords[1]));
-                return animator;
-            };
-            animator.moveTo = (ex, ey)=> {
-                animator.process([this.x, this.y], [ex, ey], coords => this.move(coords[0], coords[1]));
-                return animator;
-            }
+            super.prepareAnimator(animator);
+            this.prepareMoveAnimation(animator);
         }
 
         globalPoint(...args) {
-            try {
-                var point = getPoint(args);
-                point = {x: point.x + this.x, y: point.y + this.y};
-                return this.parent ? this.parent.globalPoint(point) : null;
-            }
-            catch (err) {
-                console.log("bug !!");
-            }
+            var point = getPoint(args);
+            point = {x: point.x + this.x, y: point.y + this.y};
+            return this.parent ? this.parent.globalPoint(point) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
             point = this.parent ? this.parent.localPoint(point) : null;
-            if (point) {
-                point = {x: point.x - this.x, y: point.y - this.y};
-            }
-            return point;
+            return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
         duplicate() {
@@ -1007,7 +1124,7 @@ exports.SVG = function(runtime) {
     }
 
     class Rotation extends Handler {
-        constructor(angle) {
+        constructor(angle=0) {
             super();
             this.rotate(angle || 0);
         }
@@ -1015,6 +1132,7 @@ exports.SVG = function(runtime) {
         rotate(angle) {
             this.angle = angle;
             svgr.attr(this.component, "transform", "rotate(" + angle + ")");
+            this.reshapeHandler && this.reshapeHandler(angle);
             return this;
         }
 
@@ -1023,15 +1141,8 @@ exports.SVG = function(runtime) {
         }
 
         prepareAnimator(animator) {
-            Handler.prototype.prepareAnimator.call(this, animator);
-            animator.rotate = (sangle, eangle)=> {
-                animator.process([sangle], [eangle], angle => this.rotate(angle[0]));
-                return animator;
-            };
-            animator.rotateTo = eangle=> {
-                animator.process([self.angle], [eangle], angle=> this.rotate(angle[0]));
-                return animator;
-            }
+            super.prepareAnimator(animator);
+            this.prepareRotateAnimation(animator);
         }
 
         globalPoint(...args) {
@@ -1043,10 +1154,7 @@ exports.SVG = function(runtime) {
         localPoint(...args) {
             var point = getPoint(args);
             point = this.parent ? this.parent.localPoint(point) : null;
-            if (point) {
-                point = rotate(point.x, point.y, -this.angle);
-            }
-            return point;
+            return point ? rotate(point.x, point.y, -this.angle) : null;
         }
 
         duplicate() {
@@ -1064,6 +1172,7 @@ exports.SVG = function(runtime) {
         scale(factor) {
             this.factor = factor;
             svgr.attr(this.component, "transform", "scale(" + factor + ")");
+            this.reshapeHandler && this.reshapeHandler(factor);
             return this;
         }
 
@@ -1072,16 +1181,8 @@ exports.SVG = function(runtime) {
         }
 
         prepareAnimator(animator) {
-            Handler.prototype.prepareAnimator.call(this, animator);
-            animator.scale = (sfactor, efactor)=> {
-                animator.process([sfactor], [efactor], factor=> this.scale(factor[0]));
-                return animator;
-            };
-            var self = this;
-            animator.scaleTo = efactor => {
-                animator.process([self.factor], [efactor], factor=> this.scale(factor[0]));
-                return animator;
-            }
+            super.prepareAnimator(animator);
+            this.prepareScalingAnimation(animator);
         }
 
         globalPoint(...args) {
@@ -1096,13 +1197,10 @@ exports.SVG = function(runtime) {
         localPoint(...args) {
             var point = getPoint(args);
             point = this.parent ? this.parent.localPoint(point) : null;
-            if (point) {
-                point = {
+            return point ? {
                     x: point.x / this.factor,
                     y: point.y / this.factor
-                };
-            }
-            return point;
+                } : null;
         }
 
         duplicate() {
@@ -1115,12 +1213,6 @@ exports.SVG = function(runtime) {
 
         constructor() {
             super();
-            this._active = true;
-        }
-
-        active(flag = true) {
-            this._active = flag;
-            return this;
         }
 
         accept(visitor) {
@@ -1128,84 +1220,8 @@ exports.SVG = function(runtime) {
             return this;
         }
 
-        onClick(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "click", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "click");
-            }
-
-            return this;
-        }
-
-        onRightClick(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "contextmenu", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "contextmenu");
-            }
-            return this;
-        }
-
-        onMouseDown(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "mousedown", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "mousedown");
-            }
-            return this;
-        }
-
-        onMouseMove(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "mousemove", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "mousemove");
-            }
-            return this;
-        }
-
-        onMouseUp(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "mouseup", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "mouseup");
-            }
-            return this;
-        }
-
-        onMouseEnter(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "mouseenter", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "mouseenter");
-            }
-            return this;
-        }
-
-        onMouseOut(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "mouseout", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "mouseout");
-            }
-            return this;
-        }
-
-        onMouseWheel(handler) {
-            if (handler) {
-                svgr.addEvent(this.component, "wheel", handler);
-            }
-            else {
-                svgr.removeEvent(this.component, "wheel");
-            }
+        onReorient(handler) {
+            this.reorientHandler = handler;
             return this;
         }
 
@@ -1225,96 +1241,27 @@ exports.SVG = function(runtime) {
             return this;
         }
 
-        opacity(opacity) {
-            this._opacity = opacity;
-            svgr.attr(this.component, "opacity", opacity);
-            return this;
-        }
-
         fillOpacity(opacity) {
             this._fillopacity = opacity;
             svgr.attr(this.component, "fill-opacity", opacity);
             return this;
         }
 
-        smoothy(speed, step) {
-            return new Animator(this).smoothy(speed, step);
-        }
-
-        steppy(speed, stepCount) {
-            return new Animator(this).steppy(speed, stepCount);
-        }
-
-        onChannel(channelInfo) {
-            return new Animator(this).onChannel(channelInfo);
+        duplicate(shape) {
+            shape.color(this.fillColor, this.strokeWidth, this.strokeColor)
+                .dash(this.dashPattern)
+                .fillOpacity(this._fillopacity);
+            super.duplicate(shape);
+            return shape;
         }
 
         prepareAnimator(animator) {
-            animator.color = (sfillColor, efillColor, sstroke, estroke, sstrokeColor, estrokeColor)=> {
-
-                let concat = (fillColor, stroke, strokeColor)=> {
-                    var color = fillNone ? [] : [fillColor[0], fillColor[1], fillColor[2]];
-                    if (!strokeNone) {
-                        color.push(stroke, strokeColor[0], strokeColor[1], strokeColor[2]);
-                    }
-                    return color;
-                };
-
-                let colorIdx = 0;
-
-                let getFillColor = color=> {
-                    if (fillNone) {
-                        colorIdx = 0;
-                        return [];
-                    }
-                    else {
-                        colorIdx = 3;
-                        return [Math.round(color[0]), Math.round(color[1]), Math.round(color[2])];
-                    }
-                };
-
-                let getStroke = color=> {
-                    if (strokeNone) {
-                        return undefined;
-                    }
-                    else {
-                        return color[colorIdx++];
-                    }
-                };
-
-                let getStrokeColor= color=> {
-                    if (strokeNone) {
-                        return undefined;
-                    }
-                    else {
-                        return [Math.round(color[colorIdx]), Math.round(color[colorIdx + 1]), Math.round(color[colorIdx + 2])];
-                    }
-                };
-
-                var fillNone = !sfillColor || !sfillColor.length;
-                var strokeNone = !sstroke || !sstrokeColor || !sstrokeColor.length;
-                var scolor = concat(sfillColor, sstroke, sstrokeColor);
-                var ecolor = concat(efillColor, estroke, estrokeColor);
-                animator.process(scolor, ecolor, color=>
-                    this.color(getFillColor(color), getStroke(color), getStrokeColor(color)));
-                return animator;
-            };
-
-            animator.colorTo = (efillColor, estroke, estrokeColor)=> {
-                return animator.color(self.fillColor, efillColor, self.stroke, estroke, self.strokeColor, estrokeColor);
-            };
-            animator.opacity = (sfactor, efactor)=> {
-                animator.process([sfactor], [efactor], factor=> this.opacity(factor[0]));
-                return animator;
-            };
-            animator.opacityTo = efactor=> {
-                animator.process([self.factor], [efactor], factor=> this.opacity(factor[0]));
-                return animator;
-            }
+            this.prepareColorAnimation(animator);
+            this.prepareOpacityAnimation(animator);
         }
 
         getTarget(x, y) {
-            if ((!this._opacity || this._opacity > 0) && this.fillColor && this.fillColor.length > 0) {
+            if ((this._opacity===undefined || this._opacity > 0) && this.fillColor && this.fillColor.length > 0) {
                 return this.inside(x, y) ? this : null;
             }
             return null;
@@ -1322,13 +1269,6 @@ exports.SVG = function(runtime) {
 
         boundingRect() {
             return svgr.boundingRect(this.component);
-        }
-
-        duplicate(clone) {
-            return clone
-                .active(this._active)
-                .opacity(this._opacity).fillOpacity(this._fillopacity)
-                .color(this.fillColor, this.strokeWidth, this.strokeColor);
         }
 
     }
@@ -1343,6 +1283,12 @@ exports.SVG = function(runtime) {
             this.width = width;
             this.height = height;
             this._draw();
+        }
+
+        prepareAnimator(animator) {
+            super.prepareAnimator(animator);
+            this.preparePositionAnimation(animator);
+            this.prepareResizeAnimation(animator);
         }
 
         position(x, y) {
@@ -1381,28 +1327,26 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             var point = getPoint(args);
-            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+            return this.parent ?
+                this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y}):
+                null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            point = this.parent.localPoint(point);
+            point = this.parent ? this.parent.localPoint(point) : null;
             return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
         inside(x, y) {
-            try {
-                var local = this.localPoint(x, y);
-                return local.x >= -this.width / 2 && local.x <= this.width / 2
-                    && local.y >= -this.height / 2 && local.y <= this.height / 2;
-            }
-            catch (err) {
-                bug();
-            }
+            var local = this.localPoint(x, y);
+            return local.x >= -this.width / 2 && local.x <= this.width / 2
+                && local.y >= -this.height / 2 && local.y <= this.height / 2;
         }
 
         duplicate() {
-            let clone = super.duplicate(new Rect(this.width, this.height)
+            let clone = super.duplicate(
+                new Rect(this.width, this.height)
                 .position(this.x, this.y)
                 .corners(this.rx, this.ry));
             return clone;
@@ -1411,7 +1355,7 @@ exports.SVG = function(runtime) {
 
     class Circle extends Shape {
 
-        constructor(radius) {
+        constructor(radius=0) {
             super();
             this.component = svgr.create("circle", this);
             this.x = 0;
@@ -1431,6 +1375,7 @@ exports.SVG = function(runtime) {
         radius(radius) {
             this.r = radius;
             this._draw();
+            this.resizeHandler && this.resizeHandler(radius);
             return this;
         }
 
@@ -1442,12 +1387,12 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             var point = getPoint(args);
-            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+            return this.parent ? this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y}) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            point = this.parent.localPoint(point);
+            point = this.parent ? this.parent.localPoint(point) : null;
             return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
@@ -1458,14 +1403,14 @@ exports.SVG = function(runtime) {
         }
 
         duplicate() {
-            let clone = super.duplicate(new Circle(this.radius)
-                .position(this.x, this.y));
+            let clone = super.duplicate(
+                new Circle(this.r).position(this.x, this.y));
             return clone;
         }
     }
 
     class Ellipse extends Shape {
-        constructor(radiusX, radiusY) {
+        constructor(radiusX=0, radiusY=0) {
             super();
             this.component = svgr.create("ellipse", this);
             this.x = 0;
@@ -1487,6 +1432,7 @@ exports.SVG = function(runtime) {
             this.rx = radiusX;
             this.ry = radiusY;
             this._draw();
+            this.resizeHandler && this.resizeHandler({radiusX:radiusX, radiusY:radiusY});
             return this;
         }
 
@@ -1499,12 +1445,12 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             var point = getPoint(args);
-            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+            return this.parent ? this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y}) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            point = this.parent.localPoint(point);
+            point = this.parent ? this.parent.localPoint(point) : null;
             return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
@@ -1516,15 +1462,16 @@ exports.SVG = function(runtime) {
         }
 
         duplicate() {
-            let clone = super.duplicate(new Circle(this.rx, this.ry)
-                .position(this.x, this.y));
+            let clone = super.duplicate(new Ellipse(this.rx, this.ry)
+                .position(this.x, this.y)
+                .radius(this.rx, this.ry));
             return clone;
         }
     }
 
     class Triangle extends Shape {
 
-        constructor(width, height, direction) {
+        constructor(width=0, height=0, direction="N") {
             super();
             this.component = svgr.create("polygon", this);
             this.x = 0;
@@ -1539,6 +1486,7 @@ exports.SVG = function(runtime) {
             this.x = x;
             this.y = y;
             this._draw();
+            this.moveHandler && this.moveHandler({x:x, y:y});
             return this;
         }
 
@@ -1553,12 +1501,12 @@ exports.SVG = function(runtime) {
         direction(direction) {
             this.dir = direction;
             this._draw();
+            this.reorientHandler && this.reorientHandler(direction);
             return this;
         }
 
         _draw() {
-            var dir = this.dir || "N";
-            switch (dir) {
+            switch (this.dir) {
                 case "N":
                     this.points = [
                         {x: this.x - this.width / 2, y: this.y + this.height / 2},
@@ -1589,12 +1537,12 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             var point = getPoint(args);
-            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+            return this.parent ? this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y}) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            point = this.parent.localPoint(point);
+            point = this.parent ? this.parent.localPoint(point) : null;
             return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
@@ -1628,6 +1576,7 @@ exports.SVG = function(runtime) {
             this.x = x;
             this.y = y;
             this._draw();
+            this.moveHandler && this.moveHandler({x:x, y:y});
             return this;
         }
 
@@ -1643,6 +1592,7 @@ exports.SVG = function(runtime) {
         direction(direction) {
             this.dir = direction;
             this._draw();
+            this.reorientHandler && this.reorientHandler(direction);
             return this;
         }
 
@@ -1710,12 +1660,12 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             var point = getPoint(args);
-            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+            return this.parent ? this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y}) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            point = this.parent.localPoint(point);
+            point = this.parent ? this.parent.localPoint(point) : null;
             return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
@@ -1752,6 +1702,7 @@ exports.SVG = function(runtime) {
         trace(dx, dy) {
             var lastPoint = this.points[this.points.length - 1];
             this.points.push({x: lastPoint.x + dx, y: lastPoint.y + dy});
+            this.reshapeHandler && this.reshapeHandler([...this.points]);
             return this;
         }
 
@@ -1765,18 +1716,21 @@ exports.SVG = function(runtime) {
                 this.points.push({x: x, y: y});
             }
             this._draw();
+            this.reshapeHandler && this.reshapeHandler([...this.points]);
             return this;
         }
 
         remove(index) {
-            this.points.slice(index, 1);
+            this.points.splice(index, 1);
             this._draw();
+            this.reshapeHandler && this.reshapeHandler([...this.points]);
             return this;
         }
 
         clear() {
             this.points = [];
             this._draw();
+            this.reshapeHandler && this.reshapeHandler([...this.points]);
             return this;
         }
 
@@ -1792,12 +1746,12 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             var point = getPoint(args);
-            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+            return this.parent ? this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y}) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            var point = this.parent.localPoint(point);
+            var point = this.parent ? this.parent.localPoint(point) : null;
             return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
@@ -1822,6 +1776,16 @@ exports.SVG = function(runtime) {
             this.baseWidth = baseWidth;
             this.headWidth = headWidth;
             this.headHeight = headHeight;
+        }
+
+        shape(baseWidth, headWidth, headHeight) {
+            this.baseWidth = baseWidth;
+            this.headWidth = headWidth;
+            this.headHeight = headHeight;
+            this._draw();
+            this.reshapeHandler && this.reshapeHandler(
+                {baseWidth:baseWidth, headWidth:headWidth, headHeight:headHeight});
+            return this;
         }
 
         position(bx, by, hx, hy) {
@@ -1854,12 +1818,12 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             let point = getPoint(args);
-            return this.parent.globalPoint(point);
+            return this.parent ? this.parent.globalPoint(point) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            return this.parent.localPoint(point);
+            return this.parent ? this.parent.localPoint(point) : null;
         }
 
         inside(x, y) {
@@ -1898,13 +1862,14 @@ exports.SVG = function(runtime) {
         dimension(baseWidth) {
             this.baseWidth = baseWidth;
             this._draw();
-            this.resizeHandler && this.resizeHandler({baseWidth:baseWidth});
+            this.resizeHandler && this.resizeHandler(baseWidth);
             return this;
         }
 
         direction(direction) {
             this.dir = direction;
             this._draw();
+            this.reorientHandler && this.reorientHandler(direction);
             return this;
         }
 
@@ -1940,12 +1905,12 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             var point = getPoint(args);
-            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+            return this.parent ? this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y}) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            point = this.parent.localPoint(point);
+            point = this.parent ? this.parent.localPoint(point) : null;
             return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
@@ -1997,6 +1962,7 @@ exports.SVG = function(runtime) {
         direction(direction) {
             this.dir = direction;
             this._draw();
+            this.reorientHandler && this.reorientHandler(direction);
             return this;
         }
 
@@ -2109,12 +2075,12 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             var point = getPoint(args);
-            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+            return this.parent ? this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y}) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            point = this.parent.localPoint(point);
+            point = this.parent ? this.parent.localPoint(point) : null;
             return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
@@ -2171,29 +2137,29 @@ exports.SVG = function(runtime) {
             let h = this.height/2;
             let t = this.thickness/2
             this.drawing = "M " + point(-w, -t);
-            this.drawing = "L " + point(-t, -t);
-            this.drawing = "L " + point(-t, -h);
-            this.drawing = "L " + point(t, -h);
-            this.drawing = "L " + point(t, -t);
-            this.drawing = "L " + point(w, -t);
-            this.drawing = "L " + point(w, t);
-            this.drawing = "L " + point(t, t);
-            this.drawing = "L " + point(t, h);
-            this.drawing = "L " + point(-t, h);
-            this.drawing = "L " + point(-t, t);
-            this.drawing = "L " + point(-w, t);
-            this.drawing = "L " + point(-w, -t);
+            this.drawing += "L " + point(-t, -t);
+            this.drawing += "L " + point(-t, -h);
+            this.drawing += "L " + point(t, -h);
+            this.drawing += "L " + point(t, -t);
+            this.drawing += "L " + point(w, -t);
+            this.drawing += "L " + point(w, t);
+            this.drawing += "L " + point(t, t);
+            this.drawing += "L " + point(t, h);
+            this.drawing += "L " + point(-t, h);
+            this.drawing += "L " + point(-t, t);
+            this.drawing += "L " + point(-w, t);
+            this.drawing += "L " + point(-w, -t);
             svgr.attr(this.component, "d", this.drawing);
         }
 
         globalPoint(...args) {
             var point = getPoint(args);
-            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+            return this.parent ? this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y}) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            point = this.parent.localPoint(point);
+            point = this.parent ? this.parent.localPoint(point) : null;
             return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
@@ -2212,10 +2178,10 @@ exports.SVG = function(runtime) {
 
     class Text extends Shape {
 
-        constructor(message) {
+        constructor(message="") {
             super();
             this.component = svgr.create("text", this);
-            this.messageText = message!==undefined ? "" + message : "";
+            this.messageText = ""+message;
             this.x = 0;
             this.y = 0;
             this.fontName = "arial";
@@ -2293,14 +2259,14 @@ exports.SVG = function(runtime) {
             svgr.attr(this.component, "font-family", this.fontName);
             svgr.attr(this.component, "font-size", this.fontSize);
             svgr.attr(this.component, "text-decoration", this._decoration);
-            this._format(this.component, lines[0]);
+            this._format(this.component, 0, lines[0]);
             for (l = 1; l < lines.length; l++) {
                 var line = svgr.create("tspan", this);
+                this.lines[l - 1] = line;
                 svgr.add(this.component, line);
                 svgr.attr(line, "x", this.x);
                 svgr.attr(line, "y", baseY + l * this.lineSpacing-margin);
-                this._format(line, lines[l]);
-                this.lines[l - 1] = line;
+                this._format(line, l, lines[l]);
             }
         }
 
@@ -2312,22 +2278,38 @@ exports.SVG = function(runtime) {
             let y2 = rect.top + rect.height;
             this.lines.forEach(line=>{
                 rect = svgr.boundingRect(line);
-                if (x1>rect.left) {x1=rect.left};
-                if (y1>rect.top) {y1=rect.top};
-                if (x2<rect.left+rect.width) {x2=rect.left+rect.width};
-                if (y2<rect.top+rect.height) {y2=rect.top+rect.height};
+                if (x2<rect.left+rect.width) {
+                    x2=rect.left+rect.width
+                };
+                y2=rect.top+rect.height;
             });
-            return {left:x1, top:y1, width:x2-x1, height:y2-y1};
+            switch(this.anchorText) {
+                case "middle":
+                    return {left:x1+x1/2-x2/2, top:y1, width:x2-x1, height:y2-y1};
+                case "start":
+                    return {left:x1, top:y1, width:x2-x1, height:y2-y1};
+                case "end":
+                    return {left:x1*2-x2, top:y1, width:x2-x1, height:y2-y1};
+            }
         }
 
-        _format(line, text) {
+        lineBoundingRect(index) {
+            if (index==0) {
+                return svgr.boundingRect(this.component);
+            }
+            else {
+                return svgr.boundingRect(this.lines[index-1]);
+            }
+        }
+
+        _format(line, index, text) {
             if (text!==undefined && this.width!==undefined) {
                 let message = text;
                 let messageToShow = message;
                 let finished = false;
                 do {
                     svgr.text(line, this.escape(messageToShow));
-                    let bounds = this.boundingRect();
+                    let bounds = this.lineBoundingRect(index);
                     if (bounds.width>this.width && message.length>0) {
                         message = message.slice(0, message.length-1);
                         messageToShow = message+"...";
@@ -2353,30 +2335,22 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             var point = getPoint(args);
-            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+            return this.parent ? this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y}) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            point = this.parent.localPoint(point);
+            point = this.parent ? this.parent.localPoint(point) : null;
             return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
         inside(x, y) {
-            let local = this.localPoint(x, y);
-            let box = svgr.boundingRect(this.component);
-            switch(this.anchorText) {
-                case "middle":
-                    return (local.x>=-box.width/2 && local.x<=box.width/2 && local.y>=-box.height/2 && local.y<=box.height/2);
-                case "start":
-                    return (local.x>=0 && local.x<=box.width && local.y>=-box.height/2 && local.y<=box.height/2);
-                case "end":
-                    return (local.x>=-box.width && local.x<=0 && local.y>=-box.height/2 && local.y<=box.height/2);
-            }
+            let box = this.boundingRect();
+            return x>=box.left && x<=box.left+box.width && y>=box.top && y<=box.top+box.height;
         }
 
         getTarget(x, y) {
-            if (!this._opacity || this._opacity > 0) {
+            if (this._opacity===undefined || this._opacity > 0) {
                 return this.inside(x, y) ? this : null;
             }
             return null;
@@ -2387,6 +2361,8 @@ exports.SVG = function(runtime) {
                 .dimension(this.width, this.height)
                 .font(this.fontName, this.fontSize, this.lineSpacing)
                 .anchor(this.anchorText)
+                .vanchor(this.vanchorText)
+                .decoration(this._decoration)
                 .position(this.x, this.y));
             return clone;
         }
@@ -2398,6 +2374,7 @@ exports.SVG = function(runtime) {
         constructor(x1, y1, x2, y2) {
             super();
             this.component = svgr.create("line", this);
+            this.strokeWidth = 2;
             this.x1 = x1;
             this.y1 = y1;
             this.x2 = x2;
@@ -2409,6 +2386,7 @@ exports.SVG = function(runtime) {
             this.x1 = x1;
             this.y1 = y1;
             this._draw();
+            this.reshapeHandler && this.reshapeHandler({x1:x1, y1:y1, x2:this.x2, y2:this.y2});
             return this;
         }
 
@@ -2416,6 +2394,7 @@ exports.SVG = function(runtime) {
             this.x2 = x2;
             this.y2 = y2;
             this._draw();
+            this.reshapeHandler && this.reshapeHandler({x1:this.x1, y1:this.y1, x2:x2, y2:y2});
             return this;
         }
 
@@ -2427,53 +2406,28 @@ exports.SVG = function(runtime) {
         }
 
         prepareAnimator(animator) {
-            Shape.prototype.prepareAnimator.call(this, animator);
-            animator.move = (sx1, sy1, sx2, sy2, ex1, ey1, ex2, ey2)=> {
-                animator.process([sx1, sy1, sx2, sy2], [ex1, ey1, ex2, ey2], coords=>
-                        this.start(coords[0], coords[1]).end(coords[3], coords[4]));
-                return animator;
-            };
-            animator.moveTo = (ex1, ey1, ex2, ey2)=> {
-                animator.process([self.x1, self.y1, self.x2, self.y2], [ex1, ey1, ex2, ey2], coords=>
-                        this.start(coords[0], coords[1]).end(coords[3], coords[4]));
-                return animator;
-            };
-            animator.start = (sx1, sy1, ex1, ey1)=> {
-                animator.process([sx1, sy1], [ex1, ey1], coords=>this.start(coords[0], coords[1]));
-                return animator;
-            };
-            animator.startTo = (ex1, ey1)=> {
-                animator.process([self.x1, self.y1], [ex1, ey1], coords=> this.start(coords[0], coords[1]));
-                return animator;
-            };
-            animator.end = (sx1, sy1, ex1, ey1)=> {
-                animator.process([sx1, sy1], [ex1, ey1], coords=> this.end(coords[0], coords[1]));
-                return animator;
-            };
-            animator.endTo = (ex1, ey1)=> {
-                animator.process([self.x2, self.y2], [ex1, ey1], coords=> this.end(coords[0], coords[1]));
-                return animator;
-            }
+            super.prepareAnimator(animator);
+            this.prepareLineAnimation(animator);
         }
 
         globalPoint(...args) {
             var point = getPoint(args);
-            return this.parent.globalPoint(point);
+            return this.parent ? this.parent.globalPoint(point) : null;
         }
 
         localPoint(...args) {
             var point = getPoint(args);
-            return this.parent.localPoint(point);
+            return this.parent ? this.parent.localPoint(point) : null;
         }
 
         inside(x, y) {
             let local = this.localPoint(x, y);
             let dist = distanceToSegment(local, {x: this.x1, y: this.y1}, {x: this.x2, y: this.y2});
-            return dist < (this.strokeWidth || 2);
+            return dist < this.strokeWidth;
         }
 
         getTarget(x, y) {
-            if (!this._opacity || this._opacity > 0) {
+            if (this._opacity===undefined || this._opacity > 0) {
                 return this.inside(x, y) ? this : null;
             }
             return null;
@@ -2496,7 +2450,7 @@ exports.SVG = function(runtime) {
             }
             else {
                 this.drawing = "M " + x + "," + y + " ";
-                this.points = [{x: x, y: y}];
+                this.points = [{x: x, y: y, type:"move"}];
             }
         }
 
@@ -2504,35 +2458,40 @@ exports.SVG = function(runtime) {
             this.drawing = "";
             this.points = [];
             this._draw();
+            this.reshapeHandler && this.reshapeHandler(this.points);
             return this;
         }
 
         bezier(cx, cy, x1, y1) {
             this.drawing += "Q " + cx + "," + cy + " " + x1 + "," + y1 + " ";
-            this.points.push({x: cx, y: cy}, {x: x1, y: y1});
+            this.points.push({x: cx, y: cy, type:"bezier-c1"}, {x: x1, y: y1, type:"bezier-end"});
             this._draw();
+            this.reshapeHandler && this.reshapeHandler(this.points);
             return this;
         }
 
         cubic(cx1, cy1, cx2, cy2, x1, y1) {
             this.drawing += "C " + cx1 + "," + cy1 + " " + cx2 + "," + cy2 + " " + x1 + "," + y1 + " ";
-            this.points.push({x: cx1, y: cy1}, {x: cx2, y: cy2}, {x: x1, y: y1});
+            this.points.push({x: cx1, y: cy1, type:"cubic-c1"},
+                {x: cx2, y: cy2, type:"cubic-c2"}, {x: x1, y: y1, type:"cubic-end"});
             this._draw();
+            this.reshapeHandler && this.reshapeHandler(this.points);
             return this;
         }
 
         line(x, y) {
             this.drawing += "L " + x + "," + y + " ";
-            this.points.push({x: x, y: y});
+            this.points.push({x: x, y: y, type:"line"});
             this._draw();
+            this.reshapeHandler && this.reshapeHandler(this.points);
             return this;
         }
 
         move(x, y) {
             this.drawing += "M " + x + "," + y + " ";
-            this.points.push({x: x, y: y});
+            this.points.push({x: x, y: y, type:"move"});
             this._draw();
-            this.moveHandler && this.moveHandler({x:x, y:y});
+            this.reshapeHandler && this.reshapeHandler(this.points);
             return this;
         }
 
@@ -2542,12 +2501,12 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             let point = getPoint(args);
-            return this.parent.globalPoint(point);
+            return this.parent ? this.parent.globalPoint(point) : null;
         }
 
         localPoint(...args) {
             let point = getPoint(args);
-            return this.parent.localPoint(point);
+            return this.parent ? this.parent.localPoint(point) : null;
         };
 
         inside(x, y) {
@@ -2609,12 +2568,12 @@ exports.SVG = function(runtime) {
 
         globalPoint(...args) {
             let point = getPoint(args);
-            return this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y});
+            return this.parent ? this.parent.globalPoint({x: point.x + this.x, y: point.y + this.y}) : null;
         }
 
         localPoint(...args) {
             let point = getPoint(args);
-            point = this.parent.localPoint(point);
+            point = this.parent ? this.parent.localPoint(point) : null;
             return point ? {x: point.x - this.x, y: point.y - this.y} : null;
         }
 
@@ -2625,7 +2584,7 @@ exports.SVG = function(runtime) {
         }
 
         getTarget(x, y) {
-            if (!this._opacity || this._opacity > 0) {
+            if (this._opacity===undefined || this._opacity > 0) {
                 return this.inside(x, y) ? this : null;
             }
             return null;
@@ -2693,11 +2652,11 @@ exports.SVG = function(runtime) {
     var smoothy = function(executor, speed, step, channel) {
         let delta = [];
         let sum = 0;
-        for (var k=0; k<executor.source.length; k++) {
+        for (let k=0; k<executor.source.length; k++) {
             delta[k] = executor.target[k] - executor.source[k];
             sum += delta[k]*delta[k];
         }
-        var stepCount = Math.sqrt(sum) / step;
+        let stepCount = Math.sqrt(sum) / step;
         steppy(executor, speed, stepCount, channel);
     };
 
@@ -2842,6 +2801,7 @@ exports.SVG = function(runtime) {
         Text : Text,
         Image : Image,
         Chevron:Chevron,
+        Cross:Cross,
 
         Animator : Animator,
 
