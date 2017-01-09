@@ -962,9 +962,6 @@ exports.SVG = function(runtime) {
         }
 
         add(svgObject) {
-            if (this.children.contains(svgObject)) {
-                console.log("bug !!");
-            }
             svgr.add(this.component, svgObject.component);
             svgObject.parent = this;
             this.children.push(svgObject);
@@ -1762,7 +1759,7 @@ exports.SVG = function(runtime) {
 
         duplicate() {
             let clone = super.duplicate(new Polygon(this.x, this.y));
-            clone.points = this.points.duplicate();
+            clone.points = this.points.slice(0);
             clone._draw();
             return clone;
         }
@@ -2517,7 +2514,7 @@ exports.SVG = function(runtime) {
         duplicate() {
             let clone = super.duplicate(new Path());
             clone.drawing = this.drawing;
-            clone.points = this.points.duplicate();
+            clone.points = this.points.slice(0);
             clone._draw();
             return clone;
         }

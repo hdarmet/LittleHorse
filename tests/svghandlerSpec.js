@@ -5,7 +5,6 @@ var assert = require('assert');
 var testUtils = require('./testutils');
 var targetRuntime = require('../targetRuntime').targetRuntime;
 var mockRuntime = require('../runtimemock').mockRuntime;
-require('../enhancer').Enhance();
 var SVG = require('../svghandler').SVG;
 
 var runtime;

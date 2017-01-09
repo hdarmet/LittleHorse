@@ -12,6 +12,12 @@ exports.mockRuntime = function() {
     let screenWidth=1500, screenHeight=1000;
     let responses = [];
 
+    function remove(array, val) {
+        var i = array.indexOf(val);
+        i > -1 && array.splice(i, 1);
+        return i > -1;
+    }
+
     class Element {
 
         constructor(tag, id) {
@@ -279,15 +285,17 @@ exports.mockRuntime = function() {
         },
         advance() {
             var timeout = timeouts.shift();
-            time = timeout.time;
-            timeout.handler();
+            if (timeout) {
+                time = timeout.time;
+                timeout.handler();
+            }
             return this;
         },
         advanceAll() {
             let all = [...timeouts];
-            while (!all.empty()) {
+            while (all.length>0) {
                 var timeout = timeouts.shift();
-                all.remove(timeout);
+                remove(all, timeout);
                 time = timeout.time;
                 timeout.handler();
             }

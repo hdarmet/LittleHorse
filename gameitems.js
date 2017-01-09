@@ -317,7 +317,7 @@ exports.GameItems = function(svg) {
         }
 
         stop() {
-            if (this.clockId) {
+            if (this.clockId!==undefined) {
                 svg.clearInterval(this.clockId);
                 this.clockId = null;
             }
@@ -387,7 +387,7 @@ exports.GameItems = function(svg) {
                 }
             };
 
-            var optionsComponent = new svg.Translation();
+            var optionsComponent = new svg.Translation().mark(paramName);
             var delta = ((-options.length + 1) * (optionWidth + 5)) / 2;
             var rects = [];
             for (var i in options) {
@@ -396,8 +396,8 @@ exports.GameItems = function(svg) {
                     frame: new svg.Rect(optionWidth, 50).position(delta + i * (optionWidth + 5), 100).color([150, 150, 250], 3, [255, 50, 50]),
                     text: new svg.Text(options[i].text).position(delta + i * (optionWidth + 5), 110).font("Arial", 30).color([50, 50, 255])
                 };
-                rects[i].frame/*.clickable()*/.onClick(setCallback(rects[i].value));
-                rects[i].text/*.clickable()*/.onClick(setCallback(rects[i].value));
+                rects[i].frame.mark(options[i].text).onClick(setCallback(rects[i].value));
+                rects[i].text.onClick(setCallback(rects[i].value));
                 optionsComponent.add(rects[i].frame);
                 optionsComponent.add(rects[i].text);
             }
@@ -418,15 +418,16 @@ exports.GameItems = function(svg) {
                 }
             };
 
-            var livesComponent = new svg.Translation();
+            var livesComponent = new svg.Translation().mark(paramName);
             var drawing = new svg.Translation(-60, 70);
             var lives = [];
-            for (var i = 0; i < 4; i++) {
-                lives[i] = liveBuilder(i);
+            for (var i = 0; i < maxLives; i++) {
+                lives[i] = liveBuilder(i).mark("live"+i);
                 drawing.add(lives[i]);
             }
+
             colorizeLives();
-            drawing.onClick(function () {
+            drawing.onClick(()=> {
                 this.param[paramName] = (this.param[paramName] % maxLives) + 1;
                 colorizeLives();
             });
@@ -437,12 +438,12 @@ exports.GameItems = function(svg) {
         }
 
         setPlayers(title, paramName, playerType, x, y) {
-            this.players = new svg.Translation();
+            this.players = new svg.Translation().mark(paramName);
             this.canvas.add(this.players.move(x, y));
-            this.players.add(this.createPlayerIcon(this.param[paramName].green, playerType, [0, 255, 0], [0, 100, 0]).move(-100, 50));
-            this.players.add(this.createPlayerIcon(this.param[paramName].yellow, playerType, [255, 204, 0], [220, 100, 0]).move(-100, -50));
-            this.players.add(this.createPlayerIcon(this.param[paramName].red, playerType, [255, 100, 100], [240, 0, 0]).move(100, 50));
-            this.players.add(this.createPlayerIcon(this.param[paramName].blue, playerType, [0, 200, 200], [0, 80, 240]).move(100, -50));
+            this.players.add(this.createPlayerIcon(this.param[paramName].green, playerType, [0, 255, 0], [0, 100, 0]).move(-100, 50).mark('green'));
+            this.players.add(this.createPlayerIcon(this.param[paramName].yellow, playerType, [255, 204, 0], [220, 100, 0]).move(-100, -50).mark('yellow'));
+            this.players.add(this.createPlayerIcon(this.param[paramName].red, playerType, [255, 100, 100], [240, 0, 0]).move(100, 50).mark('red'));
+            this.players.add(this.createPlayerIcon(this.param[paramName].blue, playerType, [0, 200, 200], [0, 80, 240]).move(100, -50).mark('blue'));
             this.players.add(new svg.Text(title).position(0, 0).color([50, 50, 255]).font("Arial", 25));
         }
 
