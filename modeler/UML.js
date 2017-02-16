@@ -3380,7 +3380,32 @@ exports.UML = function(svg, gui) {
         }
     }
 
+    function installDnD(what, glass, conf) {
+        let dndConf= {
+            select: conf.select,
+            drag: conf.drag,
+            clicked: conf.clicked,
+            moved: conf.moved,
+            revert:()=>Memento.rollback(true),
+            completed:()=>Memento.begin(),
+            startInDragMode: conf.startInDragMode
+        };
+        glass.installDnD(what, dndConf);
+    }
+
+/*
     function installDnD(what, glass, doDrag, doSelect, doMove, doClick, beginDrag) {
+        glass.installDnD(what, {
+            select:doSelect,
+            drag:doDrag,
+            clicked:doClick,
+            moved:doMove,
+            revert:()=>Memento.rollback(true),
+            completed:()=>Memento.begin(),
+            startInDragMode: beginDrag
+        });
+        */
+        /**
         if (what===undefined) {
             svg.bug();
         }
@@ -3438,8 +3463,8 @@ exports.UML = function(svg, gui) {
                 });
             }
         }
-
-    }
+*/
+//    }
 
     function installClick(what, doClick) {
         what.addEvent('click', event=> {
@@ -3471,6 +3496,7 @@ exports.UML = function(svg, gui) {
         SchemaBuilder : SchemaBuilder,
 
         installDnD : installDnD,
+        //installDnD2 : installDnD2,
         installClick : installClick
     }
 };

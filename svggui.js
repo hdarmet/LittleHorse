@@ -7,6 +7,39 @@ exports.Gui = function(svg, param) {
 
     const WHEEL_STEP = 100;
 
+
+    function isLeftArrow(keycode) {
+        return keycode === 37;
+    }
+
+    function isUpArrow(keycode) {
+        return keycode === 38;
+    }
+
+    function isRightArrow(keycode) {
+        return keycode === 39;
+    }
+
+    function isDownArrow(keycode) {
+        return keycode === 40;
+    }
+
+    function isPlus(keycode) {
+        return keycode === 107;
+    }
+
+    function isMinus(keycode) {
+        return keycode === 109;
+    }
+
+    function isY(keycode) {
+        return keycode === 89;
+    }
+
+    function isZ(keycode) {
+        return keycode === 90;
+    }
+
     function canvas(component) {
         while(component) {
             if (component.canvas) {
@@ -23,7 +56,7 @@ exports.Gui = function(svg, param) {
         constructor(width, height) {
             this.component = new svg.Screen(width, height);
             this.component.canvas = this;
-            this.drawing = new svg.Drawing(width, height);
+            this.drawing = new svg.Drawing(width, height).mark("frame");
             this.component.add(this.drawing);
             this.component.background = new svg.Translation().mark("background");
             this.component.glass = new svg.Rect(width, height).mark("glass").position(width / 2, height / 2).opacity(0.001);
@@ -58,7 +91,10 @@ exports.Gui = function(svg, param) {
                     if (target) {
                         this.currentFocus = this.getFocus(target);
                         svg.event(target, 'mouseup', event);
-                        svg.event(target, 'click', event);
+                        let finalTarget = this.component.background.getTarget(event.pageX, event.pageY);
+                        if (finalTarget===target) {
+                            svg.event(target, 'click', event);
+                        }
                     }
                     this.activated();
                 }
@@ -138,19 +174,19 @@ exports.Gui = function(svg, param) {
 
         processKeys(key, ctrl, alt) {
 //            console.log("Key : "+key);
-            if (ctrl && key == 90) {
+            if (ctrl && isZ(key)) {
                 Memento.rollback();
                 return true;
             }
-            else if (ctrl && key == 89) {
+            else if (ctrl && isY(key)) {
                 Memento.replay();
                 return true;
             }
             else if (this.keys[key]) {
-                this.keys[key].handler();
+                this.keys[key].handler(key, ctrl, alt);
                 return true;
             }
-            return this.currentFocus && this.currentFocus.processKeys && this.currentFocus.processKeys(key);
+            return this.currentFocus && this.currentFocus.processKeys && this.currentFocus.processKeys(key, ctrl, alt);
         }
 
         show(anchor) {
@@ -204,20 +240,20 @@ exports.Gui = function(svg, param) {
 
             this.component = new svg.Translation();
             this.component.focus = this;
-            this.border = new svg.Rect(width, height).color([], 4, [0, 0, 0]);
-            this.background = new svg.Rect(width, height).color([100, 100, 100]);
-            this.view = new svg.Drawing(width, height).position(-width / 2, -height / 2);
-            this.scale = new svg.Scaling(1);
-            this.translate = new svg.Translation();
-            this.rotate = new svg.Rotation(0);
+            this.border = new svg.Rect(width, height).color([], 4, [0, 0, 0]).mark("border");
+            this.background = new svg.Rect(width, height).color([100, 100, 100]).mark("background");
+            this.view = new svg.Drawing(width, height).position(-width / 2, -height / 2).mark("view");
+            this.scale = new svg.Scaling(1).mark("scale");
+            this.translate = new svg.Translation().mark("translate");
+            this.rotate = new svg.Rotation(0).mark("rotate");
             this.component
                 .add(this.background)
                 .add(this.view.add(this.translate.add(this.rotate.add(this.scale))))
                 .add(this.border);
             this.hHandle = new Handle([[255, 204, 0], 3, [220, 100, 0]], hHandleCallback).horizontal(-width / 2, width / 2, height / 2);
-            this.component.add(this.hHandle.component);
+            this.component.add(this.hHandle.component.mark("hhandle"));
             this.vHandle = new Handle([[255, 204, 0], 3, [220, 100, 0]], vHandleCallback).vertical(width / 2, -height / 2, height / 2);
-            this.component.add(this.vHandle.component);
+            this.component.add(this.vHandle.component.mark("vhandle"));
             this.wheelHandler = (event)=> {
                 if (event.deltaX>0) {
                     this.moveContent(this.content.x+WHEEL_STEP, this.content.y);
@@ -261,13 +297,22 @@ exports.Gui = function(svg, param) {
             }
             this.content = component;
             this.content.onResize(()=>{
-                this.updateHandles();
+                this.zoomContent(this.scale.factor);
+                //this.updateHandles();
             });
             this.scale.add(this.content);
             this.updateHandles();
             return this;
         }
 
+        /**
+         * Put item on "scale" (top) handler (if necessary) without changing its appearance (size,
+         * position...) and displace it according to mouse position.
+         * @param item item to drag
+         * @param parent current parent item
+         * @param x mouse position on X axis (in LOCAL parent coordinate system !)
+         * @param y mouse position on Y axis (in LOCAL parent coordinate system !)
+         */
         drag(item, parent, x, y) {
             let point = this.scale.localPoint(parent.globalPoint(x, y));
             if (item.parent!==this.scale) {
@@ -277,15 +322,237 @@ exports.Gui = function(svg, param) {
             item.move(point.x, point.y);
         }
 
+        /**
+         * Gives an item from "scale" (top) handler to a normal handler without changing its appearance (reverse
+         * drag operation) and displace it according to mouse position.
+         * @param item item to drop
+         * @param parent target drop handler (not current item's parent which must be "scale" handler)
+         * @param x mouse position on X axis (in LOCAL target parent coordinate system !)
+         * @param y mouse position on Y axis (in LOCAL target parent coordinate system !)
+         */
         drop(item, parent, x, y) {
             if (item.parent===this.scale) {
                 this.scale.remove(item);
             }
-            let point = parent.localPoint(x, y);
             if (item.parent!==parent) {
                 parent.add(item);
             }
             item.move(x, y);
+        }
+
+        uninstallDnD(what) {
+            what.removeEvent('mousedown');
+        }
+
+        /**
+         * Enable Drag an drop for an item contained in the frame. Item MUST have, at least the following
+         * properties:
+         * <ul>
+         *     <li> x, y : item's coordinate in it's parent coordinate system,
+         *     <li> parent : reference to item's parent.
+         *     <li> move(x, y) : changes item local coordinates (x and y are given in parent's coordinate system)
+         * </ul>
+         * It may also contains an "angle" property and a "rotate(angle)" method which are used if "rotation DnD"
+         * is enabled.
+         * @param what item enabled.
+         * @param conf Drag and Drop configuration. All fields are optionals. May contain:
+         * <ul>
+         *     <li> startInDragMode : boolean. If true, item is enabled AND a Drag and Drop is immediately
+         *     initialized.
+         *     <li> select : function(item). If defined, it's invoked when mousedown event is received. Drag And Drop
+         *     operation is started if select returns a truthy value. If not defined, Drag and Drop operation is
+         *     automatically started.
+         *     <li> anchor : function(item, x, y). x and y are mouse coordinates in current item's parent coordinate
+         *     system. If defined, must return a boolean that indicates if the mouse position is an "anchor", a
+         *     position from witch the item sould be rotated, not moved. If not defined, no anchor is found and the
+         *     item is moved, not rotated.
+         *     <li> turn : function(item, angle). angle is the angle defined by the mouse coordinates and the initial
+         *     direction of the item anchor. If defined, must return the suggested angle for item during rotation
+         *     operation. If not defined, item is rotated to given angle.
+         *     <li> turned : function(item). If defined, it is executed AFTER completion of rotation drag. A boolean
+         *     return value is expected. If not true, conf.revert is executed (ma rollback the entire DnD operation).
+         *     If rotated is not defined, rotation is automatically accepted.
+         *     <li> rotate : function(item, angle). angle is the angle defined by the mouse coordinates and the initial
+         *     direction of the item anchor. If defined, must return the suggested angle for item at the end of the
+         *     rotation operation. If not defined, item is rotated to given angle.
+         *     <li> rotated : function(item). If defined, it is executed AFTER completion of rotation operation. A
+         *     boolean return value is expected. If not true, conf.revert is executed (ma rollback the entire DnD
+         *     operation). If rotated is not defined, rotation is automatically accepted.
+         *     <li> drag : function(item, x, y). x and y are mouse coordinates in current item's parent coordinate
+         *     system. If defined, must return the suggested position of item for next drag move (in current
+         *     item's parent coordinate system). If not defined, item is dragged to current mouse position.
+         *     <li> dragged : function(item, x, y). x and y are mouse coordinates in current item's parent coordinate
+         *     system. If defined, it is executed AFTER completion of drag move. No return value is expected. If
+         *     not defined, no default completion is executed.
+         *     <li> drop : function(item, parent, x, y). x and y are mouse coordinates in target item's parent
+         *     coordinate system. If defined, must return the suggested position and parent of item for drop
+         *     ({x:?, y:?, parent:?} object with x, y relative to parent). If not defined, item is dragged to
+         *     current mouse position.
+         *     <li> clicked : function(item). If defined, it is executed AFTER completion of drop, when drop position
+         *     is drag start position. A boolean return value is expected. If not true, conf.revert is executed (may
+         *     rollback the entire DnD operation). If clicked is not defined, click is automatically accepted.
+         *     <li> moved : function(item, x, y). x and y are mouse coordinates in (new) item's parent coordinate
+         *     system. If defined, it is executed AFTER completion of drop, when drop position is DIFFERENT than drag
+         *     start position. A boolean return value is expected. If not true, conf.revert is executed (may rollback
+         *     the entire DnD operation). If clicked is not defined, click is automatically accepted.
+         *     <li> completed : function(item). If defined, it is executed AFTER all other callbacks, event clicked or
+         *     moved, in all cases (success or failure). No return value is expected.
+         *     <li> revert : function(item, update). update is an object that contains the following properties :
+         *     parent, x, y or angle. These properties are the relevant initial values of this Drag and Drop
+         *     operation. If revert is defined, it is executed when rotated, clicked or moved fails (i.e. return
+         *     falsy value). If not defined, item is "dropped" in starting parent coordinate system,
+         *     using starting position or rotated to initial angle (no animation in both cases !).
+         * </ul>
+         */
+        installDnD(what, conf) {
+
+            let revert = (update)=>{
+                if (conf.revert) {
+                    conf.revert(what, update);
+                }
+                else {
+                    if (update.angle!==undefined) {
+                        what.rotate(update.angle);
+                    }
+                    else if (update.x!==undefined && update.y!==undefined) {
+                        this.drop(what.component, update.parent, update.x, update.y);
+                    }
+                }
+            };
+
+            let dragged= (x, y)=> {
+                if (conf.dragged) {
+                    conf.dragged(what, x, y);
+                }
+                else if (what.dragged) {
+                    what.dragged(x, y);
+                }
+            };
+
+            let turned= (angle)=> {
+                if (conf.turned) {
+                    conf.turned(what, angle);
+                }
+                else if (what.turned) {
+                    what.turned(angle);
+                }
+            };
+
+            let moved= ()=> {
+                if (conf.moved) {
+                    return conf.moved(what);
+                }
+                else if (what.moved) {
+                    return what.moved();
+                }
+                return true;
+            };
+
+            let clicked= ()=> {
+                if (conf.clicked) {
+                    return conf.clicked(what);
+                }
+                else if (what.clicked) {
+                    return what.clicked();
+                }
+                return true;
+            };
+
+            let rotated= ()=> {
+                if (conf.rotated) {
+                    return conf.rotated(what);
+                }
+                else if (what.rotated) {
+                    return what.rotated();
+                }
+                return true;
+            };
+
+            let anchor= (x, y)=> {
+                if (conf.anchor) {
+                    return conf.anchor(what, x, y);
+                }
+                return false;
+            };
+
+            let install = delta=> {
+                let whatParent = what.component.parent;
+                if (anchor(delta.x, delta.y)) {
+                    var startAngle = Math.round(Math.atan2(delta.x - what.x, -delta.y + what.y) / Math.PI * 180);
+                }
+                let {x:initX, y:initY, angle:initAngle} = what;
+                if (!conf.select || conf.select(what, startAngle!=undefined)) {
+                    let click = true;
+                    what.addEvent('mousemove', moveEvent=> {
+                        let depl = whatParent.localPoint(moveEvent.x, moveEvent.y);
+                        if (startAngle!=undefined) {
+                            let newAngle = Math.round(Math.atan2(
+                                    depl.x - what.x, -depl.y + what.y) / Math.PI * 180);
+                            let angle = initAngle + newAngle - startAngle;
+                            let dragAngle = conf.turn ? conf.turn(what, angle) : angle;
+                            what.rotate(dragAngle);
+                            turned(dragAngle);
+                        }
+                        else {
+                            let actualX = initX + depl.x - delta.x;
+                            let actualY = initY + depl.y - delta.y;
+                            let dragPoint = conf.drag ? conf.drag(what, actualX, actualY) : {x: actualX, y: actualY};
+                            this.drag(what.component, whatParent, dragPoint.x, dragPoint.y);
+                            dragged(dragPoint.x, dragPoint.y);
+                        }
+                        click = false;
+                    });
+                    what.addEvent('mouseup', endEvent=> {
+                        what.removeEvent('mousemove');
+                        what.removeEvent('mouseup');
+                        let depl = whatParent.localPoint(endEvent.x, endEvent.y);
+                        if (startAngle!=undefined) {
+                            let newAngle = Math.round(Math.atan2(depl.x - what.x, -depl.y + what.y) / Math.PI * 180);
+                            let angle = initAngle + newAngle - startAngle;
+                            let dragAngle = conf.rotate ? conf.rotate(what, angle) : angle;
+                            what.rotate(dragAngle);
+                            if (!rotated(what)) {
+                                revert({angle:initAngle});
+                            }
+                        }
+                        else {
+                            let finalX = Math.round(initX + depl.x - delta.x);
+                            let finalY = Math.round(initY + depl.y - delta.y);
+                            let dropEnv = conf.drop ? conf.drop(what, whatParent, finalX, finalY) :
+                                {x: finalX, y: finalY, parent:whatParent};
+                            this.drop(what.component, dropEnv.parent, dropEnv.x, dropEnv.y);
+                            if (click && depl.x === delta.x && depl.y === delta.y) {
+                                if (!clicked()) {
+                                    revert({parent:whatParent});
+                                }
+                            }
+                            else {
+                                if (!moved()) {
+                                    revert({parent:whatParent, x:initX, y:initY});
+                                }
+                            }
+                        }
+                        conf.completed && conf.completed(what);
+                    });
+                }
+            };
+
+            what.addEvent('mousedown', event=> {
+                /*
+                 if (what.component.parent===this.scale) {
+                 console.log("Already on glass !");
+                 }
+                 else {
+                 */
+                install(what.component.parent.localPoint(event.x, event.y));
+                /*
+                 }
+                 */
+            });
+            if (conf.startInDragMode) {
+                install({x:what.x, y:what.y});
+            }
+
         }
 
         updateHandles() {
@@ -399,30 +666,6 @@ exports.Gui = function(svg, param) {
                 return false;
             }
             return true;
-
-            function isLeftArrow(keycode) {
-                return keycode === 37;
-            }
-
-            function isUpArrow(keycode) {
-                return keycode === 38;
-            }
-
-            function isRightArrow(keycode) {
-                return keycode === 39;
-            }
-
-            function isDownArrow(keycode) {
-                return keycode === 40;
-            }
-
-            function isPlus(keycode) {
-                return keycode === 107;
-            }
-
-            function isMinus(keycode) {
-                return keycode === 109;
-            }
         }
     }
 
@@ -441,9 +684,9 @@ exports.Gui = function(svg, param) {
         manageDnD() {
             svg.addEvent(this.handle, 'mousedown', event=> {
                 svg.runtime.preventDefault(event);
-                let ref = this.handle.localPoint(event.clientX, event.clientY);
+                let ref = this.handle.localPoint(event.pageX, event.pageY);
                 this.handle.mousemoveHandler = event=> {
-                    let mouse = this.handle.localPoint(event.clientX, event.clientY);
+                    let mouse = this.handle.localPoint(event.pageX, event.pageY);
                     let dx = mouse.x - ref.x;
                     let dy = mouse.y - ref.y;
                     let newPosition = this.x !== undefined ? this.point + dy : this.point + dx;
@@ -469,7 +712,7 @@ exports.Gui = function(svg, param) {
             this.x = x;
             this.y1 = y1 < y2 ? y1 : y2;
             this.y2 = y1 < y2 ? y2 : y1;
-            this._draw();
+            this.position(this.point);
             return this;
         }
 
@@ -478,14 +721,14 @@ exports.Gui = function(svg, param) {
             this.x1 = x1 < x2 ? x1 : x2;
             this.x2 = x1 < x2 ? x2 : x1;
             this.y = y;
-            this._draw();
+            this.position(this.point);
             return this;
         }
 
         dimension(size, total) {
             this.size = size;
             this.total = total;
-            this._draw();
+            this.position(this.point);
             return this;
         }
 
@@ -504,7 +747,6 @@ exports.Gui = function(svg, param) {
                 }
                 return position;
             };
-
             this.point = getPosition(point);
             this._draw();
             return this;
@@ -574,11 +816,11 @@ exports.Gui = function(svg, param) {
                     let position = this.point;
                     if (this.x !== undefined) {
                         this.component.move(this.x, this.y1 + position);
-                        buildVerticalHandle.call(this);
+                        buildVerticalHandle();
                     }
                     else {
                         this.component.move(this.x1 + position, this.y);
-                        buildHorizontalHandle.call(this);
+                        buildHorizontalHandle();
                     }
                 }
             }
@@ -608,9 +850,11 @@ exports.Gui = function(svg, param) {
             this.translate = new svg.Translation();
             this.component.add(this.view.add(this.translate)).add(this.border);
             this.vHandle = new Handle([svg.LIGHT_ORANGE, 3, svg.ORANGE], vHandleCallback);
+            this.vHandle.component.mark("vhandle");
             this.hHandle = new Handle([svg.LIGHT_ORANGE, 3, svg.ORANGE], hHandleCallback);
-            this.back = new svg.Rect(width, height).color(color, 0, []);
-            this.content = new svg.Translation();
+            this.hHandle.component.mark("hhandle");
+            this.back = new svg.Rect(width, height).color(color, 0, []).mark("background");
+            this.content = new svg.Translation().mark("content");
             this.wheelHandler = (event)=> {
                 if (event.deltaY>0) {
                     this.moveContent(this.content.x, this.content.y+WHEEL_STEP);
@@ -629,7 +873,7 @@ exports.Gui = function(svg, param) {
             this.content.width = width;
             this.content.height = height;
             this.translate.add(this.back.position(width / 2, height / 2)).add(this.content);
-            this._handleVisibility();
+            this.updateHandle();
         }
 
         position(x, y) {
@@ -642,18 +886,20 @@ exports.Gui = function(svg, param) {
             height !== undefined && (this.height = height);
             this.border.dimension(width, height);
             this.view.dimension(width, height).position(-width / 2, -height / 2);
-            this._handleVisibility();
+            this.updateHandle();
             this.back.dimension(this.width, this.height).position(this.width / 2, this.height / 2);
             return this;
         }
 
-        _handleVisibility() {
+        updateHandle() {
             if (this.height>0) {
                 if (!this.vertHandleVisible) {
                     this.vertHandleVisible = true;
                     this.component.add(this.vHandle.component);
                 }
                 this.vHandle.vertical(this.width / 2, -this.height / 2, this.height / 2);
+                this.vHandle.dimension(this.view.height, this.content.height)
+                    .position((this.view.height / 2 - this.content.y) / (this.content.height) * this.view.height);
             }
             else {
                 if (this.vertHandleVisible) {
@@ -667,6 +913,8 @@ exports.Gui = function(svg, param) {
                     this.component.add(this.hHandle.component);
                 }
                 this.hHandle.horizontal(-this.width / 2, this.width / 2, this.height / 2);
+                this.hHandle.dimension(this.view.width, this.content.width)
+                    .position((this.view.width / 2 - this.content.x) / (this.content.width) * this.view.width);
             }
             else {
                 if (this.horizHandleVisible) {
@@ -674,13 +922,6 @@ exports.Gui = function(svg, param) {
                     this.component.remove(this.hHandle.component);
                 }
             }
-        }
-
-        updateHandle() {
-            this.hHandle.dimension(this.view.width, this.content.width)
-                .position((this.view.width / 2 - this.content.x) / (this.content.width) * this.view.width);
-            this.vHandle.dimension(this.view.height, this.content.height)
-                .position((this.view.height / 2 - this.content.y) / (this.content.height) * this.view.height);
             return this;
         }
 
@@ -696,22 +937,15 @@ exports.Gui = function(svg, param) {
 
         resizeContent(width, height) {
             let changed = false;
-            if (height > this.height) {
-                this.content.height = height;
-                changed = true;
-            }
-            if (width > this.width) {
-                this.content.width = width;
-                changed = true;
-            }
-            if (changed) {
-                this.back.position(this.content.width / 2, this.content.height / 2);
-                this.back.dimension(this.content.width, this.content.height);
-            }
+            this.content.height = height;
+            this.content.width = width;
+            this.back.position(this.content.width / 2, this.content.height / 2);
+            this.back.dimension(this.content.width, this.content.height);
             this.updateHandle();
             return this;
         }
 
+        /*
         controlPosition(x, y) {
             if (x < this.view.width - this.content.width) {
                 x = this.view.width - this.content.width;
@@ -727,6 +961,7 @@ exports.Gui = function(svg, param) {
             }
             return {x, y};
         }
+*/
 
         moveContent(x, y) {
             let vx = x;
@@ -739,9 +974,10 @@ exports.Gui = function(svg, param) {
             };
             if (!this.animation) {
                 this.animation = true;
-                let ps = this.controlPosition(vx, vy);
+                //let ps = this.controlPosition(vx, vy);
                 this.content.onChannel().smoothy(param.speed, param.step)
-                    .execute(completeMovement).moveTo(ps.x, ps.y);
+//                    .execute(completeMovement).moveTo(ps.x, ps.y);
+                    .execute(completeMovement).moveTo(vx, vy);
             }
             return this;
         }
@@ -769,21 +1005,6 @@ exports.Gui = function(svg, param) {
             }
             return true;
 
-            function isUpArrow(keycode) {
-                return keycode === 38;
-            }
-
-            function isDownArrow(keycode) {
-                return keycode === 40;
-            }
-
-            function isLeftArrow(keycode) {
-                return keycode === 37;
-            }
-
-            function isRightArrow(keycode) {
-                return keycode === 39;
-            }
         }
 
     }
@@ -850,7 +1071,8 @@ exports.Gui = function(svg, param) {
                 return new svg.Text(item[fieldName])
                     .anchor("start")
                     .font("arial", 32).color(svg.ALMOST_BLACK)
-                    .position(0, 32/4);
+                    .position(0, 32/4)
+                    .mark("cell:"+fieldName);
             };
             let select = (item, svgObject)=> {
                 svgObject.color(svg.ALMOST_WHITE);
@@ -888,14 +1110,14 @@ exports.Gui = function(svg, param) {
         }
 
         _row(item, index) {
-            let row = new svg.Translation();
-            let back = new svg.Rect(this.width, this.rowHeight)
+            let row = new svg.Translation().mark("content");
+            let back = new svg.Rect(this.width, this.rowHeight).mark("background")
                 .position(this.width/2, 0).color(svg.DARK_BLUE).opacity(0);
-            let glass = new svg.Rect(this.width, this.rowHeight)
+            let glass = new svg.Rect(this.width, this.rowHeight).mark("glass")
                 .position(this.width/2, 0).color(svg.BLACK).opacity(0.005);
             svg.addEvent(glass, "click", ()=>{this.select(index, item)});
             let baseRow = new svg.Translation(0, index*this.rowHeight+this.rowHeight/2)
-                .add(back).add(row).add(glass);
+                .add(back).add(row).add(glass).mark("row:"+index);
             baseRow.back = back;
             baseRow.row = row;
             baseRow.item = item;
@@ -924,9 +1146,9 @@ exports.Gui = function(svg, param) {
             this.width = width;
             this.height = height;
             this.back = new svg.Rect(width, height).color(colors[0], colors[1], colors[2]);
-            this.component = new svg.Translation().add(this.back);
-            this.text = new svg.Text(text).font("Arial", 24);
-            this.glass = new svg.Rect(width, height).color([0, 0, 0]).opacity(0.001);
+            this.component = new svg.Translation().add(this.back).mark("background");
+            this.text = new svg.Text(text).font("Arial", 24).mark("label");
+            this.glass = new svg.Rect(width, height).color([0, 0, 0]).opacity(0.001).mark("glass");
             this.component.add(this.text.position(0, 8)).add(this.glass);
         }
 
@@ -945,10 +1167,10 @@ exports.Gui = function(svg, param) {
 
         onClick(click) {
             if (this._onClick) {
-                svg.removeEvent(this.glass, "mouseup", this._onClick);
+                svg.removeEvent(this.glass, "click", this._onClick);
             }
             this._onClick = click;
-            svg.addEvent(this.glass, "mouseup", this._onClick);
+            svg.addEvent(this.glass, "click", this._onClick);
             return this;
         }
 
@@ -977,6 +1199,7 @@ exports.Gui = function(svg, param) {
         }
 
         addPane(pane) {
+            pane.component.mark("pane:"+this.panes.length);
             pane.palette = this;
             if (this.panes.length === 0) {
                 this.currentPane = pane;
@@ -1054,6 +1277,7 @@ exports.Gui = function(svg, param) {
 
     const TITLE_HEIGHT = 40;
     const DEFAULT_PANE_DIMENSION = 100;
+
     class Pane {
 
         constructor(colors, text, elemSize) {
@@ -1067,15 +1291,17 @@ exports.Gui = function(svg, param) {
             this.titleAction(()=> {
                 if (this.opened) {
                     this.close();
+                    this.resize(this.width, 0);
                 }
                 else {
                     this.open();
+                    this.resize(this.width, this.height);
                 }
             });
             this.panel = new Panel(this.width, this.height - TITLE_HEIGHT, colors[0]);
             this.panel.component.move(0, TITLE_HEIGHT + this.height / 2);
-            this.component.add(this.title.component);
-            this.component.add(this.panel.component);
+            this.component.add(this.title.component.mark("title"));
+            this.component.add(this.panel.component.mark("content"));
             this.tools = [];
         }
 
@@ -1112,8 +1338,9 @@ exports.Gui = function(svg, param) {
         resize(width, height) {
             width !== undefined && (this.width = width);
             height !== undefined && (this.height = height);
+            let panelHeight = Math.round(this.height - TITLE_HEIGHT);
             this.title.resize(this.width, TITLE_HEIGHT).position(0, -this.height / 2 + TITLE_HEIGHT / 2);
-            this.panel.resize(this.width, Math.round(this.height - TITLE_HEIGHT)).position(0, TITLE_HEIGHT / 2);
+            this.panel.resize(this.width, panelHeight<0 ? 0 : panelHeight).position(0, TITLE_HEIGHT / 2);
             this._resizeContent();
             return this;
         }
@@ -1178,7 +1405,7 @@ exports.Gui = function(svg, param) {
             this.canvas = canvas;
             this.component.move(x, y);
             this.mask = new svg.Rect(canvas.width, canvas.height).color(svg.BLACK).opacity(0.5)
-                .position(canvas.width/2, canvas.height/2);
+                .position(canvas.width/2, canvas.height/2).mark('mask');
             this.canvas.add(this.mask);
             svg.addEvent(this.mask, "click", ()=>{
                this.cancel();
@@ -1214,7 +1441,7 @@ exports.Gui = function(svg, param) {
         }
 
         whenOk(ifOk) {
-            let glass = new svg.Circle(40).color(svg.BLACK).opacity(0.005);
+            let glass = new svg.Circle(40).color(svg.BLACK).opacity(0.005).mark('glass');
             ifOk=ifOk||this.close;
             svg.addEvent(glass, "click", ()=>{
                 if (this.okEnabled) {
@@ -1223,7 +1450,7 @@ exports.Gui = function(svg, param) {
             });
             this.okIconBackground = new svg.Circle(40);
             this.enableOk();
-            this.okIcon = new svg.Translation()
+            this.okIcon = new svg.Translation().mark('ok')
                 .add(this.okIconBackground)
                 .add(new svg.Polygon(0, 0).color(svg.WHITE, 2, svg.GREY)
                     .add(-25, -10).add(-5, 10).add(30, -20).add(-5, 25))
@@ -1234,10 +1461,11 @@ exports.Gui = function(svg, param) {
         }
 
         whenCancel(ifCancel=(()=>{})) {
-            let glass = new svg.Circle(40).color(svg.BLACK).opacity(0.005);
+            let glass = new svg.Circle(40).color(svg.BLACK).opacity(0.005).mark('glass');
             this.ifCancel=ifCancel;
             svg.addEvent(glass, "click", ()=>this.cancel());
-            this.cancelIcon = new svg.Translation().add(new svg.Rotation(45)
+            this.cancelIcon = new svg.Translation().mark('cancel')
+                .add(new svg.Rotation(45)
                 .add(new svg.Circle(40).color(svg.RED, 3, svg.DARK_RED))
                 .add(new svg.Polygon(0, 0).color(svg.WHITE, 2, svg.GREY)
                     .add(-5, 30).add(-5, 5).add(-30, 5).add(-30, -5).add(-5, -5).add(-5, -30)
@@ -1773,6 +2001,7 @@ exports.Gui = function(svg, param) {
         Handle:Handle,
         Panel:Panel,
         TextPanel:TextPanel,
+        Button:Button,
         Pane:Pane,
         Palette:Palette,
         Tool:Tool,

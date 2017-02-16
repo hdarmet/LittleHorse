@@ -317,6 +317,57 @@ exports.play = function(svg) {
                 });
             };
 
+            hexM.installDnDOnHexes(unit, frame, {
+                select:(unit, rotate)=>{
+                    if (!rotate) {
+                        showMoveZone();
+                    }
+                    return true;
+                },
+                rotated:unit=> {
+                    unit.rotate(Math.round(unit.angle / 30) * 30);
+                    return true;
+                },
+                dropped:(hex, unit, x, y)=> {
+                    let zone = this.getMoveZone(unit);
+                    if (zone.has(hex)) {
+                        hex.putUnit(unit.move(0, 0));
+                        this.owningMap.unselectAll();
+                        this.owningMap.unhighlightAll();
+                        this.proposeFighting();
+                        hideMoveZone();
+                        return true;
+                    }
+                    else {
+                        return false;
+                    }
+                },
+                moved:(unit, x, y)=> {
+                    unit.move(0, 0);
+                    hideMoveZone();
+                    return true;
+                },
+                clicked:unit=> {
+                    hideMoveZone();
+                    if (unit.selected) {
+                        this.rule.friendSelected(this.owningMap, unit, false);
+                        this.proposeFighting();
+                    }
+                    else {
+                        if (this.startMoves.get(unit)===unit.hex) {
+                            this.rule.friendSelected(this.owningMap, unit, true);
+                            this.proposeFighting();
+                        }
+                    }
+                    this.putUnitOnTop(unit);
+                    return true;
+                },
+                removed:unit=> {
+                    unit.hex.removeUnit(unit);
+                    return true;
+                }
+            });
+/*
             hexM.installDnDOnHexes(unit, frame,
                 (unit, rotate)=> {
                     if (!rotate) {
@@ -367,6 +418,7 @@ exports.play = function(svg) {
                     return true;
                 }
             );
+            */
         }
 
         enableClickableForCombat(player) {
@@ -428,6 +480,33 @@ exports.play = function(svg) {
 
         enableDnDOnEliminatedBox(unit) {
 
+            hexM.installDnDOnBox(unit, frame, map.eliminatedBox, {
+                moved: (unit, x, y)=> {
+                    this.owningMap.eliminatedBox.removeUnit(unit);
+                    if (x < -this.owningMap.eliminatedBox.width / 2 + unit.width / 2) {
+                        x = -this.owningMap.eliminatedBox.width / 2 + unit.width / 2;
+                    }
+                    if (x > this.owningMap.eliminatedBox.width / 2 - unit.width / 2) {
+                        x = this.owningMap.eliminatedBox.width / 2 - unit.width / 2;
+                    }
+                    if (y < -this.owningMap.eliminatedBox.height / 3 + unit.height / 2) {
+                        y = -this.owningMap.eliminatedBox.height / 3 + unit.height / 2;
+                    }
+                    if (y > this.owningMap.eliminatedBox.height / 2 - unit.height / 2) {
+                        y = this.owningMap.eliminatedBox.height / 2 - unit.height / 2;
+                    }
+                    unit.component.smoothy(param.speed, param.step).moveTo(x, y);
+                    svg.animate(param.speed, ()=>unit.move(x, y));
+                    this.owningMap.eliminatedBox.addUnit(unit);
+                    return true;
+                },
+                clicked: unit=> {
+                    this.owningMap.eliminatedBox.removeUnit(unit);
+                    this.owningMap.eliminatedBox.addUnit(unit);
+                    return true;
+                }
+            });
+/*
             hexM.installDnDOnBox(unit, frame, map.eliminatedBox,
                 (unit)=> {
                     return true;
@@ -457,6 +536,7 @@ exports.play = function(svg) {
                     return true;
                 }
             );
+            */
         }
 
         putUnitOnTop(unit) {
@@ -488,6 +568,45 @@ exports.play = function(svg) {
                 });
             };
 
+            hexM.installDnDOnHexes(unit, frame, {
+                    select: (unit, rotate)=> {
+                        if (!rotate) {
+                            showAdvanceZone();
+                        }
+                        return true;
+                    },
+                    rotated: unit=> {
+                        unit.rotate(Math.round(unit.angle / 30) * 30);
+                        return true;
+                    },
+                    dropped: (hex, unit, x, y)=> {
+                        let zone = this.getAdvanceZone(unit, units, [unitHex, ...hexes]);
+                        if (zone.has(hex)) {
+                            hex.putUnit(unit.move(0, 0));
+                            hideAdvanceZone();
+                            return true;
+                        }
+                        else {
+                            return false;
+                        }
+                    },
+                    moved: (unit, x, y)=> {
+                        unit.move(0, 0);
+                        hideAdvanceZone();
+                        return true;
+                    },
+                    clicked: unit=> {
+                        hideAdvanceZone();
+                        this.putUnitOnTop(unit);
+                        return true;
+                    },
+                    removed: unit=> {
+                        unit.hex.removeUnit(unit);
+                        return true;
+                    }
+                }
+            );
+/*
             hexM.installDnDOnHexes(unit, frame,
                 (unit, rotate)=> {
                     if (!rotate) {
@@ -525,6 +644,7 @@ exports.play = function(svg) {
                     return true;
                 }
             );
+            */
         }
 
         enableDnDForRetreatOrDie(unit, units, range, continued) {
@@ -545,6 +665,52 @@ exports.play = function(svg) {
                 });
             };
 
+            hexM.installDnDOnHexes(unit, frame, {
+                select: (unit, rotate)=> {
+                    if (!rotate) {
+                        showRetreatZone();
+                    }
+                    return !rotate;
+                },
+                rotated: unit=> {
+                    return false;
+                },
+                dropped: (hex, unit, x, y)=> {
+                    let zone = this.getRetreatZone(unit, units, range);
+                    if (zone.has(hex)) {
+                        hex.putUnit(unit.move(0, 0));
+                        hideRetreatZone();
+                        continued();
+                        return true;
+                    }
+                    else {
+                        if (!zone.size) { // No retreat => Die !
+                            this.eliminate(unit, hex.component.globalPoint(x, y));
+                            continued();
+                            return true;
+                        }
+                        else {
+                            return false;
+                        }
+                    }
+                },
+                moved: (unit, x, y)=> {
+                    unit.move(0, 0);
+                    hideRetreatZone();
+                    return true;
+                },
+                clicked: unit=> {
+                    hideRetreatZone();
+                    this.putUnitOnTop(unit);
+                    return true;
+                },
+                removed: unit=> {
+                    unit.hex.removeUnit(unit);
+                    return true;
+                }
+            });
+
+/*
             hexM.installDnDOnHexes(unit, frame,
                 (unit, rotate)=> {
                     if (!rotate) {
@@ -589,11 +755,37 @@ exports.play = function(svg) {
                     return true;
                 }
             );
+            */
             return this;
         }
 
         enableDnDForLosses(unit, strength, continued) {
             this.eliminated.clear();
+            hexM.installDnDOnHexes(unit, frame, {
+                rotated:()=>false,
+                dropped:(hex, unit, x, y)=> {
+                    Memento.register(this);
+                    this.eliminate(unit, hex.component.globalPoint(x, y));
+                    this.eliminated.add(unit);
+                    if (this.command.totalStrength(this.eliminated)>=strength) {
+                        continued();
+                    }
+                    return true;
+                },
+                moved:(unit, x, y)=> {
+                    unit.move(0, 0);
+                    return true;
+                },
+                clicked:unit=> {
+                    this.putUnitOnTop(unit);
+                    return true;
+                },
+                removed:unit=> {
+                    unit.hex.removeUnit(unit);
+                    return true;
+                }
+            });
+            /*
             hexM.installDnDOnHexes(unit, frame,
                 (unit, rotate)=> {
                     return true;
@@ -623,6 +815,7 @@ exports.play = function(svg) {
                     return true;
                 }
             );
+            */
             return this;
         }
 

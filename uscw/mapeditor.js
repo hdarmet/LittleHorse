@@ -203,6 +203,29 @@ exports.mapEditor = function(svg) {
         }
 
         enableDnD(item) {
+            hexM.installDnDOnHexes2(item, frame, {
+                rotated:item=> {
+                    item.rotate(Math.round(item.angle / 15) * 15);
+                    return true;
+                },
+                dropped:(hex, item, x, y)=> {
+                    hex.putItem(item.move(x, y));
+                    return true;
+                },
+                moved:(item, x, y)=> {
+                    item.move(x, y);
+                    return true;
+                },
+                clicked:item=> {
+                    item.hex.owningMap.select(item);
+                    return true;
+                },
+                removed:item=> {
+                    item.hex.removeItem(item);
+                    return true;
+                }
+            });
+            /*
             hexM.installDnDOnHexes(item, frame,
                 (item, rotate)=> {
                     return true;
@@ -228,6 +251,7 @@ exports.mapEditor = function(svg) {
                     return true;
                 }
             );
+            */
         }
 
         disableDnD(item) {
@@ -243,6 +267,41 @@ exports.mapEditor = function(svg) {
 
         enableCompositeDnD(composite) {
             let hexComposite = this.hex.getItem(hexM.Composite);
+            hexM.installDnDOnHexes2(item, frame, {
+                rotated:comp=> {
+                    comp.rotate(Math.round(comp.angle / 60) * 60);
+                    comp.conform();
+                    return true;
+                },
+                dropped:(hex, comp, x, y)=> {
+                    var present = hex.getItem(hexM.Composite);
+                    if (present) {
+                        hex.removeItem(present);
+                    }
+                    hex.putItem(comp.move(0, 0));
+                    return true;
+                },
+                moved:(comp, x, y)=> {
+                    comp.move(0, 0);
+                    return true;
+                },
+                clicked:comp=> {
+                    if (!hexComposite.isHighlighted()) {
+                        hexComposite.clear();
+                        hexComposite.copy(comp.children);
+                        hexComposite.highlight(true);
+                    }
+                    else {
+                        comp.hex.owningMap.select(comp);
+                    }
+                    return true;
+                },
+                removed:comp=> {
+                    comp.hex.removeItem(comp);
+                    return true;
+                }
+            });
+            /*
             hexM.installDnDOnHexes(composite, frame,
                 (comp, rotate)=> {
                     return true;
@@ -280,7 +339,7 @@ exports.mapEditor = function(svg) {
                     return true;
                 }
             );
-
+*/
         }
 
         composite() {
@@ -372,12 +431,53 @@ exports.mapEditor = function(svg) {
         }
 
         enableDnD(unit) {
+            hexM.installDnDOnHexes2(unit, frame, {
+                rotated: unit=> {
+                    unit.rotate(Math.round(unit.angle / 30) * 30);
+                    return true;
+                },
+                moved: (unit, x, y)=> {
+                    unit.move(0, 0);
+                    return true;
+                },
+                dropped: (hex, unit, x, y)=> {
+                    hex.putUnit(unit.move(0, 0));
+                    return true;
+                },
+                clicked: unit=> {
+                    if (unit.selected) {
+                        new EditUnitPopin(unit)
+                            .addSymbol(hexM.symbols.infantry)
+                            .addSymbol(hexM.symbols.cavalry)
+                            .addSymbol(hexM.symbols.artillery)
+                            .show(drawing);
+                    }
+                    else {
+                        unit.hex.owningMap.select(unit);
+                        if (unit.nextUnit) {
+                            let nextUnit = unit.nextUnit;
+                            let hex = unit.hex;
+                            hex.removeUnit(nextUnit);
+                            hex.removeUnit(unit);
+                            hex.putUnit(nextUnit);
+                            hex.putUnit(unit);
+                        }
+                    }
+                    return true;
+                },
+                removed: unit=> {
+                    unit.hex.removeUnit(unit);
+                    return true;
+                }
+            });
+            /*
             hexM.installDnDOnHexes(unit, frame,
                 (unit, rotate)=> {
                     return true;
                 },
                 (unit, angle)=> {
-                    unit.rotate(Math.round(angle / 30) * 30);
+  //                  unit.rotate(Math.round(angle / 30) * 30);
+                    unit.rotate(Math.round(unit.angle / 30) * 30);
                     return true;
                 },
                 (hex, unit, x, y)=> {
@@ -414,6 +514,7 @@ exports.mapEditor = function(svg) {
                     return true;
                 }
             );
+            */
         }
 
         disableDnD(unit) {

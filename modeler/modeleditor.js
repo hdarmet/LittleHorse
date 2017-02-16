@@ -157,7 +157,13 @@ exports.modelEditor = function(svg) {
                             let info = new Uml.Info(item, location.x, location.y,
                                 error.toString(), [svg.LIGHT_PINK, 2, svg.RED]);
                             schema.putInfo(info);
-                            Uml.installDnD(info, frame,
+                            Uml.installDnD(info, frame, {
+                                moved: (info, x, y)=> {
+                                    info.move(x, y);
+                                    return true;
+                                }
+                            }
+                                /*
                                 (info, x, y)=> {
                                     return {x, y};
                                 },
@@ -170,7 +176,7 @@ exports.modelEditor = function(svg) {
                                 },
                                 (info)=> {
                                     return true;
-                                }
+                                }*/
                             );
                         });
                         new ShowGenerationPopin(text).show(drawing);
@@ -269,7 +275,21 @@ exports.modelEditor = function(svg) {
         }
 
         enableDnD(node) {
-            Uml.installDnD(node, frame,
+            Uml.installDnD(node, frame, {
+                select:(node)=> {
+                    node.unselect();
+                    return true;
+                },
+                moved:(node, x, y)=> {
+                    node.move(x, y);
+                    node.select();
+                    return true;
+                },
+                clicked:(node)=> {
+                    node.select();
+                    return true;
+                }
+            }/*
                 (node, x, y)=> {
                     return {x, y};
                 },
@@ -285,7 +305,7 @@ exports.modelEditor = function(svg) {
                 (node)=> {
                     node.select();
                     return true;
-                }
+                }*/
             );
         }
 
@@ -297,22 +317,31 @@ exports.modelEditor = function(svg) {
             if (beginDrag) {
                 drawing.dragFocus(anchor.component);
             }
-            Uml.installDnD(anchor, frame,
-                (anchor, x, y)=> {
-                    return anchor.update(x, y);
-                },
-                (anchor)=> {
-                    return true;
-                },
-                (anchor, x, y)=> {
+            Uml.installDnD(anchor, frame, {
+                drag: (anchor, x, y)=> anchor.update(x, y),
+                moved: (anchor, x, y)=> {
                     anchor.finalize(x, y);
                     return true;
                 },
-                (anchor)=> {
+                startInDragMode: beginDrag
+            });
+            /*
+                (anchor, x, y)=> { // drag
+                    return anchor.update(x, y);
+                },
+                (anchor)=> { // select
+                    return true;
+                },
+                (anchor, x, y)=> { // move
+                    anchor.finalize(x, y);
+                    return true;
+                },
+                (anchor)=> { //click
                     return true;
                 },
                 beginDrag
             );
+            */
         }
 
         disableAnchorDnD(anchor) {
@@ -653,7 +682,13 @@ exports.modelEditor = function(svg) {
             if (beginDrag) {
                 drawing.dragFocus(anchor.component);
             }
-            Uml.installDnD(anchor, frame,
+            Uml.installDnD(anchor, frame, {
+                    drag: (anchor, x, y)=> anchor.update(x, y),
+                    moved: (anchor, x, y)=> anchor.finalize(x, y),
+                    clicked: ()=>false,
+                    startInDragMode: beginDrag
+            }
+                /*
                 (anchor, x, y)=> {
                     return anchor.update(x, y);
                 },
@@ -667,6 +702,7 @@ exports.modelEditor = function(svg) {
                     return false;
                 },
                 beginDrag
+                */
             );
         }
 

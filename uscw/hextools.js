@@ -3143,7 +3143,54 @@ exports.Hex = function(svg) {
         }
     };
 
+    /*
     function installDnDOnHexes(what, glass, doSelect, doRotate, doDrop, doMove, doClick, doRemove) {
+
+        let dropped = (what, finalX, finalY)=>{
+            let global = what.component.parent.globalPoint(finalX, finalY);
+            let onMap = what.hex.owningMap.component.localPoint(global);
+            let newHex = what.hex.owningMap.getHexFromPoint(onMap);
+            if (newHex === what.hex) {
+                if (!doMove(what, finalX, finalY)) {
+                    return false;
+                }
+            }
+            else {
+                if (!newHex) {
+                    return false;
+                }
+                else {
+                    if (!doRemove(what)) {
+                        return false;
+                    }
+                    else {
+                        if (newHex) {
+                            var local = newHex.component.localPoint(global);
+                            if (!doDrop(newHex, what, Math.round(local.x), Math.round(local.y))) {
+                                Memento.rollback(true);
+                            }
+                        }
+                    }
+                }
+            }
+            return true;
+        };
+
+        glass.installDnD(what, {
+            anchor: (item, x, y)=>{
+                let global = item.component.parent.globalPoint(x, y);
+                let local = item.glass.localPoint(global);
+                return item.anchor(local.x, local.y);
+            },
+            select: doSelect,
+            rotated: doRotate,
+            clicked: doClick,
+            moved: dropped,
+            revert:()=>Memento.rollback(true),
+            completed:()=>Memento.begin()
+        });
+        */
+        /*
         what.addEvent('mousedown', event=> {
             let whatParent = what.component.parent;
             let delta = whatParent.localPoint(event.x, event.y);
@@ -3184,10 +3231,10 @@ exports.Hex = function(svg) {
                         else {
                             let finalX = Math.round(initX + depl.x - delta.x);
                             let finalY = Math.round(initY + depl.y - delta.y);
+                            glass.drop(what.component, whatParent, finalX, finalY);
                             let global = whatParent.globalPoint(finalX, finalY);
                             let onMap = what.hex.owningMap.component.localPoint(global);
                             let newHex = what.hex.owningMap.getHexFromPoint(onMap);
-                            glass.drop(what.component, whatParent, finalX, finalY);
                             if (newHex === what.hex) {
                                 if (!doMove(what, finalX, finalY)) {
                                     Memento.rollback(true);
@@ -3217,6 +3264,54 @@ exports.Hex = function(svg) {
                 });
             }
         });
+        */
+    //}
+
+    function installDnDOnHexes(what, glass, conf) {
+
+        let dropped = (what)=>{
+            let global = what.component.parent.globalPoint(what.x, what.y);
+            let onMap = what.hex.owningMap.component.localPoint(global);
+            let newHex = what.hex.owningMap.getHexFromPoint(onMap);
+            if (newHex === what.hex) {
+                if (!conf.moved(what, what.x, what.y)) {
+                    return false;
+                }
+            }
+            else {
+                if (!newHex) {
+                    return false;
+                }
+                else {
+                    if (!conf.removed(what)) {
+                        return false;
+                    }
+                    else {
+                        var local = newHex.component.localPoint(global);
+                        if (!conf.dropped(newHex, what, Math.round(local.x), Math.round(local.y))) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        };
+
+        let dndConf = {
+            anchor: (item, x, y)=>{
+                let global = item.component.parent.globalPoint(x, y);
+                let local = item.glass.localPoint(global);
+                return item.anchor(local.x, local.y);
+            },
+            select: conf.select,
+            rotated: conf.rotated,
+            clicked: conf.clicked,
+            moved: dropped,
+            revert:()=>Memento.rollback(true),
+            completed:()=>Memento.begin()
+        };
+
+        glass.installDnD(what, dndConf);
     }
 
     function installClickableOnHexes(what, doClick) {
@@ -3233,7 +3328,35 @@ exports.Hex = function(svg) {
         });
     }
 
+    function installDnDOnBox2(what, glass, box, conf) {
+        glass.installDnD(what, {
+            select: conf.select,
+            drop: (what, whatParent, finalX, finalY)=>{
+                let global = whatParent.globalPoint(finalX, finalY);
+                let onBox = box.component.localPoint(global);
+                return {parent:box.component, x:onBox.x, y:onBox.y}
+            },
+            moved: conf.moved,
+            clicked: conf.clicked,
+            revert:()=>Memento.rollback(true),
+            completed:()=>Memento.begin()
+        });
+    }
+/*
     function installDnDOnBox(what, glass, box, doSelect, doMove, doClick) {
+        glass.installDnD(what, {
+            select: doSelect,
+            drop: (what, whatParent, finalX, finalY)=>{
+                let global = whatParent.globalPoint(finalX, finalY);
+                let onBox = box.component.localPoint(global);
+                return {parent:box.component, x:onBox.x, y:onBox.y}
+            },
+            moved: doMove,
+            clicked: doClick,
+            revert:()=>Memento.rollback(true),
+            completed:()=>Memento.begin()
+        });*/
+/*
         what.addEvent('mousedown', event=> {
             let whatParent = what.component.parent;
             let delta = whatParent.localPoint(event.x, event.y);
@@ -3268,7 +3391,8 @@ exports.Hex = function(svg) {
                 });
             }
         });
-    }
+        */
+    //}
 
     return {
         isEmpty : isEmpty,

@@ -334,6 +334,7 @@ exports.mockRuntime = function() {
             result && this.event(result, eventName, event);
         },
         preventDefault(event) {
+            event.prevented = true;
         },
         request(url, data) {
             var result = {
