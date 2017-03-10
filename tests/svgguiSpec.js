@@ -764,6 +764,7 @@ describe('SVG gui', function() {
             assert.ok(!retrieve(frame.component.component, '[secondContent]'));
         });
 
+        /*
         it("drags and drop objects inside the frame", function () {
             let frame = new gui.Frame(1000, 500).backgroundColor(svg.BLACK);
             canvas.add(frame.component);
@@ -799,6 +800,7 @@ describe('SVG gui', function() {
             assert.equal(objectToDrag.parent, firstHandler);
             inspect(objectToDrag, {x:20, y:30});
         });
+*/
 
         it ("plays a drag and drop (move) sequence without any callbacks", function() {
             let frame = new gui.Frame(1000, 500).backgroundColor(svg.BLACK);
